@@ -1,4 +1,4 @@
-/* TessyNav performance v8: quality, shadows, culling, rate-limited builders, road snapping, Street/Map view, touch-friendly follow */
+/* TessyNav performance v9: quality, shadows, culling, rate-limited builders, forgiving road snapping, closer Street view */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -111,23 +111,28 @@ qBtn.onclick=()=>{
 /* ---------- Road snapping: use the roads actually drawn under the car ---------- */
 function fromLocal(x,z){return [x/(111320*Math.cos(ORIGIN[1]*R))+ORIGIN[0],-z/111320+ORIGIN[1]];}
 const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
-let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null;
+let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null;
 function getRoadLayers(){
   if(roadLayerIds) return roadLayerIds;
   roadLayerIds=map.getStyle().layers.filter(l=>l.type==='line'&&l['source-layer']==='transportation'&&
     !/casing|rail|path|ferry|aerialway|pier|pedestrian|footway|bridge|tunnel/i.test(l.id)).map(l=>l.id);
   return roadLayerIds;
 }
+function showGpsStatus(){
+  if(gpsAcc===null) return;
+  status.textContent='GPS '+Math.round(gpsAcc)+' m · '+(snapOk?'on road':'finding road');
+}
 function updateSnap(pos,hd,spd){
   snapLast=performance.now();
-  if(spd<1.5){snapOff=[0,0];snapHd=null;return;}
+  if(spd<1.2){snapOff=[0,0];snapHd=null;snapOk=false;showGpsStatus();return;}
   let feats=[];
   try{
     const pt=map.project(pos);
-    feats=map.queryRenderedFeatures([[pt.x-160,pt.y-160],[pt.x+160,pt.y+160]],{layers:getRoadLayers()});
+    feats=map.queryRenderedFeatures([[pt.x-220,pt.y-220],[pt.x+220,pt.y+220]],{layers:getRoadLayers()});
   }catch(e){}
   const [x,z]=toLocal(pos[0],pos[1]);
   const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
+  const trustHd=spd>3;
   let best=null;
   for(const f of feats){
     const pr=f.properties||{},W=SNAP_W[pr.class];
@@ -141,35 +146,36 @@ function updateSnap(pos,hd,spd){
         if(l2<0.01) continue;
         const t=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/l2));
         const qx=a[0]+dx*t,qz=a[1]+dz*t,d=Math.hypot(qx-x,qz-z);
-        if(d>15) continue;
+        if(d>18) continue;
         const l=Math.sqrt(l2),tx=dx/l,tz=dz/l,align=tx*fx+tz*fz;
-        if(Math.abs(align)<0.7) continue;
-        const score=d-Math.abs(align)*3;
+        if(trustHd&&Math.abs(align)<0.5) continue;
+        const score=d-(trustHd?Math.abs(align)*4:0);
         if(!best||score<best.score) best={score:score,qx:qx,qz:qz,tx:tx,tz:tz,align:align,W:W,oneway:+pr.oneway||0};
       }
     }
   }
-  if(!best){snapOff=[0,0];snapHd=null;return;}
+  if(!best){snapOff=[0,0];snapHd=null;snapOk=false;showGpsStatus();return;}
   const dsg=best.align>=0?1:-1,tx=best.tx*dsg,tz=best.tz*dsg,rx=-tz,rz=tx;
   const lane=best.oneway?0:best.W/4;
   snapOff=[best.qx+rx*lane-x,best.qz+rz*lane-z];
   snapHd=(Math.atan2(tx,-tz)/R+360)%360;
+  snapOk=true;showGpsStatus();
 }
 
 /* ---------- Camera: Street or Map view, speed-based, plus your pinch adjustment ---------- */
-let userZoomDelta=+(cacheGet('zoomDelta_'+viewMode)||0),lastUserZoom=0,lastDrag=0,lastTouch=0;
+let userZoomDelta=+(cacheGet('zoomDelta2_'+viewMode)||0),lastUserZoom=0,lastDrag=0,lastTouch=0;
 let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,gOff=[0,0];
 function camSpec(){
   const kmh=gT?gT.spd*3.6:0;
   if(viewMode==='street'){
-    return {zoom:Math.max(19.4,Math.min(20.4,20.4-kmh/70)),pitch:76,pad:0.52};
+    return {zoom:Math.max(19.9,Math.min(21,21-kmh/60)),pitch:74,pad:0.5};
   }
-  return {zoom:Math.max(18.2,Math.min(19.5,19.5-kmh/55))-(skyOn?0.4:0),pitch:skyOn?78:60,pad:0.32};
+  return {zoom:Math.max(18.4,Math.min(19.8,19.8-kmh/55))-(skyOn?0.4:0),pitch:skyOn?78:60,pad:0.32};
 }
 vBtn.onclick=()=>{
   viewMode=viewMode==='street'?'map':'street';
   cacheSet('viewMode',viewMode);showView();
-  userZoomDelta=+(cacheGet('zoomDelta_'+viewMode)||0);
+  userZoomDelta=+(cacheGet('zoomDelta2_'+viewMode)||0);
   follow=true;btn.textContent='Recenter';
 };
 map.on('zoom',e=>{if(e.originalEvent) lastUserZoom=performance.now();});
@@ -177,7 +183,7 @@ map.on('zoomend',e=>{
   if(!e.originalEvent) return;
   lastUserZoom=performance.now();
   userZoomDelta=Math.max(-3,Math.min(2,map.getZoom()-camSpec().zoom));
-  cacheSet('zoomDelta_'+viewMode,userZoomDelta);
+  cacheSet('zoomDelta2_'+viewMode,userZoomDelta);
   gZoom=map.getZoom();
 });
 map.on('dragstart',()=>{lastDrag=performance.now();follow=false;});
@@ -198,7 +204,9 @@ touchArea.addEventListener('wheel',()=>{lastUserZoom=performance.now();},{passiv
 const baseOnPos=onPos,baseView=view;
 onPos=function(p){
   baseOnPos(p);
+  gpsAcc=p.coords.accuracy;
   gT={pos:[p.coords.longitude,p.coords.latitude],hd:heading,spd:p.coords.speed||0,t:performance.now()};
+  showGpsStatus();
 };
 view=function(pos,ms){
   if(watchId!==null&&gT){follow=true;return;}
@@ -208,7 +216,8 @@ function glideFrame(){
   requestAnimationFrame(glideFrame);
   if(!gT||watchId===null) return;
   const now=performance.now(),dt=Math.min(1.2,(now-gT.t)/1000);
-  const h=gT.hd*R,m=gT.spd*dt;
+  const moveHd=(snapHd!==null&&gT.spd<=3)?snapHd:gT.hd;
+  const h=moveHd*R,m=gT.spd*dt;
   const pred=[gT.pos[0]+(m*Math.sin(h))/(111320*Math.cos(gT.pos[1]*R)),gT.pos[1]+(m*Math.cos(h))/111320];
   if(now-snapLast>200) updateSnap(pred,gT.hd,gT.spd);
   gOff[0]+=(snapOff[0]-gOff[0])*0.15;gOff[1]+=(snapOff[1]-gOff[1])*0.15;
