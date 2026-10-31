@@ -1,4 +1,4 @@
-/* TessyNav performance v2: quality levels, lighter shadows, off-screen culling, smooth gliding, auto-resume follow */
+/* TessyNav performance v3: quality levels, lighter shadows, culling, smooth gliding, rate-limited builders */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -6,6 +6,27 @@ qBtn.style.cssText='top:202px;left:12px;font-size:13px;border:0;cursor:pointer';
 document.body.appendChild(qBtn);
 function showQuality(){qBtn.textContent='Quality: '+quality.charAt(0).toUpperCase()+quality.slice(1);}
 showQuality();
+
+/* ---------- Builders run at most once per interval (with one catch-up call) ---------- */
+function rateLimit(name,ms){
+  const orig=window[name];
+  if(typeof orig!=='function') return;
+  let lastT=0,timer=null,lastArgs=null;
+  window[name]=function(){
+    lastArgs=arguments;
+    const now=performance.now(),wait=ms-(now-lastT);
+    if(wait<=0){lastT=now;return orig.apply(null,lastArgs);}
+    if(!timer) timer=setTimeout(()=>{timer=null;lastT=performance.now();orig.apply(null,lastArgs);},wait);
+  };
+}
+rateLimit('updateBuildings',1500);
+rateLimit('updateBridges',2500);
+rateLimit('updateLights',1800);
+rateLimit('updateSigns',1600);
+rateLimit('updateTrees',1000);
+rateLimit('parkTrees',3000);
+rateLimit('loadAround',2000);
+rateLimit('updateSkyObjects',150);
 
 /* ---------- Skip drawing what is off-screen ---------- */
 let cullLast=0;
