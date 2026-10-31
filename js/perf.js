@@ -1,4 +1,4 @@
-/* TessyNav performance v6: quality, shadows, culling, rate-limited builders, road snapping, Street/Map view */
+/* TessyNav performance v7: quality, shadows, culling, rate-limited builders, accurate road snapping, Street/Map view */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -108,38 +108,57 @@ qBtn.onclick=()=>{
   cacheSet('quality',quality);showQuality();applyQuality();
 };
 
-/* ---------- Road snapping: keep the arrow on the road you are driving on ---------- */
+/* ---------- Road snapping: use the roads actually drawn under the car ---------- */
 function fromLocal(x,z){return [x/(111320*Math.cos(ORIGIN[1]*R))+ORIGIN[0],-z/111320+ORIGIN[1]];}
-let snapOff=[0,0],snapHd=null,snapLast=0;
-function updateSnap(pos,hd){
+const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
+let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null;
+function getRoadLayers(){
+  if(roadLayerIds) return roadLayerIds;
+  roadLayerIds=map.getStyle().layers.filter(l=>l.type==='line'&&l['source-layer']==='transportation'&&
+    !/casing|rail|path|ferry|aerialway|pier|pedestrian|footway|bridge|tunnel/i.test(l.id)).map(l=>l.id);
+  return roadLayerIds;
+}
+function updateSnap(pos,hd,spd){
   snapLast=performance.now();
-  if(typeof lCells==='undefined'||typeof localRoad!=='function'){snapOff=[0,0];snapHd=null;return;}
+  if(spd<1.5){snapOff=[0,0];snapHd=null;return;}
+  let feats=[];
+  try{
+    const pt=map.project(pos);
+    feats=map.queryRenderedFeatures([[pt.x-160,pt.y-160],[pt.x+160,pt.y+160]],{layers:getRoadLayers()});
+  }catch(e){}
   const [x,z]=toLocal(pos[0],pos[1]);
   const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
-  const gx=Math.floor(pos[0]/LC),gy=Math.floor(pos[1]/LC);
   let best=null;
-  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
-    const cell=lCells.get((gx+dx)+','+(gy+dy));if(!cell) continue;
-    for(const r0 of cell.values()){
-      const r=localRoad(r0);if(!r) continue;
-      const b=closestOn(r,x,z,14);if(!b) continue;
-      const align=b.tx*fx+b.tz*fz;
-      if(Math.abs(align)<0.7) continue;
-      const score=b.d-Math.abs(align)*3;
-      if(!best||score<best.score){best=b;best.score=score;best.road=r;best.align=align;}
+  for(const f of feats){
+    const pr=f.properties||{},W=SNAP_W[pr.class];
+    if(!W) continue;
+    const g=f.geometry;
+    const lines=g.type==='LineString'?[g.coordinates]:g.type==='MultiLineString'?g.coordinates:[];
+    for(const ln of lines){
+      for(let i=0;i<ln.length-1;i++){
+        const a=toLocal(ln[i][0],ln[i][1]),b=toLocal(ln[i+1][0],ln[i+1][1]);
+        const dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz;
+        if(l2<0.01) continue;
+        const t=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/l2));
+        const qx=a[0]+dx*t,qz=a[1]+dz*t,d=Math.hypot(qx-x,qz-z);
+        if(d>15) continue;
+        const l=Math.sqrt(l2),tx=dx/l,tz=dz/l,align=tx*fx+tz*fz;
+        if(Math.abs(align)<0.7) continue;
+        const score=d-Math.abs(align)*3;
+        if(!best||score<best.score) best={score:score,qx:qx,qz:qz,tx:tx,tz:tz,align:align,W:W,oneway:+pr.oneway||0};
+      }
     }
   }
   if(!best){snapOff=[0,0];snapHd=null;return;}
   const dsg=best.align>=0?1:-1,tx=best.tx*dsg,tz=best.tz*dsg,rx=-tz,rz=tx;
-  const lane=best.road.oneway?0:best.road.W/4;
-  const sx=best.px+rx*lane,sz=best.pz+rz*lane;
-  snapOff=[sx-x,sz-z];
+  const lane=best.oneway?0:best.W/4;
+  snapOff=[best.qx+rx*lane-x,best.qz+rz*lane-z];
   snapHd=(Math.atan2(tx,-tz)/R+360)%360;
 }
 
 /* ---------- Camera: Street or Map view, speed-based, plus your pinch adjustment ---------- */
 let userZoomDelta=+(cacheGet('zoomDelta_'+viewMode)||0),lastUserZoom=0,lastDrag=0;
-let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60;
+let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,gOff=[0,0];
 function camSpec(){
   const kmh=gT?gT.spd*3.6:0;
   if(viewMode==='street'){
@@ -181,11 +200,12 @@ function glideFrame(){
   const now=performance.now(),dt=Math.min(1.2,(now-gT.t)/1000);
   const h=gT.hd*R,m=gT.spd*dt;
   const pred=[gT.pos[0]+(m*Math.sin(h))/(111320*Math.cos(gT.pos[1]*R)),gT.pos[1]+(m*Math.cos(h))/111320];
-  if(now-snapLast>200) updateSnap(pred,gT.hd);
+  if(now-snapLast>200) updateSnap(pred,gT.hd,gT.spd);
+  gOff[0]+=(snapOff[0]-gOff[0])*0.15;gOff[1]+=(snapOff[1]-gOff[1])*0.15;
   const [px,pz]=toLocal(pred[0],pred[1]);
-  const target=fromLocal(px+snapOff[0],pz+snapOff[1]);
+  const target=fromLocal(px+gOff[0],pz+gOff[1]);
   if(!gPos) gPos=target.slice();
-  gPos[0]+=(target[0]-gPos[0])*0.18;gPos[1]+=(target[1]-gPos[1])*0.18;
+  gPos[0]+=(target[0]-gPos[0])*0.25;gPos[1]+=(target[1]-gPos[1])*0.25;
   const wantHd=(snapHd!==null&&gT.spd>1)?snapHd:gT.hd;
   const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
   car.setLngLat(gPos).setRotation(gHd);
