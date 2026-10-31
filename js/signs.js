@@ -1,4 +1,4 @@
-/* TessyNav signs v4: city signs, OpenStreetMap backup placed at real approaches (all-way aware), safety alerts */
+/* TessyNav signs v5: city signs, OpenStreetMap backup with whole-intersection placement, safety alerts */
 const SC=0.005,ST=0.05,SG=8,SCELL=128,OSM_T=0.01;
 const sCells=new Map(),sMeshes=new Map(),sLoaded=new Set(),sDone=new Set(),cityCells=new Set();
 const oLoaded=new Set(),oQueue=[];
@@ -195,46 +195,64 @@ function cityPlacement(p,near){
   const fx=s>=0?tx:-tx,fz=s>=0?tz:-tz;
   return {px:p.x,pz:p.z,nx:-fx,nz:-fz,tx:tx,tz:tz};
 }
-/* OpenStreetMap stop dots sit on the road: find the intersection, then place signs before it on the right side */
+/* All road crossings close to an OpenStreetMap stop dot, merged into one intersection */
+function junctionCluster(p,near){
+  const roads=near.filter(r=>closestOn(r,p.x,p.z,30));
+  const J=[];
+  for(let i=0;i<roads.length;i++)for(let j=0;j<roads.length;j++){
+    if(i===j) continue;
+    const q2=closestOn(roads[j],p.x,p.z,30); if(!q2) continue;
+    const q1=closestOn(roads[i],q2.px,q2.pz,4); if(!q1) continue;
+    const jx=(q1.px+q2.px)/2,jz=(q1.pz+q2.pz)/2;
+    if(J.some(k=>Math.hypot(k[0]-jx,k[1]-jz)<3)) continue;
+    J.push([jx,jz]);
+  }
+  return {roads:roads,J:J};
+}
 function osmPlacements(p,near){
   let ap=null;
   for(const r of near){const b=closestOn(r,p.x,p.z,20);if(b&&(!ap||b.d<ap.d)){ap=b;ap.road=r;}}
   if(!ap) return [{px:p.x,pz:p.z,nx:0,nz:1,tx:1,tz:0}];
-  let J=null;
-  for(const r of near){
-    if(r===ap.road) continue;
-    const q=closestOn(r,p.x,p.z,30);
-    if(!q) continue;
-    if(!closestOn(ap.road,q.px,q.pz,4)) continue;
-    if(!J||q.d<J.d){J=q;J.road=r;}
-  }
+  const cl=junctionCluster(p,near);
   const out=[];
-  const placeBefore=(road,jx,jz,dsg)=>{
+  const placeBefore=(road,jx,jz,dsg,others)=>{
     const b=closestOn(road,jx,jz,6); if(!b) return;
     const s=b.s-7*dsg; if(s<0||s>road.L) return;
-    const fx=b.tx*dsg,fz=b.tz*dsg,rx=-fz,rz=fx,o=road.W/2+1.5;
-    out.push({px:b.px-fx*7+rx*o,pz:b.pz-fz*7+rz*o,nx:-fx,nz:-fz,tx:b.tx,tz:b.tz});
+    const fx=b.tx*dsg,fz=b.tz*dsg;
+    const bx=b.px-fx*7,bz=b.pz-fz*7;
+    if(others.some(k=>Math.hypot(k[0]-bx,k[1]-bz)<14)) return;
+    const rx=-fz,rz=fx,o=road.W/2+1.5;
+    out.push({px:bx+rx*o,pz:bz+rz*o,nx:-fx,nz:-fz,tx:b.tx,tz:b.tz});
   };
-  if(J&&p.types.indexOf('a')>=0){
-    for(const r of near){
-      const b=closestOn(r,J.px,J.pz,5); if(!b) continue;
-      for(const dsg of travelDirs(r,b,near)) placeBefore(r,J.px,J.pz,dsg);
+  if(cl.J.length&&p.types.indexOf('a')>=0){
+    for(const jp of cl.J){
+      const others=cl.J.filter(k=>k!==jp);
+      for(const r of cl.roads){
+        const b=closestOn(r,jp[0],jp[1],5); if(!b) continue;
+        for(const dsg of travelDirs(r,b,near)) placeBefore(r,jp[0],jp[1],dsg,others);
+      }
     }
-  }else if(J){
-    const vx=J.px-ap.px,vz=J.pz-ap.pz;
-    const dsg=(vx*ap.tx+vz*ap.tz)>=0?1:-1;
-    const along=Math.hypot(vx,vz);
-    if(along<5) placeBefore(ap.road,J.px,J.pz,dsg);
-    else{
-      const fx=ap.tx*dsg,fz=ap.tz*dsg,rx=-fz,rz=fx,o=ap.road.W/2+1.5;
-      out.push({px:ap.px+rx*o,pz:ap.pz+rz*o,nx:-fx,nz:-fz,tx:ap.tx,tz:ap.tz});
+  }else if(cl.J.length){
+    let J=null;
+    for(const jp of cl.J){
+      if(!closestOn(ap.road,jp[0],jp[1],5)) continue;
+      const d=Math.hypot(jp[0]-ap.px,jp[1]-ap.pz);
+      if(!J||d<J.d) J={x:jp[0],z:jp[1],d:d};
     }
-  }else{
+    if(J){
+      const dsg=((J.x-ap.px)*ap.tx+(J.z-ap.pz)*ap.tz)>=0?1:-1;
+      if(J.d<5) placeBefore(ap.road,J.x,J.z,dsg,cl.J.filter(k=>Math.hypot(k[0]-J.x,k[1]-J.z)>3));
+      else{
+        const fx=ap.tx*dsg,fz=ap.tz*dsg,rx=-fz,rz=fx,o=ap.road.W/2+1.5;
+        out.push({px:ap.px+rx*o,pz:ap.pz+rz*o,nx:-fx,nz:-fz,tx:ap.tx,tz:ap.tz});
+      }
+    }
+  }
+  if(!out.length){
     const toward=ap.s>ap.road.L/2?1:-1;
     const fx=ap.tx*toward,fz=ap.tz*toward,rx=-fz,rz=fx,o=ap.road.W/2+1.5;
     out.push({px:ap.px+rx*o,pz:ap.pz+rz*o,nx:-fx,nz:-fz,tx:ap.tx,tz:ap.tz});
   }
-  if(!out.length) out.push({px:ap.px,pz:ap.pz,nx:0,nz:1,tx:ap.tx,tz:ap.tz});
   return out;
 }
 
@@ -248,14 +266,14 @@ function buildSignCell(ck){
     if(c2) for(const r0 of c2.values()){const r=localRoad(r0);if(r) near.push(r);}
   }
   const front=lightAcc(false),backs=lightAcc(false),metal=lightAcc(true),names=lightAcc(false);
-  const nameIdx=new Map(),nameList=[],nameQuads=[],occ=new Set();
+  const nameIdx=new Map(),nameList=[],nameQuads=[],placed=[];
   for(const p of list){
     const pls=p.osm?osmPlacements(p,near):[cityPlacement(p,near)];
     p.places=[];
     for(const pl of pls){
       if(p.osm){
-        const ok=Math.round(pl.px/3)+','+Math.round(pl.pz/3);
-        if(occ.has(ok)) continue; occ.add(ok);
+        if(placed.some(q=>Math.hypot(q.px-pl.px,q.pz-pl.pz)<8&&(q.nx*pl.nx+q.nz*pl.nz)>0.8)) continue;
+        placed.push(pl);
       }
       p.places.push([pl.px,pl.pz]);
       const regular=p.types.filter(t=>t.indexOf('n:')!==0);
