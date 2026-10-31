@@ -11,6 +11,7 @@
 html,body,#map{margin:0;height:100%}
 .hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px}
 #status{top:12px;left:12px;font-size:15px}
+#sun{top:64px;left:12px;font-size:13px}
 #trees{top:12px;right:56px;font-size:14px}
 #speed{bottom:24px;left:12px;font-size:34px;font-weight:bold}
 #speed small{font-size:15px;font-weight:normal;opacity:.7}
@@ -20,6 +21,7 @@ html,body,#map{margin:0;height:100%}
 <body>
 <div id="map"></div>
 <div id="status" class="hud">Tap Start to follow Tessy</div>
+<div id="sun" class="hud">Sun: calculating...</div>
 <div id="trees" class="hud">Trees: 0</div>
 <div id="speed" class="hud">0 <small>km/h</small></div>
 <button id="btn" class="hud">Start</button>
@@ -34,7 +36,52 @@ const ORIGIN=[-73.568,45.459];
 const startPos=cacheGet('lastPos')||ORIGIN;
 const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:startPos,zoom:17,pitch:60,
   attributionControl:{customAttribution:'Arbres : Ville de Montréal (CC BY 4.0)'}});
-const treesEl=document.getElementById('trees');
+const treesEl=document.getElementById('trees'),sunEl=document.getElementById('sun');
+
+/* ---------- Real sun position ---------- */
+function sunPos(date,lat,lng){
+  const d=date.getTime()/864e5-0.5+2440588-2451545;
+  const M=R*(357.5291+0.98560028*d);
+  const C=R*(1.9148*Math.sin(M)+0.02*Math.sin(2*M)+0.0003*Math.sin(3*M));
+  const L=M+C+R*102.9372+Math.PI;
+  const e=R*23.4397;
+  const dec=Math.asin(Math.sin(e)*Math.sin(L));
+  const ra=Math.atan2(Math.sin(L)*Math.cos(e),Math.cos(L));
+  const H=R*(280.16+360.9856235*d)+R*lng-ra;
+  const phi=R*lat;
+  const alt=Math.asin(Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(H));
+  const az=Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(phi)-Math.tan(dec)*Math.cos(phi))+Math.PI;
+  return {alt:alt,az:az};
+}
+const testHour=new URLSearchParams(location.search).get('hour');
+function nowForSun(){
+  const d=new Date();
+  if(testHour!==null&&testHour!==''){const h=parseFloat(testHour);d.setHours(Math.floor(h),Math.round((h%1)*60),0,0);}
+  return d;
+}
+let hemiLight=null,sunLight=null;
+function updateSun(){
+  const c=map.getCenter();
+  const s=sunPos(nowForSun(),c.lat,c.lng);
+  const altDeg=s.alt/R,azDeg=(s.az/R+360)%360;
+  const dirs=['N','NE','E','SE','S','SW','W','NW'];
+  sunEl.textContent=altDeg>0?('Sun: '+Math.round(altDeg)+'° high, '+dirs[Math.round(azDeg/45)%8]+(testHour?' (test '+testHour+'h)':''))
+                            :('Sun is down'+(testHour?' (test '+testHour+'h)':''));
+  const up=Math.max(0,Math.sin(s.alt));
+  if(sunLight&&hemiLight){
+    const ce=Math.cos(s.alt);
+    sunLight.position.set(ce*Math.sin(s.az)*100,Math.max(0.05,Math.sin(s.alt))*100,-ce*Math.cos(s.az)*100);
+    sunLight.intensity=altDeg>0?1.2+2.6*Math.min(1,up*1.6):0;
+    hemiLight.intensity=altDeg>0?0.9+0.5*up:0.55;
+    sunLight.color.set(altDeg<12?0xffc890:0xfff4e4);
+  }
+  if(map.isStyleLoaded()){
+    map.setLight({anchor:'map',color:altDeg<12?'#ffd2a0':'#ffffff',
+      intensity:altDeg>0?0.35+0.3*up:0.15,
+      position:[1.5,azDeg,Math.min(88,Math.max(10,90-Math.max(altDeg,2)))]});
+  }
+  map.triggerRepaint();
+}
 
 /* ---------- Smooth 3D trees (three.js, drawn by area) ---------- */
 let treeCount=0,treesFailed=false,treeScene=null,treeMat=null;
@@ -51,8 +98,8 @@ const treeLayer={
     try{
       this.camera=new THREE.Camera();
       this.scene=new THREE.Scene();treeScene=this.scene;
-      this.scene.add(new THREE.HemisphereLight(0xeef6ff,0x5a6b4a,2.4));
-      const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(-40,80,30);this.scene.add(sun);
+      hemiLight=new THREE.HemisphereLight(0xdfeeff,0x4a5a3a,1.2);this.scene.add(hemiLight);
+      sunLight=new THREE.DirectionalLight(0xfff4e4,3.0);sunLight.position.set(-40,80,30);this.scene.add(sunLight);
       treeMat=new THREE.MeshLambertMaterial({vertexColors:true});
       this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
       this.renderer.autoClear=false;
@@ -245,73 +292,4 @@ function parkTrees(){
 /* ---------- Map styling ---------- */
 function roadWidth(z13,z20){
   const m=v=>['match',['get','class'],['motorway','trunk','primary'],v[0],['secondary','tertiary'],v[1],'minor',v[2],v[3]];
-  return ['interpolate',['exponential',2],['zoom'],13,m(z13),20,m(z20)];
-}
-map.on('load',()=>{
-  for(const l of map.getStyle().layers){
-    if(l.type==='symbol'&&/poi|transit|parking/i.test(l.id)) map.setLayoutProperty(l.id,'visibility','none');
-  }
-  if(!map.getLayer('building-3d')){
-    map.addLayer({id:'building-3d',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',
-      paint:{'fill-extrusion-height':['coalesce',['get','render_height'],8],
-      'fill-extrusion-base':['coalesce',['get','render_min_height'],0]}});
-  }
-  for(const l of map.getStyle().layers){
-    if(l.type!=='line'||l['source-layer']!=='transportation') continue;
-    if(/rail|path|ferry|aerialway|pier/i.test(l.id)) continue;
-    if(/casing/i.test(l.id)){
-      map.setPaintProperty(l.id,'line-color','#b9b4aa');
-      map.setPaintProperty(l.id,'line-width',roadWidth([3,2.5,1.5,0.8],[136,104,82,44]));
-    }else{
-      map.setPaintProperty(l.id,'line-color','#4b4f56');
-      map.setPaintProperty(l.id,'line-width',roadWidth([2,1.5,1,0.5],[120,90,70,35]));
-    }
-  }
-  map.addLayer({id:'lane-lines',type:'line',source:'openmaptiles','source-layer':'transportation',minzoom:16,
-    filter:['in',['get','class'],['literal',['motorway','trunk','primary','secondary','tertiary','minor']]],
-    paint:{'line-color':['match',['get','class'],['motorway','trunk','primary'],'#e2b21f','#f2f2ee'],
-      'line-width':['interpolate',['exponential',2],['zoom'],16,0.6,19,2],
-      'line-dasharray':[4,4]}},'building-3d');
-  map.setPaintProperty('building-3d','fill-extrusion-color',['interpolate',['linear'],['coalesce',['get','render_height'],8],0,'#e3d5c1',10,'#d9c7b0',20,'#cfd3d6',60,'#b9c3cc']);
-  map.setPaintProperty('building-3d','fill-extrusion-opacity',1);
-  map.addLayer({id:'roofs',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',
-    paint:{'fill-extrusion-color':'#9a958d',
-      'fill-extrusion-base':['coalesce',['get','render_height'],8],
-      'fill-extrusion-height':['+',['coalesce',['get','render_height'],8],0.4]}});
-  map.addLayer(treeLayer);
-  updateTrees();
-  map.on('moveend',()=>{const c=map.getCenter();if(map.getZoom()>=15)loadAround(c.lng,c.lat);updateTrees();});
-  map.on('idle',parkTrees);
-});
-
-/* ---------- Driving view ---------- */
-const el=document.createElement('div');
-el.innerHTML='<svg viewBox="0 0 34 34" width="52" height="52"><path d="M17 3 L29 30 L17 23 L5 30 Z" fill="#3fd1b0" stroke="#fff" stroke-width="2"/></svg>';
-const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat(startPos).addTo(map);
-let follow=false,last=null,heading=0,watchId=null,lastTile='';
-const status=document.getElementById('status'),speedEl=document.getElementById('speed'),btn=document.getElementById('btn');
-function view(pos,ms){map.easeTo({center:pos,zoom:18,pitch:65,bearing:heading,duration:ms,offset:[0,150]});}
-function onPos(p){
-  const pos=[p.coords.longitude,p.coords.latitude];
-  if(p.coords.heading!=null&&!isNaN(p.coords.heading)&&(p.coords.speed||0)>1) heading=p.coords.heading;
-  else if(last&&dist(last,pos)>4) heading=bearing(last,pos);
-  if(!last||dist(last,pos)>4) last=pos;
-  car.setLngLat(pos).setRotation(heading);
-  speedEl.innerHTML=Math.round((p.coords.speed||0)*3.6)+' <small>km/h</small>';
-  status.textContent='GPS accuracy: '+Math.round(p.coords.accuracy)+' m';
-  if(p.coords.accuracy<100){
-    cacheSet('lastPos',[+pos[0].toFixed(5),+pos[1].toFixed(5)]);
-    const t=Math.floor(pos[0]/OT)+','+Math.floor(pos[1]/OT);
-    if(t!==lastTile){lastTile=t;loadAround(pos[0],pos[1]);}
-  }
-  if(follow) view(pos,1000);
-}
-btn.onclick=()=>{
-  follow=true;btn.textContent='Recenter';
-  if(watchId===null){watchId=navigator.geolocation.watchPosition(onPos,()=>{status.textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});}
-  else if(last) view(last,800);
-};
-map.on('dragstart',()=>{follow=false;});
-</script>
-</body>
-</html>
+  return
