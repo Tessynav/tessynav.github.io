@@ -13,7 +13,7 @@ const ORIGIN=[-73.568,45.459];
 const startPos=cacheGet('lastPos')||ORIGIN;
 function toLocal(lng,lat){return [(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R),-(lat-ORIGIN[1])*111320];}
 
-const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:startPos,zoom:17,pitch:60,
+const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:startPos,zoom:17,pitch:60,maxPitch:85,
   attributionControl:{customAttribution:'Arbres : Ville de Montréal (CC BY 4.0)'}});
 
 const treesEl=document.getElementById('trees'),sunEl=document.getElementById('sun'),shBtn=document.getElementById('shbtn');
