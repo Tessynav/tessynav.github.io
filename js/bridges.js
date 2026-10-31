@@ -1,13 +1,14 @@
-/* TessyNav bridges v3: raised bridges, ramps that follow the road, embankments, railings, pillars */
+/* TessyNav bridges v4: bridge height based on what it crosses (overpass, creek, river) */
 const BRC=0.005;
 const brCells=new Map(),brMeshes=new Map();
 let brMat=null,brFailed=false,brReady=false,br3D=false,brLast=0,brChanged=false;
 const BR_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5,track:4,path:3,rail:4.5,transit:4.5};
 const BR_RAMP={motorway:170,trunk:170,primary:120,secondary:120,tertiary:80,minor:80,service:50,rail:220,transit:220};
+const BR_CROSS=['motorway','trunk','primary','secondary','tertiary','minor','service','rail','transit'];
 const BR_COL={
   asphalt:new THREE.Color('#4b4f56'),ballast:new THREE.Color('#5a5048'),side:new THREE.Color('#b3afa6'),
-  rail:new THREE.Color('#c4c0b7'),pillar:new THREE.Color('#9e9a92'),white:new THREE.Color('#f2f2ee'),
-  yellow:new THREE.Color('#e2b21f'),grass:new THREE.Color('#5f7d45')
+  rail:new THREE.Color('#c4c0b7'),railLow:new THREE.Color('#dcd8cc'),pillar:new THREE.Color('#9e9a92'),
+  white:new THREE.Color('#f2f2ee'),yellow:new THREE.Color('#e2b21f'),grass:new THREE.Color('#5f7d45')
 };
 const BR_T=1.2;
 
@@ -27,6 +28,31 @@ function lookupNear(m,p){let out=[];for(const k of nearKeys(p)){const v=m.get(k)
 function angOf(a,b){return Math.atan2(b[1]-a[1],b[0]-a[0])/R;}
 function angDiff(a,b){let d=Math.abs(a-b)%360;return d>180?360-d:d;}
 function polyLenM(pts){let s=0;for(let i=1;i<pts.length;i++) s+=dist(pts[i-1],pts[i]);return s;}
+function segInter(a,b,c,d){
+  const rx=b[0]-a[0],ry=b[1]-a[1],sx=d[0]-c[0],sy=d[1]-c[1];
+  const den=rx*sy-ry*sx; if(Math.abs(den)<1e-9) return -1;
+  const qx=c[0]-a[0],qy=c[1]-a[1];
+  const t=(qx*sy-qy*sx)/den,u=(qx*ry-qy*rx)/den;
+  return (t>=0&&t<=1&&u>=0&&u<=1)?t:-1;
+}
+/* Does this bridge pass over a road or railway? */
+function crossesRoad(pts,cum,L,cross){
+  let minX=1e9,minZ=1e9,maxX=-1e9,maxZ=-1e9;
+  for(const p of pts){minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);minZ=Math.min(minZ,p[1]);maxZ=Math.max(maxZ,p[1]);}
+  for(const c of cross){
+    if(c.maxX<minX||c.minX>maxX||c.maxZ<minZ||c.minZ>maxZ) continue;
+    for(let i=0;i<pts.length-1;i++){
+      const seg=cum[i+1]-cum[i];
+      for(let j=0;j<c.pts.length-1;j++){
+        const t=segInter(pts[i],pts[i+1],c.pts[j],c.pts[j+1]);
+        if(t<0) continue;
+        const s=cum[i]+t*seg;
+        if(s>L*0.08&&s<L*0.92) return true;
+      }
+    }
+  }
+  return false;
+}
 
 function collectBridges(cx,cy){
   const feats=map.querySourceFeatures('openmaptiles',{sourceLayer:'transportation',filter:['==',['get','brunnel'],'bridge']});
@@ -49,7 +75,6 @@ function collectBridges(cx,cy){
   }
 }
 
-/* Follow a road from the bridge end across several pieces until the ramp length is reached */
 function chainRoad(first,RL,roadIdx){
   let pts=first.pts.slice(),len=polyLenM(pts),hops=0;
   while(len<RL&&hops<8){
@@ -63,7 +88,7 @@ function chainRoad(first,RL,roadIdx){
   return pts;
 }
 
-function buildBridgeMesh(cell,endInfo,roadIdx){
+function buildBridgeMesh(cell,endInfo,roadIdx,cross){
   const pos=[],nor=[],col=[],idx=[];let base=0;
   function quad(v,n,c){
     for(const p of v){pos.push(p[0],p[1],p[2]);nor.push(n[0],n[1],n[2]);col.push(c.r,c.g,c.b);}
@@ -92,6 +117,7 @@ function buildBridgeMesh(cell,endInfo,roadIdx){
       Rp.push([pts[i][0]-nx*W/2,pts[i][1]-nz*W/2]);
       Hs.push(hAt(cum[i]));
     }
+    const railC=opt.railCol||BR_COL.rail;
     for(let i=0;i<n-1;i++){
       const h0=Hs[i],h1=Hs[i+1],nx=T[i][2],nz=T[i][3];
       if(h0<0.05&&h1<0.05) continue;
@@ -101,13 +127,14 @@ function buildBridgeMesh(cell,endInfo,roadIdx){
         quad([[Lp[i][0],h0,Lp[i][1]],[Lp[i+1][0],h1,Lp[i+1][1]],[Lp[i+1][0]+nx*k1,0,Lp[i+1][1]+nz*k1],[Lp[i][0]+nx*k0,0,Lp[i][1]+nz*k0]],[nx*0.53,0.85,nz*0.53],BR_COL.grass);
         quad([[Rp[i+1][0],h1,Rp[i+1][1]],[Rp[i][0],h0,Rp[i][1]],[Rp[i][0]-nx*k0,0,Rp[i][1]-nz*k0],[Rp[i+1][0]-nx*k1,0,Rp[i+1][1]-nz*k1]],[-nx*0.53,0.85,-nz*0.53],BR_COL.grass);
       }else{
-        quad([[Lp[i][0],h0,Lp[i][1]],[Lp[i+1][0],h1,Lp[i+1][1]],[Lp[i+1][0],h1-BR_T,Lp[i+1][1]],[Lp[i][0],h0-BR_T,Lp[i][1]]],[nx,0,nz],BR_COL.side);
-        quad([[Rp[i+1][0],h1,Rp[i+1][1]],[Rp[i][0],h0,Rp[i][1]],[Rp[i][0],h0-BR_T,Rp[i][1]],[Rp[i+1][0],h1-BR_T,Rp[i+1][1]]],[-nx,0,-nz],BR_COL.side);
-        quad([[Rp[i][0],h0-BR_T,Rp[i][1]],[Lp[i][0],h0-BR_T,Lp[i][1]],[Lp[i+1][0],h1-BR_T,Lp[i+1][1]],[Rp[i+1][0],h1-BR_T,Rp[i+1][1]]],[0,-1,0],BR_COL.side);
+        const t0=Math.min(BR_T,h0),t1=Math.min(BR_T,h1);
+        quad([[Lp[i][0],h0,Lp[i][1]],[Lp[i+1][0],h1,Lp[i+1][1]],[Lp[i+1][0],h1-t1,Lp[i+1][1]],[Lp[i][0],h0-t0,Lp[i][1]]],[nx,0,nz],BR_COL.side);
+        quad([[Rp[i+1][0],h1,Rp[i+1][1]],[Rp[i][0],h0,Rp[i][1]],[Rp[i][0],h0-t0,Rp[i][1]],[Rp[i+1][0],h1-t1,Rp[i+1][1]]],[-nx,0,-nz],BR_COL.side);
+        quad([[Rp[i][0],h0-t0,Rp[i][1]],[Lp[i][0],h0-t0,Lp[i][1]],[Lp[i+1][0],h1-t1,Lp[i+1][1]],[Rp[i+1][0],h1-t1,Rp[i+1][1]]],[0,-1,0],BR_COL.side);
       }
-      if((h0+h1)/2>1.5){
-        quad([[Lp[i][0],h0,Lp[i][1]],[Lp[i+1][0],h1,Lp[i+1][1]],[Lp[i+1][0],h1+0.9,Lp[i+1][1]],[Lp[i][0],h0+0.9,Lp[i][1]]],[nx,0,nz],BR_COL.rail);
-        quad([[Rp[i+1][0],h1,Rp[i+1][1]],[Rp[i][0],h0,Rp[i][1]],[Rp[i][0],h0+0.9,Rp[i][1]],[Rp[i+1][0],h1+0.9,Rp[i+1][1]]],[-nx,0,-nz],BR_COL.rail);
+      if(opt.railings&&(h0+h1)/2>opt.railMin){
+        quad([[Lp[i][0],h0,Lp[i][1]],[Lp[i+1][0],h1,Lp[i+1][1]],[Lp[i+1][0],h1+0.9,Lp[i+1][1]],[Lp[i][0],h0+0.9,Lp[i][1]]],[nx,0,nz],railC);
+        quad([[Rp[i+1][0],h1,Rp[i+1][1]],[Rp[i][0],h0,Rp[i][1]],[Rp[i][0],h0+0.9,Rp[i][1]],[Rp[i+1][0],h1+0.9,Rp[i+1][1]]],[-nx,0,-nz],railC);
       }
     }
     const at=s=>{
@@ -137,10 +164,19 @@ function buildBridgeMesh(cell,endInfo,roadIdx){
   for(const b of cell.values()){
     const n=b.pts.length;
     const pts=b.pts.map(p=>toLocal(p[0],p[1]));
-    let L=0;for(let i=1;i<n;i++) L+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+    const cum=[0];for(let i=1;i<n;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+    const L=cum[n-1];
     if(L<2) continue;
-    const H=6.5*b.layer,W=BR_W[b.cls]||7,isRail=b.cls==='rail'||b.cls==='transit';
+    const W=BR_W[b.cls]||7,isRail=b.cls==='rail'||b.cls==='transit';
+    /* Height depends on what the bridge crosses */
+    const over=crossesRoad(pts,cum,L,cross);
+    let H,low=false,rampMul=1;
+    if(over){H=6.5*b.layer;}
+    else if(L>400){H=15;rampMul=1.8;}
+    else if(L>120){H=5;rampMul=0.8;}
+    else{H=1.2;low=true;}
     const lineCol=(isRail||b.cls==='path'||b.cls==='track')?null:(b.oneway?BR_COL.white:BR_COL.yellow);
+    const railCol=low?BR_COL.railLow:BR_COL.rail;
     const ends=[
       {p:b.pts[0],into:angOf(b.pts[0],b.pts[1])},
       {p:b.pts[n-1],into:angOf(b.pts[n-1],b.pts[n-2])}
@@ -157,17 +193,17 @@ function buildBridgeMesh(cell,endInfo,roadIdx){
       for(const a of cands){
         const ak=endKey(e.p)+'|'+endKey(a.pts[1]);
         if(doneAppr.has(ak)) continue; doneAppr.add(ak);
-        const RLw=BR_RAMP[a.cls]||40;
+        const RLw=low?20:(BR_RAMP[a.cls]||40)*rampMul;
         const chained=chainRoad(a,RLw,roadIdx);
         const ap=chained.map(p=>toLocal(p[0],p[1]));
         let AL=0;for(let i=1;i<ap.length;i++) AL+=Math.hypot(ap[i][0]-ap[i-1][0],ap[i][1]-ap[i-1][1]);
-        const RL=Math.max(15,Math.min(RLw,AL));
-        ribbon(ap,s=>H*(1-sm(s/RL)),BR_W[a.cls]||W,{deck:isRail?BR_COL.ballast:BR_COL.asphalt,embank:true,line:lineCol});
+        const RL=Math.max(low?8:15,Math.min(RLw,AL));
+        ribbon(ap,s=>H*(1-sm(s/RL)),BR_W[a.cls]||W,{deck:isRail?BR_COL.ballast:BR_COL.asphalt,embank:true,line:lineCol,railings:!low,railMin:1.5,railCol:railCol});
       }
     });
-    const RLin=Math.min(45,L*0.45);
+    const RLin=Math.min(low?12:45,L*0.45);
     const hAt=s=>H*(ramp[0]?sm(s/RLin):1)*(ramp[1]?sm((L-s)/RLin):1);
-    ribbon(pts,hAt,W,{deck:isRail?BR_COL.ballast:BR_COL.asphalt,embank:false,line:lineCol,pillars:true});
+    ribbon(pts,hAt,W,{deck:isRail?BR_COL.ballast:BR_COL.asphalt,embank:false,line:lineCol,pillars:!low,railings:true,railMin:low?0.3:1.5,railCol:railCol});
   }
   if(!pos.length) return null;
   for(let i=0;i<idx.length;i+=3){
@@ -228,27 +264,33 @@ function updateBridges(force){
         add(b.pts[0],angOf(b.pts[0],b.pts[1]));
         add(b.pts[n-1],angOf(b.pts[n-1],b.pts[n-2]));
       }
-      const roadIdx=new Map();
+      const roadIdx=new Map(),cross=[];
       const roads=map.querySourceFeatures('openmaptiles',{sourceLayer:'transportation',
         filter:['all',['!=',['get','brunnel'],'bridge'],['!=',['get','brunnel'],'tunnel']]});
       for(const f of roads){
         const g=f.geometry,pr=f.properties||{};
         const lines=g.type==='LineString'?[g.coordinates]:g.type==='MultiLineString'?g.coordinates:[];
+        const cls=pr.class||'minor';
         for(const ln of lines){
           if(ln.length<2) continue;
-          const cls=pr.class||'minor';
           const k0=endKey(ln[0]),k1=endKey(ln[ln.length-1]);
           if(!roadIdx.has(k0)) roadIdx.set(k0,[]);
           roadIdx.get(k0).push({pts:ln,cls:cls});
           if(!roadIdx.has(k1)) roadIdx.set(k1,[]);
           roadIdx.get(k1).push({pts:ln.slice().reverse(),cls:cls});
+          if(BR_CROSS.indexOf(cls)>=0){
+            const lp=ln.map(p=>toLocal(p[0],p[1]));
+            let minX=1e9,minZ=1e9,maxX=-1e9,maxZ=-1e9;
+            for(const p of lp){minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);minZ=Math.min(minZ,p[1]);maxZ=Math.max(maxZ,p[1]);}
+            cross.push({pts:lp,minX:minX,minZ:minZ,maxX:maxX,maxZ:maxZ});
+          }
         }
       }
       let built=false;
       for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){
         const ck=(cx+dx)+','+(cy+dy),cell=brCells.get(ck);
         if(!cell||brMeshes.has(ck)) continue;
-        const mesh=buildBridgeMesh(cell,endInfo,roadIdx);
+        const mesh=buildBridgeMesh(cell,endInfo,roadIdx,cross);
         if(mesh){mesh.visible=br3D||!brReady;treeScene.add(mesh);brMeshes.set(ck,mesh);built=true;}
       }
       if(built&&!brReady) brReady=true;
