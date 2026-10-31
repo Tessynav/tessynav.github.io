@@ -11,7 +11,6 @@
 html,body,#map{margin:0;height:100%}
 .hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px}
 #status{top:12px;left:12px;font-size:15px}
-#dbg{top:64px;left:12px;font-size:13px}
 #trees{top:12px;right:56px;font-size:14px}
 #speed{bottom:24px;left:12px;font-size:34px;font-weight:bold}
 #speed small{font-size:15px;font-weight:normal;opacity:.7}
@@ -21,7 +20,6 @@ html,body,#map{margin:0;height:100%}
 <body>
 <div id="map"></div>
 <div id="status" class="hud">Tap Start to follow Tessy</div>
-<div id="dbg" class="hud">Tree renders: 0</div>
 <div id="trees" class="hud">Trees: 0</div>
 <div id="speed" class="hud">0 <small>km/h</small></div>
 <button id="btn" class="hud">Start</button>
@@ -32,32 +30,26 @@ function bearing(a,b){const y=Math.sin((b[0]-a[0])*R)*Math.cos(b[1]*R);const x=M
 
 const ORIGIN=[-73.568,45.459];
 const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:ORIGIN,zoom:17,pitch:60});
-const treesEl=document.getElementById('trees'),dbgEl=document.getElementById('dbg');
+const treesEl=document.getElementById('trees');
 
-/* ---------- Smooth 3D trees (three.js) ---------- */
-const MAXT=30000;
-let treeCount=0,trunkMesh=null,leafMesh=null,topMesh=null,treesFailed=false,renders=0;
+/* ---------- Smooth 3D trees (three.js, batched) ---------- */
+let treeCount=0,treesFailed=false,treeScene=null,treeMat=null;
+let pending=[];
 const cells=new Set(),seen=new Set(),doneAreas=new Set();
 const leafCols=['#5b7f3a','#4f7334','#6a8a42','#7d8a3a','#b9772f','#a8552a'].map(c=>new THREE.Color(c));
-const tM=new THREE.Matrix4(),tQ=new THREE.Quaternion(),tS=new THREE.Vector3(),tP=new THREE.Vector3();
+const trunkCol=new THREE.Color('#5a4030');
+const trunkGeo=new THREE.CylinderGeometry(0.18,0.28,3.2,6);
+const ballGeo=new THREE.SphereGeometry(1,10,7);
 
 const treeLayer={
   id:'trees3d',type:'custom',renderingMode:'3d',
   onAdd(m,gl){
     try{
       this.camera=new THREE.Camera();
-      this.scene=new THREE.Scene();
+      this.scene=new THREE.Scene();treeScene=this.scene;
       this.scene.add(new THREE.HemisphereLight(0xeef6ff,0x5a6b4a,2.4));
       const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(-40,80,30);this.scene.add(sun);
-      const test=new THREE.Mesh(new THREE.BoxGeometry(20,60,20),new THREE.MeshBasicMaterial({color:0xff0000}));
-      test.position.set(0,30,0);this.scene.add(test);
-      const trunkGeo=new THREE.CylinderGeometry(0.18,0.28,3.2,6);
-      const ball=new THREE.SphereGeometry(1,14,10);
-      trunkMesh=new THREE.InstancedMesh(trunkGeo,new THREE.MeshLambertMaterial({color:0x5a4030}),MAXT);
-      leafMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
-      topMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
-      for(const mm of [leafMesh,topMesh]) mm.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(MAXT*3),3);
-      for(const mm of [trunkMesh,leafMesh,topMesh]){mm.count=0;mm.frustumCulled=false;this.scene.add(mm);}
+      treeMat=new THREE.MeshLambertMaterial({vertexColors:true});
       this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
       this.renderer.autoClear=false;
       const mc=maplibregl.MercatorCoordinate.fromLngLat(ORIGIN,0),sc=mc.meterInMercatorCoordinateUnits();
@@ -67,7 +59,6 @@ const treeLayer={
   render(gl,matrix){
     if(treesFailed) return;
     try{
-      renders++; if(renders%20===1) dbgEl.textContent='Tree renders: '+renders;
       this.camera.projectionMatrix=new THREE.Matrix4().fromArray(matrix).multiply(this.model);
       this.renderer.resetState();
       this.renderer.setViewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
@@ -77,19 +68,51 @@ const treeLayer={
 };
 
 function addTree(seed,lng,lat){
-  if(!leafMesh||treesFailed||treeCount>=MAXT) return false;
+  if(treesFailed) return false;
   const k=Math.round(lng*9000)+','+Math.round(lat*12000);
   if(cells.has(k)) return false; cells.add(k);
-  const x=(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R), z=-(lat-ORIGIN[1])*111320;
-  const s=0.8+Math.random()*0.45, col=leafCols[seed%leafCols.length], i=treeCount;
-  tP.set(x,1.6*s,z);tS.set(s,s,s);tM.compose(tP,tQ,tS);trunkMesh.setMatrixAt(i,tM);
-  tP.set(x,4.6*s,z);tS.set(2.6*s,2.3*s,2.6*s);tM.compose(tP,tQ,tS);leafMesh.setMatrixAt(i,tM);leafMesh.setColorAt(i,col);
-  tP.set(x+(Math.random()-.5)*s,6.3*s,z+(Math.random()-.5)*s);tS.set(1.7*s,1.6*s,1.7*s);tM.compose(tP,tQ,tS);topMesh.setMatrixAt(i,tM);topMesh.setColorAt(i,col);
+  pending.push({
+    x:(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R),
+    z:-(lat-ORIGIN[1])*111320,
+    s:0.8+Math.random()*0.45,
+    col:leafCols[seed%leafCols.length],
+    jx:Math.random()-.5, jz:Math.random()-.5
+  });
   treeCount++; return true;
 }
+
+function buildBatch(list){
+  const pos=[],nor=[],col=[],idx=[];let base=0;
+  const m=new THREE.Matrix4(),nm=new THREE.Matrix3(),v=new THREE.Vector3(),q=new THREE.Quaternion(),p=new THREE.Vector3(),sc=new THREE.Vector3();
+  function add(g,c){
+    const P=g.attributes.position,N=g.attributes.normal,I=g.index;
+    nm.getNormalMatrix(m);
+    for(let i=0;i<P.count;i++){
+      v.fromBufferAttribute(P,i).applyMatrix4(m);pos.push(v.x,v.y,v.z);
+      v.fromBufferAttribute(N,i).applyMatrix3(nm).normalize();nor.push(v.x,v.y,v.z);
+      col.push(c.r,c.g,c.b);
+    }
+    for(let i=0;i<I.count;i++) idx.push(I.getX(i)+base);
+    base+=P.count;
+  }
+  for(const t of list){
+    const s=t.s;
+    p.set(t.x,1.6*s,t.z);sc.set(s,s,s);m.compose(p,q,sc);add(trunkGeo,trunkCol);
+    p.set(t.x,4.6*s,t.z);sc.set(2.6*s,2.3*s,2.6*s);m.compose(p,q,sc);add(ballGeo,t.col);
+    p.set(t.x+t.jx*s,6.3*s,t.z+t.jz*s);sc.set(1.7*s,1.6*s,1.7*s);m.compose(p,q,sc);add(ballGeo,t.col);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(idx);
+  const mesh=new THREE.Mesh(g,treeMat);mesh.frustumCulled=false;
+  treeScene.add(mesh);
+}
+
 function refreshTrees(){
-  if(!leafMesh||treesFailed) return;
-  for(const mm of [trunkMesh,leafMesh,topMesh]){mm.count=treeCount;mm.instanceMatrix.needsUpdate=true;if(mm.instanceColor)mm.instanceColor.needsUpdate=true;}
+  if(treesFailed||!treeScene) return;
+  if(pending.length){buildBatch(pending);pending=[];}
   treesEl.textContent='Trees: '+treeCount;
   map.triggerRepaint();
 }
@@ -113,7 +136,7 @@ async function loadTrees(){
 
 function inside(pt,rg){let ins=false;for(let i=0,j=rg.length-1;i<rg.length;j=i++){const xi=rg[i][0],yi=rg[i][1],xj=rg[j][0],yj=rg[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
 function parkTrees(){
-  if(map.getZoom()<15.5||!leafMesh||treesFailed)return;
+  if(map.getZoom()<15.5||treesFailed||!treeScene)return;
   let added=0;
   const feats=map.querySourceFeatures('openmaptiles',{sourceLayer:'park'})
     .concat(map.querySourceFeatures('openmaptiles',{sourceLayer:'landcover',filter:['==',['get','class'],'wood']}));
