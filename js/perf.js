@@ -1,4 +1,4 @@
-/* TessyNav performance v12: quality, shadows, culling, rate-limited builders, road snapping, Street view, 3D car */
+/* TessyNav performance v13: quality, shadows, culling, builders, road snapping, Street view, 3D car, real road widths */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -36,6 +36,28 @@ rateLimit('parkTrees',3000);
 rateLimit('loadAround',2000);
 rateLimit('updateSkyObjects',150);
 
+/* ---------- Roads keep their real width at very close zoom ---------- */
+function rw22(z13,z20){
+  const m=v=>['match',['get','class'],['motorway','trunk','primary'],v[0],['secondary','tertiary'],v[1],'minor',v[2],v[3]];
+  return ['interpolate',['exponential',2],['zoom'],13,m(z13),20,m(z20),22,m(z20.map(v=>v*4))];
+}
+function fixRoadWidths(){
+  for(const l of map.getStyle().layers){
+    if(l.type!=='line'||l['source-layer']!=='transportation') continue;
+    try{
+      if(/rail|ferry|aerialway|pier/i.test(l.id)) continue;
+      if(/path|pedestrian|footway/i.test(l.id)){
+        map.setPaintProperty(l.id,'line-width',['interpolate',['exponential',2],['zoom'],15,1,20,18,22,72]);
+      }else if(/casing/i.test(l.id)){
+        map.setPaintProperty(l.id,'line-width',rw22([3,2.5,1.5,0.8],[136,104,82,44]));
+      }else if(l.id!=='lane-lines'){
+        map.setPaintProperty(l.id,'line-width',rw22([2,1.5,1,0.5],[120,90,70,35]));
+      }
+    }catch(e){}
+  }
+  try{if(map.getLayer('lane-lines')) map.setPaintProperty('lane-lines','line-width',['interpolate',['exponential',2],['zoom'],16,0.6,19,2,22,8]);}catch(e){}
+}
+
 /* ---------- Skip drawing what is off-screen ---------- */
 let cullLast=0;
 function enableCulling(scene){
@@ -58,18 +80,24 @@ function makeCar3D(){
   const tail=new THREE.MeshBasicMaterial({color:0xd8202a});
   const head=new THREE.MeshBasicMaterial({color:0xfff6dc});
   const add=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.userData.noCull=true;g.add(m);return m;};
-  add(new THREE.BoxGeometry(1.86,0.55,4.7),paint,0,0.62,0);
-  add(new THREE.BoxGeometry(1.8,0.2,4.5),dark,0,0.3,0);
+  const blobC=document.createElement('canvas');blobC.width=blobC.height=64;
+  const bx=blobC.getContext('2d'),bg=bx.createRadialGradient(32,32,4,32,32,32);
+  bg.addColorStop(0,'rgba(0,0,0,0.75)');bg.addColorStop(0.6,'rgba(0,0,0,0.4)');bg.addColorStop(1,'rgba(0,0,0,0)');
+  bx.fillStyle=bg;bx.fillRect(0,0,64,64);
+  const blob=new THREE.Mesh(new THREE.PlaneGeometry(2.8,5.6),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(blobC),transparent:true,depthWrite:false}));
+  blob.rotation.x=-Math.PI/2;blob.position.y=0.04;blob.userData.noCull=true;g.add(blob);
+  add(new THREE.BoxGeometry(1.86,0.55,4.7),paint,0,0.6,0);
+  add(new THREE.BoxGeometry(1.8,0.2,4.5),dark,0,0.28,0);
   const cab=new THREE.BoxGeometry(1.66,0.55,2.5);
   const cp=cab.attributes.position;
   for(let i=0;i<cp.count;i++){if(cp.getY(i)>0){cp.setX(i,cp.getX(i)*0.86);cp.setZ(i,cp.getZ(i)*0.7+0.1);}}
   cab.computeVertexNormals();
-  add(cab,glass,0,1.17,0.25);
-  add(new THREE.BoxGeometry(1.5,0.08,0.05),tail,0,0.78,2.36);
-  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,-0.6,0.72,-2.36);
-  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,0.6,0.72,-2.36);
-  const wg=new THREE.CylinderGeometry(0.36,0.36,0.26,16);wg.rotateZ(Math.PI/2);
-  for(const x of [-0.88,0.88])for(const z of [-1.45,1.45]) add(wg,tire,x,0.36,z);
+  add(cab,glass,0,1.15,0.25);
+  add(new THREE.BoxGeometry(1.5,0.08,0.05),tail,0,0.76,2.36);
+  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,-0.6,0.7,-2.36);
+  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,0.6,0.7,-2.36);
+  const wg=new THREE.CylinderGeometry(0.34,0.34,0.26,16);wg.rotateZ(Math.PI/2);
+  for(const x of [-0.88,0.88])for(const z of [-1.45,1.45]) add(wg,tire,x,0.34,z);
   return g;
 }
 function updateCar3D(){
@@ -79,7 +107,7 @@ function updateCar3D(){
     try{car.getElement().style.display='none';}catch(e){}
   }
   const [x,z]=toLocal(gPos[0],gPos[1]);
-  car3d.position.set(x,0.05,z);
+  car3d.position.set(x,0,z);
   car3d.rotation.y=-gHd*R;
 }
 
@@ -150,7 +178,7 @@ let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=n
 function getRoadLayers(){
   if(roadLayerIds) return roadLayerIds;
   roadLayerIds=map.getStyle().layers.filter(l=>l.type==='line'&&l['source-layer']==='transportation'&&
-    !/casing|rail|path|ferry|aerialway|pier|pedestrian|footway|bridge|tunnel/i.test(l.id)).map(l=>l.id);
+    !/casing|rail|path|ferry|aerialway|pier|pedestrian|footway|bridge|tunnel|lane-lines/i.test(l.id)).map(l=>l.id);
   return roadLayerIds;
 }
 function showGpsStatus(){
@@ -174,7 +202,7 @@ function updateSnap(pos,hd,spd){
   let feats=[];
   try{
     const pt=map.project(pos);
-    feats=map.queryRenderedFeatures([[pt.x-220,pt.y-220],[pt.x+220,pt.y+220]],{layers:getRoadLayers()});
+    feats=map.queryRenderedFeatures([[pt.x-260,pt.y-260],[pt.x+260,pt.y+260]],{layers:getRoadLayers()});
   }catch(e){}
   const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
   const trustHd=spd>3;
@@ -210,27 +238,27 @@ function updateSnap(pos,hd,spd){
 }
 
 /* ---------- Camera: Street or Map view, speed-based, plus your pinch adjustment ---------- */
-let userZoomDelta=+(cacheGet('zoomDelta2_'+viewMode)||0),lastUserZoom=0,lastDrag=0,lastTouch=0;
+let userZoomDelta=+(cacheGet('zoomDelta3_'+viewMode)||0),lastUserZoom=0,lastDrag=0,lastTouch=0;
 let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,gOff=[0,0];
 function camSpec(){
   const kmh=gT?gT.spd*3.6:0;
   if(viewMode==='street'){
-    return {zoom:Math.max(19.9,Math.min(21,21-kmh/60)),pitch:74,pad:0.5};
+    return {zoom:Math.max(20.3,Math.min(21.6,21.6-kmh/55)),pitch:72,pad:0.48};
   }
   return {zoom:Math.max(18.4,Math.min(19.8,19.8-kmh/55))-(skyOn?0.4:0),pitch:skyOn?78:60,pad:0.32};
 }
 vBtn.onclick=()=>{
   viewMode=viewMode==='street'?'map':'street';
   cacheSet('viewMode',viewMode);showView();
-  userZoomDelta=+(cacheGet('zoomDelta2_'+viewMode)||0);
+  userZoomDelta=+(cacheGet('zoomDelta3_'+viewMode)||0);
   follow=true;btn.textContent='Recenter';
 };
 map.on('zoom',e=>{if(e.originalEvent) lastUserZoom=performance.now();});
 map.on('zoomend',e=>{
   if(!e.originalEvent) return;
   lastUserZoom=performance.now();
-  userZoomDelta=Math.max(-3,Math.min(2,map.getZoom()-camSpec().zoom));
-  cacheSet('zoomDelta2_'+viewMode,userZoomDelta);
+  userZoomDelta=Math.max(-3,Math.min(1.5,map.getZoom()-camSpec().zoom));
+  cacheSet('zoomDelta3_'+viewMode,userZoomDelta);
   gZoom=map.getZoom();
 });
 map.on('dragstart',()=>{lastDrag=performance.now();follow=false;});
@@ -239,61 +267,4 @@ map.on('pitchstart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.no
 
 /* ---------- Touch: one finger takes control instantly, two fingers just zoom ---------- */
 const touchArea=map.getCanvasContainer();
-touchArea.addEventListener('touchstart',e=>{
-  lastTouch=performance.now();
-  if(e.touches&&e.touches.length>=2){lastUserZoom=lastTouch;}
-  else{follow=false;lastDrag=lastTouch;}
-},{passive:true});
-touchArea.addEventListener('mousedown',()=>{lastTouch=performance.now();follow=false;lastDrag=lastTouch;});
-touchArea.addEventListener('wheel',()=>{lastUserZoom=performance.now();},{passive:true});
-
-/* ---------- Smooth gliding ---------- */
-const baseOnPos=onPos,baseView=view;
-onPos=function(p){
-  baseOnPos(p);
-  gpsAcc=p.coords.accuracy;
-  gT={pos:[p.coords.longitude,p.coords.latitude],hd:heading,spd:p.coords.speed||0,t:performance.now()};
-  showGpsStatus();
-};
-view=function(pos,ms){
-  if(watchId!==null&&gT){follow=true;return;}
-  baseView(pos,ms);
-};
-function glideFrame(){
-  requestAnimationFrame(glideFrame);
-  if(!gT||watchId===null) return;
-  const now=performance.now(),dt=Math.min(1.2,(now-gT.t)/1000);
-  const moveHd=(snapHd!==null&&gT.spd<=3)?snapHd:gT.hd;
-  const h=moveHd*R,m=gT.spd*dt;
-  const pred=[gT.pos[0]+(m*Math.sin(h))/(111320*Math.cos(gT.pos[1]*R)),gT.pos[1]+(m*Math.cos(h))/111320];
-  if(now-snapLast>200) updateSnap(pred,gT.hd,gT.spd);
-  gOff[0]+=(snapOff[0]-gOff[0])*0.15;gOff[1]+=(snapOff[1]-gOff[1])*0.15;
-  const [px,pz]=toLocal(pred[0],pred[1]);
-  const target=fromLocal(px+gOff[0],pz+gOff[1]);
-  if(!gPos) gPos=target.slice();
-  gPos[0]+=(target[0]-gPos[0])*0.25;gPos[1]+=(target[1]-gPos[1])*0.25;
-  const wantHd=gT.spd>1?(snapHd!==null?snapHd:gT.hd):(snapHd!==null?snapHd:gHd);
-  const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
-  car.setLngLat(gPos).setRotation(gHd);
-  updateCar3D();
-  map.triggerRepaint();
-  if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
-  const cs=camSpec();
-  gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
-  gPitch+=(cs.pitch-gPitch)*0.06;
-  const H=map.getContainer().clientHeight||800;
-  map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
-    padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
-}
-requestAnimationFrame(glideFrame);
-
-/* ---------- Follow resumes automatically after a touch, once driving ---------- */
-setInterval(()=>{
-  if(follow||watchId===null||!gT) return;
-  if(performance.now()-lastDrag>10000&&gT.spd>2){follow=true;btn.textContent='Recenter';}
-},2000);
-
-map.on('load',()=>{
-  applyQuality();
-  setTimeout(applyQuality,4000);
-});
+touchArea.addEventListener('touchstar
