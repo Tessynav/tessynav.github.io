@@ -1,4 +1,4 @@
-/* TessyNav performance v18: quality, shadows, culling, builders, snapping (forks, one-ways, bridges), Street view, Model 3 car */
+/* TessyNav performance v19: quality, shadows, culling, builders, snapping (screen roads first, smooth sideways), Street view, Model 3 car */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -190,7 +190,7 @@ qBtn.onclick=()=>{
   cacheSet('quality',quality);showQuality();applyQuality();
 };
 
-/* ---------- Road snapping: reads road data directly (bridges included), sticky, fork- and one-way-aware ---------- */
+/* ---------- Road snapping: screen roads first, hidden road data (bridges) as backup ---------- */
 const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
 const SNAP_CLASSES=['motorway','trunk','primary','secondary','tertiary','minor','service'];
 const SNAP_MAX=8,SNAP_ALIGN=0.8;
@@ -202,21 +202,17 @@ function getRoadLayers(){
     !/casing|rail|path|ferry|aerialway|pier|pedestrian|footway|lane-lines/i.test(l.id)).map(l=>l.id);
   return roadLayerIds;
 }
-function roadFeaturesNear(pos){
-  let feats=[];
+function renderedRoads(pos){
   try{
-    if(map.getSource('openmaptiles')){
-      feats=map.querySourceFeatures('openmaptiles',{sourceLayer:'transportation',
-        filter:['in',['get','class'],['literal',SNAP_CLASSES]]});
-    }
-  }catch(e){feats=[];}
-  if(!feats.length){
-    try{
-      const pt=map.project(pos);
-      feats=map.queryRenderedFeatures([[pt.x-260,pt.y-260],[pt.x+260,pt.y+260]],{layers:getRoadLayers()});
-    }catch(e){}
-  }
-  return feats;
+    const pt=map.project(pos);
+    return map.queryRenderedFeatures([[pt.x-260,pt.y-260],[pt.x+260,pt.y+260]],{layers:getRoadLayers()});
+  }catch(e){return [];}
+}
+function sourceRoads(){
+  try{
+    if(!map.getSource('openmaptiles')) return [];
+    return map.querySourceFeatures('openmaptiles',{sourceLayer:'transportation',filter:['in',['get','class'],['literal',SNAP_CLASSES]]});
+  }catch(e){return [];}
 }
 function showGpsStatus(){
   if(gpsAcc===null) return;
@@ -235,20 +231,7 @@ function onCurRoad(x,z){
   const px=r.qx+r.tx*t,pz=r.qz+r.tz*t;
   return [px-r.tz*r.lane,pz+r.tx*r.lane,px,pz];
 }
-function updateSnap(pos,spd,hd){
-  snapLast=performance.now();
-  const [x,z]=toLocal(pos[0],pos[1]);
-  slowMode=slowMode?spd<1.8:spd<0.8;
-  if(slowMode){
-    if(snapOk&&curRoad){
-      const s=onCurRoad(x,z),ox=s[0]-x,oz=s[1]-z;
-      if(Math.hypot(ox,oz)<=SNAP_MAX){snapOff=[ox,oz];showGpsStatus();return;}
-    }
-    snapRelease();showGpsStatus();return;
-  }
-  if(hd===null){snapFail();return;}
-  const feats=roadFeaturesNear(pos);
-  const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
+function findCandidates(feats,pos,x,z,fx,fz){
   const lng=pos[0],lat=pos[1],pad=0.00025;
   let best=null,cont=null;
   for(const f of feats){
@@ -283,6 +266,24 @@ function updateSnap(pos,spd,hd){
       }
     }
   }
+  return {best:best,cont:cont};
+}
+function updateSnap(pos,spd,hd){
+  snapLast=performance.now();
+  const [x,z]=toLocal(pos[0],pos[1]);
+  slowMode=slowMode?spd<1.8:spd<0.8;
+  if(slowMode){
+    if(snapOk&&curRoad){
+      const s=onCurRoad(x,z),ox=s[0]-x,oz=s[1]-z;
+      if(Math.hypot(ox,oz)<=SNAP_MAX){snapOff=[ox,oz];showGpsStatus();return;}
+    }
+    snapRelease();showGpsStatus();return;
+  }
+  if(hd===null){snapFail();return;}
+  const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
+  let c=findCandidates(renderedRoads(pos),pos,x,z,fx,fz);
+  if(!c.best) c=findCandidates(sourceRoads(),pos,x,z,fx,fz);
+  const best=c.best,cont=c.cont;
   let pick=null;
   if(cont&&best&&best!==cont){
     if(cont.d>5&&best.d<cont.d-2){pick=best;switchVotes=0;}
@@ -302,7 +303,7 @@ function updateSnap(pos,spd,hd){
 
 /* ---------- Camera: Street or Map view, speed-based, plus your pinch adjustment ---------- */
 let userZoomDelta=+(cacheGet('zoomDelta3_'+viewMode)||0),lastUserZoom=0,lastDrag=0,lastTouch=0;
-let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,gOff=[0,0];
+let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,gOff=[0,0],lastFrameT=0;
 function camSpec(){
   const kmh=gT?gT.spd*3.6:0;
   if(viewMode==='street'){
@@ -360,15 +361,22 @@ view=function(pos,ms){
 };
 function glideFrame(){
   requestAnimationFrame(glideFrame);
+  const now=performance.now(),fdt=Math.min(0.1,lastFrameT?(now-lastFrameT)/1000:0.016);
+  lastFrameT=now;
   if(!gT||watchId===null) return;
-  const now=performance.now(),dt=Math.min(1.0,(now-gT.t)/1000);
+  const dt=Math.min(1.0,(now-gT.t)/1000);
   const baseHd=stableHd!==null?stableHd:gT.hd;
   const rate=gT.spd>2?turnRate:0;
   const midHd=baseHd+rate*dt/2,predHd=(baseHd+rate*dt+360)%360;
   const m=gT.spd*dt*0.9,h=midHd*R;
   const pred=[gT.pos[0]+(m*Math.sin(h))/(111320*Math.cos(gT.pos[1]*R)),gT.pos[1]+(m*Math.cos(h))/111320];
   if(now-snapLast>200) updateSnap(pred,gT.spd,stableHd!==null?predHd:null);
-  gOff[0]+=(snapOff[0]-gOff[0])*0.1;gOff[1]+=(snapOff[1]-gOff[1])*0.1;
+  /* sideways corrections: smoothed and limited to about 2.5 m per second */
+  const ex=snapOff[0]-gOff[0],ez=snapOff[1]-gOff[1],ed=Math.hypot(ex,ez);
+  if(ed>0.001){
+    const step=Math.min(ed*Math.min(1,fdt*3),2.5*fdt);
+    gOff[0]+=ex/ed*step;gOff[1]+=ez/ed*step;
+  }
   const [px,pz]=toLocal(pred[0],pred[1]);
   const target=fromLocal(px+gOff[0],pz+gOff[1]);
   if(!gPos) gPos=target.slice();
