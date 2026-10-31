@@ -1,4 +1,4 @@
-/* TessyNav performance v17: quality, shadows, culling, builders, sticky snapping, curve-following prediction, Street view, Model 3 car */
+/* TessyNav performance v18: quality, shadows, culling, builders, snapping (forks, one-ways, bridges), Street view, Model 3 car */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -190,25 +190,44 @@ qBtn.onclick=()=>{
   cacheSet('quality',quality);showQuality();applyQuality();
 };
 
-/* ---------- Sticky road snapping, smooth at low speed ---------- */
+/* ---------- Road snapping: reads road data directly (bridges included), sticky, fork- and one-way-aware ---------- */
 const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
+const SNAP_CLASSES=['motorway','trunk','primary','secondary','tertiary','minor','service'];
 const SNAP_MAX=8,SNAP_ALIGN=0.8;
-let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null,snapCls='';
+let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null,snapCls='',snapBridge=false;
 let stableHd=null,turnRate=0,lastHdV=null,lastHdT=0,curRoad=null,switchVotes=0,lastSnapOkT=0,slowMode=false;
 function getRoadLayers(){
   if(roadLayerIds) return roadLayerIds;
   roadLayerIds=map.getStyle().layers.filter(l=>l.type==='line'&&l['source-layer']==='transportation'&&
-    !/casing|rail|path|ferry|aerialway|pier|pedestrian|footway|bridge|tunnel|lane-lines/i.test(l.id)).map(l=>l.id);
+    !/casing|rail|path|ferry|aerialway|pier|pedestrian|footway|lane-lines/i.test(l.id)).map(l=>l.id);
   return roadLayerIds;
+}
+function roadFeaturesNear(pos){
+  let feats=[];
+  try{
+    if(map.getSource('openmaptiles')){
+      feats=map.querySourceFeatures('openmaptiles',{sourceLayer:'transportation',
+        filter:['in',['get','class'],['literal',SNAP_CLASSES]]});
+    }
+  }catch(e){feats=[];}
+  if(!feats.length){
+    try{
+      const pt=map.project(pos);
+      feats=map.queryRenderedFeatures([[pt.x-260,pt.y-260],[pt.x+260,pt.y+260]],{layers:getRoadLayers()});
+    }catch(e){}
+  }
+  return feats;
 }
 function showGpsStatus(){
   if(gpsAcc===null) return;
   const mv=Math.round(Math.hypot(snapOff[0],snapOff[1]));
-  status.textContent='GPS '+Math.round(gpsAcc)+' m · '+(snapOk?('on road · moved '+mv+' m'+(snapCls?' ('+snapCls+')':'')):'finding road');
+  status.textContent='GPS '+Math.round(gpsAcc)+' m · '+(snapOk?('on road · moved '+mv+' m'+(snapCls?' ('+snapCls+(snapBridge?', bridge':'')+')':'')):'finding road');
 }
-function snapRelease(){snapOff=[0,0];snapHd=null;snapOk=false;curRoad=null;switchVotes=0;}
+function snapRelease(){snapOff=[0,0];snapHd=null;snapOk=false;curRoad=null;switchVotes=0;snapBridge=false;}
 function snapFail(){
-  if(snapOk&&performance.now()-lastSnapOkT<2000){showGpsStatus();return;}
+  if(snapOk&&performance.now()-lastSnapOkT<1000){
+    snapOff=[snapOff[0]*0.6,snapOff[1]*0.6];showGpsStatus();return;
+  }
   snapRelease();showGpsStatus();
 }
 function onCurRoad(x,z){
@@ -228,21 +247,21 @@ function updateSnap(pos,spd,hd){
     snapRelease();showGpsStatus();return;
   }
   if(hd===null){snapFail();return;}
-  let feats=[];
-  try{
-    const pt=map.project(pos);
-    feats=map.queryRenderedFeatures([[pt.x-260,pt.y-260],[pt.x+260,pt.y+260]],{layers:getRoadLayers()});
-  }catch(e){}
+  const feats=roadFeaturesNear(pos);
   const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
+  const lng=pos[0],lat=pos[1],pad=0.00025;
   let best=null,cont=null;
   for(const f of feats){
     const pr=f.properties||{},W=SNAP_W[pr.class];
     if(!W) continue;
+    const oneway=+pr.oneway||0;
     const g=f.geometry;
     const lines=g.type==='LineString'?[g.coordinates]:g.type==='MultiLineString'?g.coordinates:[];
     for(const ln of lines){
       for(let i=0;i<ln.length-1;i++){
-        const a=toLocal(ln[i][0],ln[i][1]),b=toLocal(ln[i+1][0],ln[i+1][1]);
+        const p0=ln[i],p1=ln[i+1];
+        if(lng<Math.min(p0[0],p1[0])-pad||lng>Math.max(p0[0],p1[0])+pad||lat<Math.min(p0[1],p1[1])-pad||lat>Math.max(p0[1],p1[1])+pad) continue;
+        const a=toLocal(p0[0],p0[1]),b=toLocal(p1[0],p1[1]);
         const dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz;
         if(l2<0.01) continue;
         const t=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/l2));
@@ -252,9 +271,9 @@ function updateSnap(pos,spd,hd){
         let tx=dx/l,tz=dz/l;
         const align=tx*fx+tz*fz;
         if(Math.abs(align)<SNAP_ALIGN) continue;
+        if((oneway===1&&align<0)||(oneway===-1&&align>0)) continue;
         if(align<0){tx=-tx;tz=-tz;}
-        const oneway=+pr.oneway||0;
-        const c={d:d,qx:qx,qz:qz,tx:tx,tz:tz,W:W,oneway:oneway,lane:oneway?0:W/4,cls:pr.class};
+        const c={d:d,qx:qx,qz:qz,tx:tx,tz:tz,W:W,oneway:oneway,lane:oneway?0:W/4,cls:pr.class,bridge:pr.brunnel==='bridge'};
         if(!best||d<best.d) best=c;
         if(curRoad){
           const ang=curRoad.tx*tx+curRoad.tz*tz;
@@ -265,10 +284,10 @@ function updateSnap(pos,spd,hd){
     }
   }
   let pick=null;
-  if(cont&&best&&best!==cont&&best.d<cont.d-3){
-    switchVotes++;
-    pick=switchVotes>=3?best:cont;
-    if(switchVotes>=3) switchVotes=0;
+  if(cont&&best&&best!==cont){
+    if(cont.d>5&&best.d<cont.d-2){pick=best;switchVotes=0;}
+    else if(best.d<cont.d-3){switchVotes++;pick=switchVotes>=2?best:cont;if(switchVotes>=2) switchVotes=0;}
+    else{pick=cont;switchVotes=0;}
   }else if(cont){pick=cont;switchVotes=0;}
   else pick=best;
   if(!pick){snapFail();return;}
@@ -277,7 +296,7 @@ function updateSnap(pos,spd,hd){
   if(Math.hypot(ox,oz)>SNAP_MAX){snapFail();return;}
   curRoad=pick;snapOff=[ox,oz];
   snapHd=(Math.atan2(pick.tx,-pick.tz)/R+360)%360;
-  snapCls=pick.cls||'';
+  snapCls=pick.cls||'';snapBridge=!!pick.bridge;
   snapOk=true;lastSnapOkT=performance.now();showGpsStatus();
 }
 
