@@ -1,4 +1,4 @@
-/* TessyNav recorder v1: record drives, download them, replay them with raw GPS vs shown car */
+/* TessyNav recorder v2: record drives, download them, replay them with raw GPS, old path and new path */
 const REPLAY=new URLSearchParams(location.search).has('replay');
 let rec=null,recTimer=null,recTicks=0,recFrames=0,recMaxGap=0,recLastFrame=0,replaying=false;
 function r1(v,d){const k=Math.pow(10,d);return Math.round(v*k)/k;}
@@ -131,18 +131,18 @@ if(REPLAY){
     try{Object.defineProperty(navigator,'geolocation',{value:fakeGeo,configurable:true});}catch(e){}
   }
 }
-let rpTrip=null,rpIdx=0,rpF=0,rpP=0,rpSpeed=1,rpPaused=false,rpClock=0,rpLast=0,rpRaw=[],rpUi=null,rpTxt=null,rpUiT=0;
+let rpTrip=null,rpIdx=0,rpF=0,rpP=0,rpSpeed=1,rpPaused=false,rpClock=0,rpLast=0,rpUi=null,rpTxt=null,rpUiT=0,rpLive=[],rpReady=false;
 function rpFeed(r){
   const p={timestamp:Date.now(),coords:{latitude:r[1],longitude:r[2],accuracy:r[3],speed:r[4],heading:r[5]}};
   for(const f of fakeWatchers){try{f(p);}catch(e){console.warn(e);}}
-  try{map.getSource('rp-now').setData({type:'Feature',geometry:{type:'Point',coordinates:[r[2],r[1]]}});}catch(e){}
+  if(rpReady){try{map.getSource('rp-now').setData({type:'Feature',geometry:{type:'Point',coordinates:[r[2],r[1]]}});}catch(e){}}
 }
 function rpSeek(t){
   const g=rpTrip.g;
   rpClock=Math.max(g[0][0],Math.min(t,g[g.length-1][0]));
   rpIdx=0;while(rpIdx<g.length&&g[rpIdx][0]<=rpClock) rpIdx++;
   if(rpIdx>0) rpFeed(g[rpIdx-1]);
-  rpF=0;rpP=0;
+  rpF=0;rpP=0;rpLive=[];
 }
 function rpFrame(now){
   requestAnimationFrame(rpFrame);
@@ -153,75 +153,30 @@ function rpFrame(now){
   while(rpIdx<g.length&&g[rpIdx][0]<=rpClock){rpFeed(g[rpIdx]);rpIdx++;}
   if(now-rpUiT>250){
     rpUiT=now;
+    if(gPos&&!rpPaused){
+      rpLive.push([gPos[0],gPos[1]]);
+      if(rpReady&&rpLive.length>1){try{map.getSource('rp-live').setData({type:'Feature',geometry:{type:'LineString',coordinates:rpLive}});}catch(e){}}
+    }
     const f=rpTrip.f,p=rpTrip.p;
     while(rpF<f.length-1&&f[rpF+1][0]<=rpClock) rpF++;
     while(rpP<p.length-1&&p[rpP+1][0]<=rpClock) rpP++;
-    const fs=f[rpF],ps=p[rpP];
-    let info='';
-    if(fs) info+=(fs[4]?'on road · moved '+fs[6]+' m'+(fs[5]?' ('+fs[5]+')':''):'finding road');
-    if(ps) info+=' · '+ps[1]+' fps · worst frame '+ps[2]+' ms';
-    rpTxt.innerHTML=mmss(rpClock-g[0][0])+' / '+mmss(g[g.length-1][0]-g[0][0])+' · '+rpSpeed+'x'+(rpPaused?' · paused':'')+'<br><small>Recorded: '+info+'</small>';
+    const ps=p[rpP];
+    const nowInfo=snapOk?('on road · moved '+Math.round(Math.hypot(snapOff[0],snapOff[1]))+' m'+(snapCls?' ('+snapCls+')':'')):'finding road';
+    rpTxt.innerHTML=mmss(rpClock-g[0][0])+' / '+mmss(g[g.length-1][0]-g[0][0])+' · '+rpSpeed+'x'+(rpPaused?' · paused':'')+
+      '<br><small>New code now: '+nowInfo+(ps?' · recorded '+ps[1]+' fps':'')+'</small>'+
+      '<br><small><span style="color:#ff5a5a">● raw GPS</span> &nbsp; <span style="color:#2bd1bd">━ old drive</span> &nbsp; <span style="color:#ffd23f">━ new code</span></small>';
   }
 }
 function rpAddOverlays(){
   const raw={type:'Feature',geometry:{type:'MultiPoint',coordinates:rpTrip.g.map(r=>[r[2],r[1]])}};
   const shown={type:'Feature',geometry:{type:'LineString',coordinates:rpTrip.f.map(r=>[r[2],r[1]])}};
+  const empty={type:'FeatureCollection',features:[]};
   const add=()=>{
+    if(rpReady) return true;
     try{
-      map.addSource('rp-raw',{type:'geojson',data:raw});
-      map.addSource('rp-shown',{type:'geojson',data:shown});
-      map.addSource('rp-now',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
-      map.addLayer({id:'rp-shown',type:'line',source:'rp-shown',paint:{'line-color':'#2bd1bd','line-width':4,'line-opacity':0.85}});
-      map.addLayer({id:'rp-raw',type:'circle',source:'rp-raw',paint:{'circle-radius':4,'circle-color':'#ff3b3b','circle-opacity':0.6}});
-      map.addLayer({id:'rp-now',type:'circle',source:'rp-now',paint:{'circle-radius':8,'circle-color':'#ff1f1f','circle-stroke-color':'#fff','circle-stroke-width':2}});
-    }catch(e){console.warn(e);}
-  };
-  if(map.loaded()) add(); else map.once('load',add);
-}
-function rpButtons(){
-  rpUi=document.createElement('div');rpUi.className='hud';
-  rpUi.style.cssText='bottom:90px;left:50%;transform:translateX(-50%);font-size:15px;text-align:center;z-index:9';
-  rpTxt=document.createElement('div');rpTxt.style.marginBottom='8px';rpUi.appendChild(rpTxt);
-  const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;justify-content:center';
-  const mk=(label,fn)=>{const b=document.createElement('button');b.textContent=label;b.style.cssText='font-size:15px;padding:8px 14px;border:0;border-radius:8px;background:#2bb3a3;color:#fff;cursor:pointer';b.onclick=()=>fn(b);row.appendChild(b);return b;};
-  mk('−30 s',()=>rpSeek(rpClock-30000));
-  mk('Pause',b=>{rpPaused=!rpPaused;b.textContent=rpPaused?'Play':'Pause';});
-  mk('Speed',()=>{rpSpeed=rpSpeed>=8?1:rpSpeed*2;});
-  mk('+30 s',()=>rpSeek(rpClock+30000));
-  rpUi.appendChild(row);document.body.appendChild(rpUi);
-}
-function rpPlay(trip){
-  if(!trip||!trip.g||trip.g.length<2){showPanel('This trip has no GPS points.',[['Close',hidePanel]]);return;}
-  hidePanel();
-  rpTrip=trip;rpRaw=[];rpIdx=0;rpF=0;rpP=0;rpClock=trip.g[0][0];rpLast=0;
-  map.jumpTo({center:[trip.g[0][2],trip.g[0][1]],zoom:18});
-  rpAddOverlays();rpButtons();
-  replaying=true;
-  if(watchId===null) btn.click();
-  try{status.textContent='Replay: '+tripName(trip);}catch(e){}
-  requestAnimationFrame(rpFrame);
-}
-function rpChooser(){
-  const list=cacheGet('rec:list')||[];
-  const buttons=list.slice().reverse().map(t=>[tripName(t),()=>rpPlay(loadTrip(t.key))]);
-  buttons.push(['Open trip file…',()=>{
-    const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
-    inp.onchange=()=>{
-      const file=inp.files[0];if(!file) return;
-      const rd=new FileReader();
-      rd.onload=()=>{try{rpPlay(JSON.parse(rd.result));}catch(e){showPanel('Could not read this file.',[['Close',hidePanel]]);}};
-      rd.readAsText(file);
-    };
-    inp.click();
-  }]);
-  showPanel('<b>Replay a trip</b><br>Red dots: raw GPS · Teal line: where the car was shown',buttons);
-}
-if(REPLAY){
-  const want=new URLSearchParams(location.search).get('replay');
-  map.on('load',()=>{
-    setTimeout(()=>{
-      if(want&&want.indexOf('rec:trip:')===0){const t=loadTrip(want);if(t){rpPlay(t);return;}}
-      rpChooser();
-    },1500);
-  });
-}
+      if(!map.getSource('rp-raw')) map.addSource('rp-raw',{type:'geojson',data:raw});
+      if(!map.getSource('rp-shown')) map.addSource('rp-shown',{type:'geojson',data:shown});
+      if(!map.getSource('rp-live')) map.addSource('rp-live',{type:'geojson',data:empty});
+      if(!map.getSource('rp-now')) map.addSource('rp-now',{type:'geojson',data:empty});
+      if(!map.getLayer('rp-shown')) map.addLayer({id:'rp-shown',type:'line',source:'rp-shown',paint:{'line-color':'#2bd1bd','line-width':4,'line-opacity':0.8}});
+      if(!map.getLayer('rp-live')) map.addLayer({id:'rp-live',
