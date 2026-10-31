@@ -1,4 +1,4 @@
-/* TessyNav performance v10: quality, shadows, culling, rate-limited builders, road snapping that holds at stops, closer Street view */
+/* TessyNav performance v11: quality, shadows, culling, rate-limited builders, road snapping, Street view, 3D car */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -40,11 +40,47 @@ rateLimit('updateSkyObjects',150);
 let cullLast=0;
 function enableCulling(scene){
   scene.traverse(o=>{
-    if((o.isMesh||o.isPoints)&&o!==shadowPlane&&!o.frustumCulled){
+    if((o.isMesh||o.isPoints)&&o!==shadowPlane&&!o.userData.noCull&&!o.frustumCulled){
       if(o.geometry&&!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
       o.frustumCulled=true;
     }
   });
+}
+
+/* ---------- 3D car model for Tessy ---------- */
+let car3d=null;
+function makeCar3D(){
+  const g=new THREE.Group();
+  const paint=new THREE.MeshLambertMaterial({color:0xf2f2f0});
+  const dark=new THREE.MeshLambertMaterial({color:0x14181d});
+  const glass=new THREE.MeshLambertMaterial({color:0x1d2630});
+  const tire=new THREE.MeshLambertMaterial({color:0x111111});
+  const tail=new THREE.MeshBasicMaterial({color:0xd8202a});
+  const head=new THREE.MeshBasicMaterial({color:0xfff6dc});
+  const add=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.userData.noCull=true;g.add(m);return m;};
+  add(new THREE.BoxGeometry(1.86,0.55,4.7),paint,0,0.62,0);
+  add(new THREE.BoxGeometry(1.8,0.2,4.5),dark,0,0.3,0);
+  const cab=new THREE.BoxGeometry(1.66,0.55,2.5);
+  const cp=cab.attributes.position;
+  for(let i=0;i<cp.count;i++){if(cp.getY(i)>0){cp.setX(i,cp.getX(i)*0.86);cp.setZ(i,cp.getZ(i)*0.7+0.1);}}
+  cab.computeVertexNormals();
+  add(cab,glass,0,1.17,0.25);
+  add(new THREE.BoxGeometry(1.5,0.08,0.05),tail,0,0.78,2.36);
+  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,-0.6,0.72,-2.36);
+  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,0.6,0.72,-2.36);
+  const wg=new THREE.CylinderGeometry(0.36,0.36,0.26,16);wg.rotateZ(Math.PI/2);
+  for(const x of [-0.88,0.88])for(const z of [-1.45,1.45]) add(wg,tire,x,0.36,z);
+  return g;
+}
+function updateCar3D(){
+  if(!treeScene||!gPos) return;
+  if(!car3d){
+    car3d=makeCar3D();treeScene.add(car3d);
+    try{car.getElement().style.display='none';}catch(e){}
+  }
+  const [x,z]=toLocal(gPos[0],gPos[1]);
+  car3d.position.set(x,0.05,z);
+  car3d.rotation.y=-gHd*R;
 }
 
 /* ---------- Shadows only update when needed ---------- */
@@ -111,7 +147,7 @@ qBtn.onclick=()=>{
 /* ---------- Road snapping: use the roads drawn under the car, and hold it when stopped ---------- */
 function fromLocal(x,z){return [x/(111320*Math.cos(ORIGIN[1]*R))+ORIGIN[0],-z/111320+ORIGIN[1]];}
 const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
-let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null,snapAbs=null,heldRaw=null;
+let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null,snapAbs=null,heldRaw=null,snapCls='';
 function getRoadLayers(){
   if(roadLayerIds) return roadLayerIds;
   roadLayerIds=map.getStyle().layers.filter(l=>l.type==='line'&&l['source-layer']==='transportation'&&
@@ -120,7 +156,8 @@ function getRoadLayers(){
 }
 function showGpsStatus(){
   if(gpsAcc===null) return;
-  status.textContent='GPS '+Math.round(gpsAcc)+' m · '+(snapOk?'on road':'finding road');
+  const mv=Math.round(Math.hypot(snapOff[0],snapOff[1]));
+  status.textContent='GPS '+Math.round(gpsAcc)+' m · '+(snapOk?('on road · moved '+mv+' m'+(snapCls?' ('+snapCls+')':'')):'finding road');
 }
 function updateSnap(pos,hd,spd){
   snapLast=performance.now();
@@ -159,7 +196,7 @@ function updateSnap(pos,hd,spd){
         const l=Math.sqrt(l2),tx=dx/l,tz=dz/l,align=tx*fx+tz*fz;
         if(trustHd&&Math.abs(align)<0.5) continue;
         const score=d-(trustHd?Math.abs(align)*4:0);
-        if(!best||score<best.score) best={score:score,qx:qx,qz:qz,tx:tx,tz:tz,align:align,W:W,oneway:+pr.oneway||0};
+        if(!best||score<best.score) best={score:score,qx:qx,qz:qz,tx:tx,tz:tz,align:align,W:W,oneway:+pr.oneway||0,cls:pr.class};
       }
     }
   }
@@ -169,6 +206,7 @@ function updateSnap(pos,hd,spd){
   snapAbs=[best.qx+rx*lane,best.qz+rz*lane];
   snapOff=[snapAbs[0]-x,snapAbs[1]-z];
   snapHd=(Math.atan2(tx,-tz)/R+360)%360;
+  snapCls=best.cls||'';
   snapOk=true;showGpsStatus();
 }
 
@@ -238,6 +276,8 @@ function glideFrame(){
   const wantHd=gT.spd>1?(snapHd!==null?snapHd:gT.hd):(snapHd!==null?snapHd:gHd);
   const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
   car.setLngLat(gPos).setRotation(gHd);
+  updateCar3D();
+  map.triggerRepaint();
   if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
   const cs=camSpec();
   gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
