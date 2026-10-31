@@ -1,7 +1,7 @@
-/* TessyNav lights: generated street lamps with night glow, and real traffic lights */
+/* TessyNav lights v3: street lamps with night glow, traffic lights per real travel direction */
 const LC=0.005;
 const lCells=new Map(),lMeshes=new Map();
-let lFailed=false,lLast=0,lReady=false,lDirtyAll=false;
+let lFailed=false,lLast=0,lDirtyAll=false;
 let lMatPole=null,lMatHead=null,lMatPool=null,lMatGlow=null;
 const sigCells=new Map();
 let sigCount=0;
@@ -103,30 +103,60 @@ function collectLightRoads(cx,cy){
       const key=ln.length+'|'+a[0].toFixed(6)+','+a[1].toFixed(6)+'|'+z[0].toFixed(6)+','+z[1].toFixed(6);
       let cell=lCells.get(ck); if(!cell){cell=new Map();lCells.set(ck,cell);}
       if(cell.has(key)) continue;
-      cell.set(key,{pts:ln,cls:pr.class});
+      cell.set(key,{pts:ln,cls:pr.class,oneway:+pr.oneway||0});
       if(lMeshes.has(ck)) lMeshes.get(ck).dirty=true;
     }
   }
 }
 
+function localRoad(r){
+  const spec=LAMP[r.cls]; if(!spec) return null;
+  const pts=r.pts.map(p=>toLocal(p[0],p[1])),n=pts.length;
+  const cum=[0];for(let i=1;i<n;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  return {pts:pts,cum:cum,L:cum[n-1],W:spec[1],spec:spec,oneway:r.oneway};
+}
+function closestOn(r,sx,sz,maxD){
+  let bd=maxD,best=null;
+  const pts=r.pts,cum=r.cum;
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i],b=pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz||1;
+    const t=Math.max(0,Math.min(1,((sx-a[0])*dx+(sz-a[1])*dz)/l2));
+    const px=a[0]+dx*t,pz=a[1]+dz*t,d=Math.hypot(px-sx,pz-sz);
+    if(d<bd){bd=d;const l=Math.sqrt(l2);best={px:px,pz:pz,tx:dx/l,tz:dz/l,s:cum[i]+t*l,d:d};}
+  }
+  return best;
+}
+/* Which way does traffic flow? Use oneway if known, else detect the other half of a divided road */
+function travelDirs(r,best,near){
+  if(r.oneway===1) return [1];
+  if(r.oneway===-1) return [-1];
+  for(const o of near){
+    if(o===r) continue;
+    const q=closestOn(o,best.px,best.pz,40);
+    if(!q||q.d<6) continue;
+    if(Math.abs(q.tx*best.tx+q.tz*best.tz)<0.9) continue;
+    const vx=q.px-best.px,vz=q.pz-best.pz;
+    const side=best.tx*vz-best.tz*vx;
+    return [side>0?-1:1];
+  }
+  return [1,-1];
+}
+
 function buildLightCell(ck){
+  const [gx,gy]=ck.split(',').map(Number);
   const cell=lCells.get(ck)||new Map();
   const poles=lightAcc(true),heads=lightAcc(false),pools=lightAcc(false),glow=[];
   const occ=new Set();
-  const roadsLocal=[];
-  for(const r of cell.values()){
-    const spec=LAMP[r.cls]; if(!spec) continue;
-    const [spacing,W,both,ph]=spec;
-    const pts=r.pts.map(p=>toLocal(p[0],p[1])),n=pts.length;
-    const cum=[0];for(let i=1;i<n;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
-    const L=cum[n-1];
-    roadsLocal.push({pts:pts,W:W});
+  /* Street lamps */
+  for(const r0 of cell.values()){
+    const r=localRoad(r0); if(!r) continue;
+    const [spacing,W,both,ph]=r.spec,pts=r.pts,cum=r.cum,n=pts.length;
     let k=0;
-    for(let s=spacing/2;s<L;s+=spacing,k++){
+    for(let s=spacing/2;s<r.L;s+=spacing,k++){
       let i=0;while(i<n-2&&cum[i+1]<s) i++;
       const seg=cum[i+1]-cum[i]||1,t=(s-cum[i])/seg;
       const x=pts[i][0]+(pts[i+1][0]-pts[i][0])*t,z=pts[i][1]+(pts[i+1][1]-pts[i][1])*t;
-      let tx=(pts[i+1][0]-pts[i][0])/seg,tz=(pts[i+1][1]-pts[i][1])/seg;
+      const tx=(pts[i+1][0]-pts[i][0])/seg,tz=(pts[i+1][1]-pts[i][1])/seg;
       const nx=-tz,nz=tx;
       const sides=both?[1,-1]:[k%2?1:-1];
       for(const sd of sides){
@@ -135,40 +165,49 @@ function buildLightCell(ck){
         if(occ.has(ok)) continue; occ.add(ok);
         poles.box(px,pz,tx,tz,0.22,0.22,0,ph,LCOL.pole);
         const ax=-nx*sd,az=-nz*sd;
-        const amx=px+ax*1.0,amz=pz+az*1.0;
-        poles.box(amx,amz,ax,az,2.0,0.12,ph-0.12,ph,LCOL.pole);
+        poles.box(px+ax*1.0,pz+az*1.0,ax,az,2.0,0.12,ph-0.12,ph,LCOL.pole);
         const hx=px+ax*1.9,hz=pz+az*1.9;
         heads.box(hx,hz,ax,az,0.7,0.3,ph-0.35,ph-0.1);
         glow.push(hx,ph-0.4,hz);
-        const cxp=px+ax*3.2,czp=pz+az*3.2,r0=9;
-        pools.quad([[cxp-r0,0.25,czp-r0],[cxp+r0,0.25,czp-r0],[cxp+r0,0.25,czp+r0],[cxp-r0,0.25,czp+r0]],[0,1,0],null,[[0,0],[1,0],[1,1],[0,1]]);
+        const cxp=px+ax*3.2,czp=pz+az*3.2,r1=9;
+        pools.quad([[cxp-r1,0.25,czp-r1],[cxp+r1,0.25,czp-r1],[cxp+r1,0.25,czp+r1],[cxp-r1,0.25,czp+r1]],[0,1,0],null,[[0,0],[1,0],[1,1],[0,1]]);
       }
     }
   }
-  /* Traffic lights at real intersections */
-  for(const sg of (sigCells.get(ck)||[])){
-    const [sx,sz]=toLocal(sg[0],sg[1]);
-    let best=null,bd=25;
-    for(const r of roadsLocal){
-      for(let i=0;i<r.pts.length-1;i++){
-        const a=r.pts[i],b=r.pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz||1;
-        const t=Math.max(0,Math.min(1,((sx-a[0])*dx+(sz-a[1])*dz)/l2));
-        const d=Math.hypot(a[0]+dx*t-sx,a[1]+dz*t-sz);
-        if(d<bd){bd=d;const l=Math.sqrt(l2);best={tx:dx/l,tz:dz/l,W:r.W};}
-      }
+  /* Traffic lights: one pole per real approaching direction, at the stop line, on the right side */
+  const sigs=sigCells.get(ck)||[];
+  if(sigs.length){
+    const near=[];
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+      const c2=lCells.get((gx+dx)+','+(gy+dy));
+      if(c2) for(const r0 of c2.values()){const r=localRoad(r0);if(r) near.push(r);}
     }
-    const tx=best?best.tx:1,tz=best?best.tz:0,W=best?best.W:9;
-    const nx=-tz,nz=tx,o=W/2+2.5;
-    for(const sd of [1,-1]){
-      const px=sx+(nx+tx)*o*sd,pz=sz+(nz+tz)*o*sd;
-      poles.box(px,pz,tx,tz,0.28,0.28,0,6.2,LCOL.pole);
-      let ax=sx-px,az=sz-pz;const al=Math.hypot(ax,az)||1;ax/=al;az/=al;
-      poles.box(px+ax*2.3,pz+az*2.3,ax,az,4.6,0.16,6.0,6.2,LCOL.pole);
-      const hx=px+ax*4.4,hz=pz+az*4.4;
-      poles.box(hx,hz,ax,az,0.36,0.42,4.9,6.0,LCOL.sigBox);
-      poles.box(hx,hz,ax,az,0.42,0.30,5.65,5.9,LCOL.red);
-      poles.box(hx,hz,ax,az,0.42,0.30,5.32,5.57,LCOL.amber);
-      poles.box(hx,hz,ax,az,0.42,0.30,4.99,5.24,LCOL.green);
+    for(const sg of sigs){
+      const [sx,sz]=toLocal(sg[0],sg[1]);
+      const sigOcc=new Set();
+      for(const r of near){
+        const best=closestOn(r,sx,sz,28);
+        if(!best) continue;
+        for(const dsg of travelDirs(r,best,near)){
+          if(dsg===1&&best.s<9) continue;
+          if(dsg===-1&&best.s>r.L-9) continue;
+          const fx=best.tx*dsg,fz=best.tz*dsg;
+          const rx=-fz,rz=fx;
+          const stx=best.px-fx*9,stz=best.pz-fz*9,o=r.W/2+1.5;
+          const px=stx+rx*o,pz=stz+rz*o;
+          const ok=Math.round(px/5)+','+Math.round(pz/5);
+          if(sigOcc.has(ok)) continue; sigOcc.add(ok);
+          poles.box(px,pz,fx,fz,0.28,0.28,0,6.2,LCOL.pole);
+          const ax=-rx,az=-rz,reach=Math.min(r.W*0.75,7);
+          poles.box(px+ax*reach/2,pz+az*reach/2,ax,az,reach,0.16,6.0,6.2,LCOL.pole);
+          const hx=px+ax*(reach-0.3),hz=pz+az*(reach-0.3);
+          poles.box(hx,hz,fx,fz,0.4,0.42,4.9,6.0,LCOL.sigBox);
+          const fxo=hx-fx*0.05,fzo=hz-fz*0.05;
+          poles.box(fxo,fzo,fx,fz,0.42,0.30,5.65,5.9,LCOL.red);
+          poles.box(fxo,fzo,fx,fz,0.42,0.30,5.32,5.57,LCOL.amber);
+          poles.box(fxo,fzo,fx,fz,0.42,0.30,4.99,5.24,LCOL.green);
+        }
+      }
     }
   }
   const group=new THREE.Group();
