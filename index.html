@@ -27,15 +27,18 @@ html,body,#map{margin:0;height:100%}
 const R=Math.PI/180;
 function dist(a,b){const dLat=(b[1]-a[1])*R,dLng=(b[0]-a[0])*R;const h=Math.sin(dLat/2)**2+Math.cos(a[1]*R)*Math.cos(b[1]*R)*Math.sin(dLng/2)**2;return 12742000*Math.asin(Math.sqrt(h));}
 function bearing(a,b){const y=Math.sin((b[0]-a[0])*R)*Math.cos(b[1]*R);const x=Math.cos(a[1]*R)*Math.sin(b[1]*R)-Math.sin(a[1]*R)*Math.cos(b[1]*R)*Math.cos((b[0]-a[0])*R);return (Math.atan2(y,x)/R+360)%360;}
+function cacheGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;}}
+function cacheSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
 const ORIGIN=[-73.568,45.459];
-const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:ORIGIN,zoom:17,pitch:60});
+const startPos=cacheGet('lastPos')||ORIGIN;
+const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:startPos,zoom:17,pitch:60});
 const treesEl=document.getElementById('trees');
 
 /* ---------- Smooth 3D trees (three.js, batched) ---------- */
 let treeCount=0,treesFailed=false,treeScene=null,treeMat=null;
 let pending=[];
-const cells=new Set(),seen=new Set(),doneAreas=new Set();
+const cells=new Set(),doneAreas=new Set();
 const leafCols=['#5b7f3a','#4f7334','#6a8a42','#7d8a3a','#b9772f','#a8552a'].map(c=>new THREE.Color(c));
 const trunkCol=new THREE.Color('#5a4030');
 const trunkGeo=new THREE.CylinderGeometry(0.18,0.28,3.2,6);
@@ -111,28 +114,56 @@ function buildBatch(list){
 }
 
 function refreshTrees(){
+  treesEl.textContent='Trees: '+treeCount;
   if(treesFailed||!treeScene) return;
   if(pending.length){buildBatch(pending);pending=[];}
-  treesEl.textContent='Trees: '+treeCount;
   map.triggerRepaint();
 }
 
-let lastFetch=null,busy=false;
-async function loadTrees(){
-  if(busy||map.getZoom()<15.5)return;
-  const c=map.getCenter(),p=[c.lng,c.lat];
-  if(lastFetch&&dist(lastFetch,p)<200)return;
-  busy=true;lastFetch=p;
-  const d=0.005,s=c.lat-d,n=c.lat+d,w=c.lng-d*1.4,e=c.lng+d*1.4;
-  try{
-    const q='[out:json][timeout:15];node["natural"="tree"]('+s+','+w+','+n+','+e+');out;';
-    const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
-    const j=await r.json();
-    for(const t of j.elements){if(!seen.has(t.id)){seen.add(t.id);addTree(t.id,t.lon,t.lat);}}
-    refreshTrees();
-  }catch(err){if(!treesFailed)treesEl.textContent='Trees: '+treeCount+' (tree service error)';lastFetch=null;}
-  busy=false;
+/* ---------- Tree loading: tiles + cache + backup server ---------- */
+const TILE=0.01;
+const SERVERS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const loadedTiles=new Set();
+let queue=[],working=false;
+function addTreeList(list){for(const t of list) addTree(t[0],t[1],t[2]);}
+async function fetchTile(tx,ty){
+  const key='tt:'+tx+','+ty;
+  if(loadedTiles.has(key)) return;
+  const s=(ty*TILE).toFixed(4),w=(tx*TILE).toFixed(4),n=((ty+1)*TILE).toFixed(4),e=((tx+1)*TILE).toFixed(4);
+  const q='[out:json][timeout:25];node["natural"="tree"]('+s+','+w+','+n+','+e+');out;';
+  for(const url of SERVERS){
+    try{
+      const r=await fetch(url+'?data='+encodeURIComponent(q));
+      if(!r.ok) throw new Error('busy');
+      const j=await r.json();
+      const list=j.elements.map(t=>[t.id%1000,+t.lon.toFixed(6),+t.lat.toFixed(6)]);
+      cacheSet(key,list);loadedTiles.add(key);
+      addTreeList(list);refreshTrees();
+      return;
+    }catch(err){}
+  }
+  treesEl.textContent='Trees: '+treeCount+' (tree server busy)';
 }
+async function pump(){
+  if(working) return; working=true;
+  while(queue.length){const [tx,ty]=queue.shift();await fetchTile(tx,ty);}
+  working=false;
+}
+function loadAround(lng,lat){
+  const tx=Math.floor(lng/TILE),ty=Math.floor(lat/TILE);
+  const order=[[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+  const next=[];let fromCache=false;
+  for(const [dx,dy] of order){
+    const x=tx+dx,y=ty+dy,key='tt:'+x+','+y;
+    if(loadedTiles.has(key)) continue;
+    const cached=cacheGet(key);
+    if(cached){loadedTiles.add(key);addTreeList(cached);fromCache=true;}
+    else next.push([x,y]);
+  }
+  if(fromCache) refreshTrees();
+  queue=next;pump();
+}
+loadAround(startPos[0],startPos[1]);
 
 function inside(pt,rg){let ins=false;for(let i=0,j=rg.length-1;i<rg.length;j=i++){const xi=rg[i][0],yi=rg[i][1],xj=rg[j][0],yj=rg[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
 function parkTrees(){
@@ -197,16 +228,16 @@ map.on('load',()=>{
       'fill-extrusion-base':['coalesce',['get','render_height'],8],
       'fill-extrusion-height':['+',['coalesce',['get','render_height'],8],0.4]}});
   map.addLayer(treeLayer);
-  loadTrees();
-  map.on('moveend',loadTrees);
+  refreshTrees();
+  map.on('moveend',()=>{if(map.getZoom()>=15){const c=map.getCenter();loadAround(c.lng,c.lat);}});
   map.on('idle',parkTrees);
 });
 
 /* ---------- Driving view ---------- */
 const el=document.createElement('div');
 el.innerHTML='<svg viewBox="0 0 34 34" width="52" height="52"><path d="M17 3 L29 30 L17 23 L5 30 Z" fill="#3fd1b0" stroke="#fff" stroke-width="2"/></svg>';
-const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat(ORIGIN).addTo(map);
-let follow=false,last=null,heading=0,watchId=null;
+const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat(startPos).addTo(map);
+let follow=false,last=null,heading=0,watchId=null,lastTile='';
 const status=document.getElementById('status'),speedEl=document.getElementById('speed'),btn=document.getElementById('btn');
 function view(pos,ms){map.easeTo({center:pos,zoom:18,pitch:65,bearing:heading,duration:ms,offset:[0,150]});}
 function onPos(p){
@@ -217,6 +248,11 @@ function onPos(p){
   car.setLngLat(pos).setRotation(heading);
   speedEl.innerHTML=Math.round((p.coords.speed||0)*3.6)+' <small>km/h</small>';
   status.textContent='GPS accuracy: '+Math.round(p.coords.accuracy)+' m';
+  if(p.coords.accuracy<100){
+    cacheSet('lastPos',[+pos[0].toFixed(5),+pos[1].toFixed(5)]);
+    const t=Math.floor(pos[0]/TILE)+','+Math.floor(pos[1]/TILE);
+    if(t!==lastTile){lastTile=t;loadAround(pos[0],pos[1]);}
+  }
   if(follow) view(pos,1000);
 }
 btn.onclick=()=>{
