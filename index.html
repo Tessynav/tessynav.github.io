@@ -1,8 +1,56 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>TessyNav</title></head>
-<body style="background:#0a1220;color:#e8f1fa;font-family:sans-serif;text-align:center;padding-top:20vh">
-  <h1>TessyNav is live</h1>
-  <p>Coming soon to Tessy's screen</p>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TessyNav</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  html,body,#map{margin:0;height:100%}
+  #status{position:absolute;top:12px;left:12px;background:rgba(10,18,32,.85);color:#e8f1fa;
+    font-family:sans-serif;font-size:15px;padding:10px 14px;border-radius:10px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="status">TessyNav: tap the location button to test GPS</div>
+<script>
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [-73.568, 45.459],
+  zoom: 16.5,
+  pitch: 60,
+  bearing: -30
+});
+map.addControl(new maplibregl.NavigationControl({visualizePitch:true}));
+const geo = new maplibregl.GeolocateControl({
+  positionOptions:{enableHighAccuracy:true},
+  trackUserLocation:true,
+  showUserHeading:true
+});
+map.addControl(geo);
+const status = document.getElementById('status');
+geo.on('geolocate', e => {
+  status.textContent = 'GPS works! Accuracy: ' + Math.round(e.coords.accuracy) + ' m';
+});
+geo.on('error', () => {
+  status.textContent = 'GPS not available in this browser';
+});
+map.on('load', () => {
+  if (!map.getLayer('building-3d')) {
+    map.addLayer({
+      id:'building-3d', type:'fill-extrusion', source:'openmaptiles', 'source-layer':'building',
+      paint:{
+        'fill-extrusion-color':'#c9b8a3',
+        'fill-extrusion-height':['coalesce',['get','render_height'],8],
+        'fill-extrusion-base':['coalesce',['get','render_min_height'],0],
+        'fill-extrusion-opacity':0.9
+      }
+    });
+  }
+});
+</script>
 </body>
 </html>
