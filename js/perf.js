@@ -1,4 +1,4 @@
-/* TessyNav performance v9: quality, shadows, culling, rate-limited builders, forgiving road snapping, closer Street view */
+/* TessyNav performance v10: quality, shadows, culling, rate-limited builders, road snapping that holds at stops, closer Street view */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -108,10 +108,10 @@ qBtn.onclick=()=>{
   cacheSet('quality',quality);showQuality();applyQuality();
 };
 
-/* ---------- Road snapping: use the roads actually drawn under the car ---------- */
+/* ---------- Road snapping: use the roads drawn under the car, and hold it when stopped ---------- */
 function fromLocal(x,z){return [x/(111320*Math.cos(ORIGIN[1]*R))+ORIGIN[0],-z/111320+ORIGIN[1]];}
 const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
-let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null;
+let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null,snapAbs=null,heldRaw=null;
 function getRoadLayers(){
   if(roadLayerIds) return roadLayerIds;
   roadLayerIds=map.getStyle().layers.filter(l=>l.type==='line'&&l['source-layer']==='transportation'&&
@@ -124,13 +124,22 @@ function showGpsStatus(){
 }
 function updateSnap(pos,hd,spd){
   snapLast=performance.now();
-  if(spd<1.2){snapOff=[0,0];snapHd=null;snapOk=false;showGpsStatus();return;}
+  const [x,z]=toLocal(pos[0],pos[1]);
+  if(spd<1.2){
+    if(snapOk&&snapAbs){
+      if(!heldRaw) heldRaw=[x,z];
+      if(Math.hypot(x-heldRaw[0],z-heldRaw[1])<20){
+        snapOff=[snapAbs[0]-x,snapAbs[1]-z];showGpsStatus();return;
+      }
+    }
+    snapOff=[0,0];snapHd=null;snapOk=false;snapAbs=null;heldRaw=null;showGpsStatus();return;
+  }
+  heldRaw=null;
   let feats=[];
   try{
     const pt=map.project(pos);
     feats=map.queryRenderedFeatures([[pt.x-220,pt.y-220],[pt.x+220,pt.y+220]],{layers:getRoadLayers()});
   }catch(e){}
-  const [x,z]=toLocal(pos[0],pos[1]);
   const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
   const trustHd=spd>3;
   let best=null;
@@ -154,10 +163,11 @@ function updateSnap(pos,hd,spd){
       }
     }
   }
-  if(!best){snapOff=[0,0];snapHd=null;snapOk=false;showGpsStatus();return;}
+  if(!best){snapOff=[0,0];snapHd=null;snapOk=false;snapAbs=null;showGpsStatus();return;}
   const dsg=best.align>=0?1:-1,tx=best.tx*dsg,tz=best.tz*dsg,rx=-tz,rz=tx;
   const lane=best.oneway?0:best.W/4;
-  snapOff=[best.qx+rx*lane-x,best.qz+rz*lane-z];
+  snapAbs=[best.qx+rx*lane,best.qz+rz*lane];
+  snapOff=[snapAbs[0]-x,snapAbs[1]-z];
   snapHd=(Math.atan2(tx,-tz)/R+360)%360;
   snapOk=true;showGpsStatus();
 }
@@ -225,7 +235,7 @@ function glideFrame(){
   const target=fromLocal(px+gOff[0],pz+gOff[1]);
   if(!gPos) gPos=target.slice();
   gPos[0]+=(target[0]-gPos[0])*0.25;gPos[1]+=(target[1]-gPos[1])*0.25;
-  const wantHd=(snapHd!==null&&gT.spd>1)?snapHd:gT.hd;
+  const wantHd=gT.spd>1?(snapHd!==null?snapHd:gT.hd):(snapHd!==null?snapHd:gHd);
   const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
   car.setLngLat(gPos).setRotation(gHd);
   if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
