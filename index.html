@@ -78,19 +78,20 @@ function updateSun(){
   sunEl.textContent=altDeg>0?('Sun: '+Math.round(altDeg)+'° high, '+dirs[Math.round(azDeg/45)%8]+(testHour?' (test '+testHour+'h)':''))
                             :('Sun is down'+(testHour?' (test '+testHour+'h)':''));
   sunUp=altDeg>2;
+  const golden=altDeg>0&&altDeg<12;
   const up=Math.max(0,Math.sin(s.alt)),ce=Math.cos(s.alt);
   sunDir.set(ce*Math.sin(s.az),Math.max(0.05,Math.sin(s.alt)),-ce*Math.cos(s.az)).normalize();
   if(sunLight&&hemiLight){
     sunLight.intensity=altDeg>0?1.2+2.6*Math.min(1,up*1.6):0;
-    hemiLight.intensity=altDeg>0?0.9+0.5*up:0.55;
-    sunLight.color.set(altDeg<12?0xffc890:0xfff4e4);
+    sunLight.color.set(golden?0xffc890:0xfff4e4);
+    hemiLight.intensity=altDeg>0?0.9+0.5*up:1.6;
   }
   if(shadowPlane) shadowPlane.material.opacity=0.18+0.17*Math.min(1,up*2);
-  if(map.isStyleLoaded()){
-    map.setLight({anchor:'map',color:altDeg<12?'#ffd2a0':'#ffffff',
-      intensity:altDeg>0?0.35+0.3*up:0.15,
-      position:[1.5,azDeg,Math.min(88,Math.max(10,90-Math.max(altDeg,2)))]});
-  }
+  try{
+    map.setLight(altDeg>0
+      ?{anchor:'map',color:golden?'#ffd2a0':'#ffffff',intensity:0.35+0.3*up,position:[1.5,azDeg,Math.min(88,Math.max(10,90-altDeg))]}
+      :{anchor:'map',color:'#ffffff',intensity:0.4,position:[1.15,210,30]});
+  }catch(e){}
   map.triggerRepaint();
 }
 
