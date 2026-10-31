@@ -1,4 +1,4 @@
-/* TessyNav performance v5: quality, shadows, culling, rate-limited builders, road snapping, speed zoom, pinch-friendly follow */
+/* TessyNav performance v6: quality, shadows, culling, rate-limited builders, road snapping, Street/Map view */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -6,6 +6,14 @@ qBtn.style.cssText='top:202px;left:12px;font-size:13px;border:0;cursor:pointer';
 document.body.appendChild(qBtn);
 function showQuality(){qBtn.textContent='Quality: '+quality.charAt(0).toUpperCase()+quality.slice(1);}
 showQuality();
+
+let viewMode=cacheGet('viewMode')||'street';
+const vBtn=document.createElement('button');
+vBtn.className='hud';
+vBtn.style.cssText='top:248px;left:12px;font-size:13px;border:0;cursor:pointer';
+document.body.appendChild(vBtn);
+function showView(){vBtn.textContent='View: '+(viewMode==='street'?'Street':'Map');}
+showView();
 
 /* ---------- Builders run at most once per interval (with one catch-up call) ---------- */
 function rateLimit(name,ms){
@@ -129,18 +137,28 @@ function updateSnap(pos,hd){
   snapHd=(Math.atan2(tx,-tz)/R+360)%360;
 }
 
-/* ---------- Zoom: speed-based, plus your own pinch adjustment (remembered) ---------- */
-let userZoomDelta=+(cacheGet('zoomDelta')||0),lastUserZoom=0,lastDrag=0;
-function baseZoom(){
+/* ---------- Camera: Street or Map view, speed-based, plus your pinch adjustment ---------- */
+let userZoomDelta=+(cacheGet('zoomDelta_'+viewMode)||0),lastUserZoom=0,lastDrag=0;
+let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60;
+function camSpec(){
   const kmh=gT?gT.spd*3.6:0;
-  return Math.max(18.2,Math.min(19.5,19.5-kmh/55))-(skyOn?0.4:0);
+  if(viewMode==='street'){
+    return {zoom:Math.max(19.4,Math.min(20.4,20.4-kmh/70)),pitch:76,pad:0.52};
+  }
+  return {zoom:Math.max(18.2,Math.min(19.5,19.5-kmh/55))-(skyOn?0.4:0),pitch:skyOn?78:60,pad:0.32};
 }
+vBtn.onclick=()=>{
+  viewMode=viewMode==='street'?'map':'street';
+  cacheSet('viewMode',viewMode);showView();
+  userZoomDelta=+(cacheGet('zoomDelta_'+viewMode)||0);
+  follow=true;
+};
 map.on('zoom',e=>{if(e.originalEvent) lastUserZoom=performance.now();});
 map.on('zoomend',e=>{
   if(!e.originalEvent) return;
   lastUserZoom=performance.now();
-  userZoomDelta=Math.max(-3,Math.min(2,map.getZoom()-baseZoom()));
-  cacheSet('zoomDelta',userZoomDelta);
+  userZoomDelta=Math.max(-3,Math.min(2,map.getZoom()-camSpec().zoom));
+  cacheSet('zoomDelta_'+viewMode,userZoomDelta);
   gZoom=map.getZoom();
 });
 map.on('dragstart',()=>{lastDrag=performance.now();});
@@ -148,7 +166,6 @@ map.on('rotatestart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.n
 map.on('pitchstart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.now();}});
 
 /* ---------- Smooth gliding ---------- */
-let gPos=null,gHd=0,gT=null,gZoom=19;
 const baseOnPos=onPos,baseView=view;
 onPos=function(p){
   baseOnPos(p);
@@ -173,11 +190,13 @@ function glideFrame(){
   const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
   car.setLngLat(gPos).setRotation(gHd);
   if(now-lastUserZoom<500) return;
-  const wantZoom=baseZoom()+userZoomDelta;
-  gZoom+=(wantZoom-gZoom)*0.03;
+  const cs=camSpec();
+  gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
+  gPitch+=(cs.pitch-gPitch)*0.06;
   if(follow){
-    map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:skyOn?78:60,
-      padding:{top:skyOn?480:340,bottom:0,left:0,right:0}});
+    const H=map.getContainer().clientHeight||800;
+    map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
+      padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
   }
 }
 requestAnimationFrame(glideFrame);
