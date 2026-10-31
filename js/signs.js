@@ -1,4 +1,4 @@
-/* TessyNav signs v3: city signs in 3D, OpenStreetMap backup where city data is missing, safety alerts */
+/* TessyNav signs v4: city signs, OpenStreetMap backup placed at real approaches (all-way aware), safety alerts */
 const SC=0.005,ST=0.05,SG=8,SCELL=128,OSM_T=0.01;
 const sCells=new Map(),sMeshes=new Map(),sLoaded=new Set(),sDone=new Set(),cityCells=new Set();
 const oLoaded=new Set(),oQueue=[];
@@ -186,6 +186,58 @@ async function fetchOsmSigns(tx,ty){
   if(added){sDirtyAll=true;updateSigns(true);}
 }
 
+/* ---------- Where each sign stands and which way it faces ---------- */
+function cityPlacement(p,near){
+  let best=null;
+  for(const r of near){const b=closestOn(r,p.x,p.z,30);if(b&&(!best||b.d<best.d)) best=b;}
+  if(!best) return {px:p.x,pz:p.z,nx:0,nz:1,tx:1,tz:0};
+  const tx=best.tx,tz=best.tz,vx=p.x-best.px,vz=p.z-best.pz,s=-tz*vx+tx*vz;
+  const fx=s>=0?tx:-tx,fz=s>=0?tz:-tz;
+  return {px:p.x,pz:p.z,nx:-fx,nz:-fz,tx:tx,tz:tz};
+}
+/* OpenStreetMap stop dots sit on the road: find the intersection, then place signs before it on the right side */
+function osmPlacements(p,near){
+  let ap=null;
+  for(const r of near){const b=closestOn(r,p.x,p.z,20);if(b&&(!ap||b.d<ap.d)){ap=b;ap.road=r;}}
+  if(!ap) return [{px:p.x,pz:p.z,nx:0,nz:1,tx:1,tz:0}];
+  let J=null;
+  for(const r of near){
+    if(r===ap.road) continue;
+    const q=closestOn(r,p.x,p.z,30);
+    if(!q) continue;
+    if(!closestOn(ap.road,q.px,q.pz,4)) continue;
+    if(!J||q.d<J.d){J=q;J.road=r;}
+  }
+  const out=[];
+  const placeBefore=(road,jx,jz,dsg)=>{
+    const b=closestOn(road,jx,jz,6); if(!b) return;
+    const s=b.s-7*dsg; if(s<0||s>road.L) return;
+    const fx=b.tx*dsg,fz=b.tz*dsg,rx=-fz,rz=fx,o=road.W/2+1.5;
+    out.push({px:b.px-fx*7+rx*o,pz:b.pz-fz*7+rz*o,nx:-fx,nz:-fz,tx:b.tx,tz:b.tz});
+  };
+  if(J&&p.types.indexOf('a')>=0){
+    for(const r of near){
+      const b=closestOn(r,J.px,J.pz,5); if(!b) continue;
+      for(const dsg of travelDirs(r,b,near)) placeBefore(r,J.px,J.pz,dsg);
+    }
+  }else if(J){
+    const vx=J.px-ap.px,vz=J.pz-ap.pz;
+    const dsg=(vx*ap.tx+vz*ap.tz)>=0?1:-1;
+    const along=Math.hypot(vx,vz);
+    if(along<5) placeBefore(ap.road,J.px,J.pz,dsg);
+    else{
+      const fx=ap.tx*dsg,fz=ap.tz*dsg,rx=-fz,rz=fx,o=ap.road.W/2+1.5;
+      out.push({px:ap.px+rx*o,pz:ap.pz+rz*o,nx:-fx,nz:-fz,tx:ap.tx,tz:ap.tz});
+    }
+  }else{
+    const toward=ap.s>ap.road.L/2?1:-1;
+    const fx=ap.tx*toward,fz=ap.tz*toward,rx=-fz,rz=fx,o=ap.road.W/2+1.5;
+    out.push({px:ap.px+rx*o,pz:ap.pz+rz*o,nx:-fx,nz:-fz,tx:ap.tx,tz:ap.tz});
+  }
+  if(!out.length) out.push({px:ap.px,pz:ap.pz,nx:0,nz:1,tx:ap.tx,tz:ap.tz});
+  return out;
+}
+
 /* ---------- Building the 3D signs ---------- */
 function buildSignCell(ck){
   const [gx,gy]=ck.split(',').map(Number);
@@ -196,41 +248,34 @@ function buildSignCell(ck){
     if(c2) for(const r0 of c2.values()){const r=localRoad(r0);if(r) near.push(r);}
   }
   const front=lightAcc(false),backs=lightAcc(false),metal=lightAcc(true),names=lightAcc(false);
-  const nameIdx=new Map(),nameList=[],nameQuads=[];
+  const nameIdx=new Map(),nameList=[],nameQuads=[],occ=new Set();
   for(const p of list){
-    let best=null;
-    for(const r of near){const b=closestOn(r,p.x,p.z,30);if(b&&(!best||b.d<best.d)){best=b;best.road=r;}}
-    let px=p.x,pz=p.z,tx=1,tz=0,nx=0,nz=1;
-    if(best){
-      tx=best.tx;tz=best.tz;
+    const pls=p.osm?osmPlacements(p,near):[cityPlacement(p,near)];
+    p.places=[];
+    for(const pl of pls){
       if(p.osm){
-        const toward=best.s>best.road.L/2?1:-1;
-        const fx=tx*toward,fz=tz*toward,rx=-fz,rz=fx,o=best.road.W/2+1.5;
-        px=best.px+rx*o;pz=best.pz+rz*o;nx=-fx;nz=-fz;
-      }else{
-        const vx=p.x-best.px,vz=p.z-best.pz,s=-tz*vx+tx*vz;
-        const fx=s>=0?tx:-tx,fz=s>=0?tz:-tz;
-        nx=-fx;nz=-fz;
+        const ok=Math.round(pl.px/3)+','+Math.round(pl.pz/3);
+        if(occ.has(ok)) continue; occ.add(ok);
       }
+      p.places.push([pl.px,pl.pz]);
+      const regular=p.types.filter(t=>t.indexOf('n:')!==0);
+      const nms=p.types.filter(t=>t.indexOf('n:')===0).map(t=>t.slice(2)).slice(0,2);
+      let y=3.2;
+      for(const t of regular){
+        const sz=SSIZE[t[0]==='v'?'v':t]||SDEF,w=sz[0],h=sz[1];
+        const cy=y-h/2,uv=sUV(t);
+        sQuad(front,pl.px+pl.nx*0.06,cy,pl.pz+pl.nz*0.06,pl.nx,pl.nz,w,h,uv);
+        sQuad(backs,pl.px+pl.nx*0.05,cy,pl.pz+pl.nz*0.05,-pl.nx,-pl.nz,w,h,uv);
+        y-=h+0.08;
+      }
+      const poleH=nms.length?3.45+nms.length*0.32:3.2;
+      metal.box(pl.px,pl.pz,1,0,0.09,0.09,0,poleH,SCOL.pole);
+      nms.forEach((nm,i)=>{
+        if(!nameIdx.has(nm)){if(nameList.length>=64) return;nameIdx.set(nm,nameList.length);nameList.push(nm);}
+        const bnx=i%2?pl.tx:-pl.tz,bnz=i%2?pl.tz:pl.tx;
+        nameQuads.push([pl.px,3.4+i*0.32,pl.pz,bnx,bnz,nameIdx.get(nm)]);
+      });
     }
-    p.dx=px;p.dz=pz;
-    const regular=p.types.filter(t=>t.indexOf('n:')!==0);
-    const nms=p.types.filter(t=>t.indexOf('n:')===0).map(t=>t.slice(2)).slice(0,2);
-    let y=3.2;
-    for(const t of regular){
-      const sz=SSIZE[t[0]==='v'?'v':t]||SDEF,w=sz[0],h=sz[1];
-      const cy=y-h/2,uv=sUV(t);
-      sQuad(front,px+nx*0.06,cy,pz+nz*0.06,nx,nz,w,h,uv);
-      sQuad(backs,px+nx*0.05,cy,pz+nz*0.05,-nx,-nz,w,h,uv);
-      y-=h+0.08;
-    }
-    const poleH=nms.length?3.45+nms.length*0.32:3.2;
-    metal.box(px,pz,1,0,0.09,0.09,0,poleH,SCOL.pole);
-    nms.forEach((nm,i)=>{
-      if(!nameIdx.has(nm)){if(nameList.length>=64) return;nameIdx.set(nm,nameList.length);nameList.push(nm);}
-      const bnx=i%2?tx:-tz,bnz=i%2?tz:tx;
-      nameQuads.push([px,3.4+i*0.32,pz,bnx,bnz,nameIdx.get(nm)]);
-    });
   }
   const group=new THREE.Group();
   const fg=lightGeom(front);
@@ -367,20 +412,23 @@ function checkAlerts(){
   for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
     const list=sCells.get((gx+dx)+','+(gy+dy));if(!list) continue;
     for(const p of list){
-      const sx=p.dx!==undefined?p.dx:p.x,sz=p.dz!==undefined?p.dz:p.z;
-      const vx=sx-cx,vz=sz-cz,fwd=vx*fx+vz*fz,lat=vx*rx+vz*rz;
-      if(lat<-4||lat>16) continue;
-      const sp=p.types.find(t=>t[0]==='v');
-      if(sp&&fwd<3&&fwd>-15) curLimit=+sp.slice(1);
-      if(fwd<5||fwd>reach||Math.abs(Math.atan2(lat,fwd))>0.6) continue;
-      const key=p.lng.toFixed(6)+','+p.lat.toFixed(6);
-      for(const t of p.types){
-        let label=ALERT_LABELS[t]||null;
-        if(!label&&t[0]==='v'&&+t.slice(1)!==curLimit) label='Speed limit '+t.slice(1)+' km/h';
-        if(!label) continue;
-        const kind=t[0]==='v'?'v':t;
-        if(alerted.has(key+t)||recentSame(kind,sx,sz)) continue;
-        if(!best||fwd<best.fwd) best={fwd:fwd,kind:t,group:kind,label:label,key:key+t,x:sx,z:sz};
+      const places=p.places&&p.places.length?p.places:[[p.x,p.z]];
+      for(const pl of places){
+        const sx=pl[0],sz=pl[1];
+        const vx=sx-cx,vz=sz-cz,fwd=vx*fx+vz*fz,lat=vx*rx+vz*rz;
+        if(lat<-4||lat>16) continue;
+        const sp=p.types.find(t=>t[0]==='v');
+        if(sp&&fwd<3&&fwd>-15) curLimit=+sp.slice(1);
+        if(fwd<5||fwd>reach||Math.abs(Math.atan2(lat,fwd))>0.6) continue;
+        const key=sx.toFixed(1)+','+sz.toFixed(1);
+        for(const t of p.types){
+          let label=ALERT_LABELS[t]||null;
+          if(!label&&t[0]==='v'&&+t.slice(1)!==curLimit) label='Speed limit '+t.slice(1)+' km/h';
+          if(!label) continue;
+          const kind=t[0]==='v'?'v':t;
+          if(alerted.has(key+t)||recentSame(kind,sx,sz)) continue;
+          if(!best||fwd<best.fwd) best={fwd:fwd,kind:t,group:kind,label:label,key:key+t,x:sx,z:sz};
+        }
       }
     }
   }
