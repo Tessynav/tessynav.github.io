@@ -1,4 +1,4 @@
-/* TessyNav performance v11: quality, shadows, culling, rate-limited builders, road snapping, Street view, 3D car */
+/* TessyNav performance v12: quality, shadows, culling, rate-limited builders, road snapping, Street view, 3D car */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -145,7 +145,6 @@ qBtn.onclick=()=>{
 };
 
 /* ---------- Road snapping: use the roads drawn under the car, and hold it when stopped ---------- */
-function fromLocal(x,z){return [x/(111320*Math.cos(ORIGIN[1]*R))+ORIGIN[0],-z/111320+ORIGIN[1]];}
 const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
 let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null,snapAbs=null,heldRaw=null,snapCls='';
 function getRoadLayers(){
