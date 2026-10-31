@@ -1,4 +1,4 @@
-/* TessyNav performance v13: quality, shadows, culling, builders, road snapping, Street view, 3D car, real road widths */
+/* TessyNav performance v14: quality, shadows, culling, builders, road snapping, Street view, Model 3 car, real road widths */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -69,35 +69,60 @@ function enableCulling(scene){
   });
 }
 
-/* ---------- 3D car model for Tessy ---------- */
-let car3d=null;
+/* ---------- Tessy: 2024 Model 3 in Stealth Grey ---------- */
+const CAR_COLOR='#4b4e53';
+let car3d=null,carTail=null,carBeam=null;
+function sideShape(pts,w){
+  const s=new THREE.Shape();
+  pts.forEach((p,i)=>i?s.lineTo(p[0],p[1]):s.moveTo(p[0],p[1]));
+  const geo=new THREE.ExtrudeGeometry(s,{depth:w,bevelEnabled:true,bevelThickness:0.06,bevelSize:0.05,bevelSegments:2,curveSegments:6});
+  geo.translate(0,0,-w/2);geo.rotateY(-Math.PI/2);geo.computeVertexNormals();
+  return geo;
+}
 function makeCar3D(){
   const g=new THREE.Group();
-  const paint=new THREE.MeshLambertMaterial({color:0xf2f2f0});
-  const dark=new THREE.MeshLambertMaterial({color:0x14181d});
-  const glass=new THREE.MeshLambertMaterial({color:0x1d2630});
-  const tire=new THREE.MeshLambertMaterial({color:0x111111});
-  const tail=new THREE.MeshBasicMaterial({color:0xd8202a});
-  const head=new THREE.MeshBasicMaterial({color:0xfff6dc});
-  const add=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.userData.noCull=true;g.add(m);return m;};
-  const blobC=document.createElement('canvas');blobC.width=blobC.height=64;
-  const bx=blobC.getContext('2d'),bg=bx.createRadialGradient(32,32,4,32,32,32);
+  const paint=new THREE.MeshPhongMaterial({color:CAR_COLOR,shininess:70,specular:0x666666});
+  const glass=new THREE.MeshPhongMaterial({color:0x0c0f12,shininess:100,specular:0x888888});
+  const trim=new THREE.MeshLambertMaterial({color:0x101214});
+  const tire=new THREE.MeshLambertMaterial({color:0x0d0d0d});
+  const rim=new THREE.MeshPhongMaterial({color:0x2c2f33,shininess:40});
+  const head=new THREE.MeshBasicMaterial({color:0xf4f8ff});
+  carTail=new THREE.MeshBasicMaterial({color:0xb0141c});
+  const add=(geo,mat,x,y,z,shadow)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=shadow!==false;m.userData.noCull=true;g.add(m);return m;};
+
+  /* soft contact shadow */
+  const bc=document.createElement('canvas');bc.width=bc.height=64;
+  const bx=bc.getContext('2d'),bg=bx.createRadialGradient(32,32,4,32,32,32);
   bg.addColorStop(0,'rgba(0,0,0,0.75)');bg.addColorStop(0.6,'rgba(0,0,0,0.4)');bg.addColorStop(1,'rgba(0,0,0,0)');
   bx.fillStyle=bg;bx.fillRect(0,0,64,64);
-  const blob=new THREE.Mesh(new THREE.PlaneGeometry(2.8,5.6),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(blobC),transparent:true,depthWrite:false}));
+  const blob=new THREE.Mesh(new THREE.PlaneGeometry(2.7,5.6),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(bc),transparent:true,depthWrite:false}));
   blob.rotation.x=-Math.PI/2;blob.position.y=0.04;blob.userData.noCull=true;g.add(blob);
-  add(new THREE.BoxGeometry(1.86,0.55,4.7),paint,0,0.6,0);
-  add(new THREE.BoxGeometry(1.8,0.2,4.5),dark,0,0.28,0);
-  const cab=new THREE.BoxGeometry(1.66,0.55,2.5);
-  const cp=cab.attributes.position;
-  for(let i=0;i<cp.count;i++){if(cp.getY(i)>0){cp.setX(i,cp.getX(i)*0.86);cp.setZ(i,cp.getZ(i)*0.7+0.1);}}
-  cab.computeVertexNormals();
-  add(cab,glass,0,1.15,0.25);
-  add(new THREE.BoxGeometry(1.5,0.08,0.05),tail,0,0.76,2.36);
-  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,-0.6,0.7,-2.36);
-  add(new THREE.BoxGeometry(0.5,0.07,0.05),head,0.6,0.7,-2.36);
-  const wg=new THREE.CylinderGeometry(0.34,0.34,0.26,16);wg.rotateZ(Math.PI/2);
-  for(const x of [-0.88,0.88])for(const z of [-1.45,1.45]) add(wg,tire,x,0.34,z);
+
+  /* headlight beam on the road at night */
+  const hc=document.createElement('canvas');hc.width=64;hc.height=128;
+  const hx=hc.getContext('2d'),hg=hx.createLinearGradient(0,128,0,0);
+  hg.addColorStop(0,'rgba(255,245,215,0.9)');hg.addColorStop(1,'rgba(255,245,215,0)');
+  hx.fillStyle=hg;hx.beginPath();hx.moveTo(22,128);hx.lineTo(42,128);hx.lineTo(64,0);hx.lineTo(0,0);hx.closePath();hx.fill();
+  carBeam=new THREE.Mesh(new THREE.PlaneGeometry(4.2,12),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(hc),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
+  carBeam.rotation.x=-Math.PI/2;carBeam.position.set(0,0.05,-8.3);carBeam.userData.noCull=true;g.add(carBeam);
+
+  /* body: low sedan with sloping hood and fastback trunk */
+  add(sideShape([[-2.3,0.32],[2.3,0.32],[2.34,0.55],[2.3,0.86],[1.9,0.98],[1.2,1.0],[-0.6,0.98],[-1.5,0.88],[-2.2,0.74],[-2.34,0.55]],1.75),paint,0,0,0);
+  /* glass roof from windshield to rear window */
+  add(sideShape([[-0.75,0.96],[1.75,0.98],[1.15,1.36],[0.35,1.42],[-0.2,1.38]],1.42),glass,0,0,0);
+  /* lower trim, mirrors */
+  add(new THREE.BoxGeometry(1.8,0.12,4.4),trim,0,0.34,0);
+  add(new THREE.BoxGeometry(0.2,0.1,0.22),paint,-0.99,0.98,-0.55);
+  add(new THREE.BoxGeometry(0.2,0.1,0.22),paint,0.99,0.98,-0.55);
+  /* slim headlights and separate taillights */
+  for(const s of [-1,1]){
+    const hl=add(new THREE.BoxGeometry(0.44,0.05,0.06),head,s*0.6,0.76,-2.33,false);hl.rotation.y=s*0.18;
+    const tl=add(new THREE.BoxGeometry(0.42,0.08,0.05),carTail,s*0.58,0.88,2.33,false);tl.rotation.y=-s*0.12;
+  }
+  /* aero wheels */
+  const wg=new THREE.CylinderGeometry(0.34,0.34,0.24,18);wg.rotateZ(Math.PI/2);
+  const hg2=new THREE.CylinderGeometry(0.25,0.25,0.25,18);hg2.rotateZ(Math.PI/2);
+  for(const x of [-0.84,0.84])for(const z of [-1.44,1.44]){add(wg,tire,x,0.34,z);add(hg2,rim,x*1.01,0.34,z);}
   return g;
 }
 function updateCar3D(){
@@ -109,6 +134,9 @@ function updateCar3D(){
   const [x,z]=toLocal(gPos[0],gPos[1]);
   car3d.position.set(x,0,z);
   car3d.rotation.y=-gHd*R;
+  const nt=typeof nightNow==='number'?nightNow:0;
+  carBeam.material.opacity=0.45*nt;
+  carTail.color.setHex(nt>0.3?0xff2a33:0xb0141c);
 }
 
 /* ---------- Shadows only update when needed ---------- */
@@ -267,4 +295,62 @@ map.on('pitchstart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.no
 
 /* ---------- Touch: one finger takes control instantly, two fingers just zoom ---------- */
 const touchArea=map.getCanvasContainer();
-touchArea.addEventListener('touchstar
+touchArea.addEventListener('touchstart',e=>{
+  lastTouch=performance.now();
+  if(e.touches&&e.touches.length>=2){lastUserZoom=lastTouch;}
+  else{follow=false;lastDrag=lastTouch;}
+},{passive:true});
+touchArea.addEventListener('mousedown',()=>{lastTouch=performance.now();follow=false;lastDrag=lastTouch;});
+touchArea.addEventListener('wheel',()=>{lastUserZoom=performance.now();},{passive:true});
+
+/* ---------- Smooth gliding ---------- */
+const baseOnPos=onPos,baseView=view;
+onPos=function(p){
+  baseOnPos(p);
+  gpsAcc=p.coords.accuracy;
+  gT={pos:[p.coords.longitude,p.coords.latitude],hd:heading,spd:p.coords.speed||0,t:performance.now()};
+  showGpsStatus();
+};
+view=function(pos,ms){
+  if(watchId!==null&&gT){follow=true;return;}
+  baseView(pos,ms);
+};
+function glideFrame(){
+  requestAnimationFrame(glideFrame);
+  if(!gT||watchId===null) return;
+  const now=performance.now(),dt=Math.min(1.2,(now-gT.t)/1000);
+  const moveHd=(snapHd!==null&&gT.spd<=3)?snapHd:gT.hd;
+  const h=moveHd*R,m=gT.spd*dt;
+  const pred=[gT.pos[0]+(m*Math.sin(h))/(111320*Math.cos(gT.pos[1]*R)),gT.pos[1]+(m*Math.cos(h))/111320];
+  if(now-snapLast>200) updateSnap(pred,gT.hd,gT.spd);
+  gOff[0]+=(snapOff[0]-gOff[0])*0.15;gOff[1]+=(snapOff[1]-gOff[1])*0.15;
+  const [px,pz]=toLocal(pred[0],pred[1]);
+  const target=fromLocal(px+gOff[0],pz+gOff[1]);
+  if(!gPos) gPos=target.slice();
+  gPos[0]+=(target[0]-gPos[0])*0.25;gPos[1]+=(target[1]-gPos[1])*0.25;
+  const wantHd=gT.spd>1?(snapHd!==null?snapHd:gT.hd):(snapHd!==null?snapHd:gHd);
+  const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
+  car.setLngLat(gPos).setRotation(gHd);
+  updateCar3D();
+  map.triggerRepaint();
+  if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
+  const cs=camSpec();
+  gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
+  gPitch+=(cs.pitch-gPitch)*0.06;
+  const H=map.getContainer().clientHeight||800;
+  map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
+    padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
+}
+requestAnimationFrame(glideFrame);
+
+/* ---------- Follow resumes automatically after a touch, once driving ---------- */
+setInterval(()=>{
+  if(follow||watchId===null||!gT) return;
+  if(performance.now()-lastDrag>10000&&gT.spd>2){follow=true;btn.textContent='Recenter';}
+},2000);
+
+map.on('load',()=>{
+  fixRoadWidths();
+  applyQuality();
+  setTimeout(applyQuality,4000);
+});
