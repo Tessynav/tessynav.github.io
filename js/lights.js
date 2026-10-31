@@ -1,12 +1,13 @@
-/* TessyNav lights v3: street lamps with night glow, traffic lights per real travel direction */
+/* TessyNav lights v4: street lamps with night glow, bright traffic lights per travel direction */
 const LC=0.005;
 const lCells=new Map(),lMeshes=new Map();
 let lFailed=false,lLast=0,lDirtyAll=false;
-let lMatPole=null,lMatHead=null,lMatPool=null,lMatGlow=null;
+let lMatPole=null,lMatHead=null,lMatPool=null,lMatGlow=null,lMatLens=null,lMatSigGlow=null;
 const sigCells=new Map();
 let sigCount=0;
 const LAMP={motorway:[50,11,true,12],trunk:[45,10,true,11],primary:[38,10,true,9.5],secondary:[36,9,true,9],tertiary:[34,8,false,8.5],minor:[32,7.5,false,8]};
-const LCOL={pole:new THREE.Color('#5d6166'),sigBox:new THREE.Color('#2b2d30'),red:new THREE.Color('#5a1c1c'),amber:new THREE.Color('#5a4a1c'),green:new THREE.Color('#1c4a2c')};
+const LCOL={pole:new THREE.Color('#5d6166'),sigBox:new THREE.Color('#1f2124'),
+  red:new THREE.Color('#ff3a2f'),amber:new THREE.Color('#ffb31a'),green:new THREE.Color('#30e070')};
 
 function lightAcc(withColor){
   const A={pos:[],nor:[],col:[],uv:[],idx:[],base:0};
@@ -59,6 +60,8 @@ function makeLightMaterials(){
   lMatHead=new THREE.MeshBasicMaterial({color:0x9a9a9a});
   lMatPool=new THREE.MeshBasicMaterial({map:radialTex('255,214,150'),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0});
   lMatGlow=new THREE.PointsMaterial({map:radialTex('255,225,170'),size:12,sizeAttenuation:false,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0});
+  lMatLens=new THREE.MeshBasicMaterial({vertexColors:true});
+  lMatSigGlow=new THREE.PointsMaterial({map:radialTex('255,255,255'),vertexColors:true,size:10,sizeAttenuation:false,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0.3});
 }
 
 /* Real traffic light locations from feux.csv */
@@ -126,7 +129,6 @@ function closestOn(r,sx,sz,maxD){
   }
   return best;
 }
-/* Which way does traffic flow? Use oneway if known, else detect the other half of a divided road */
 function travelDirs(r,best,near){
   if(r.oneway===1) return [1];
   if(r.oneway===-1) return [-1];
@@ -145,7 +147,8 @@ function travelDirs(r,best,near){
 function buildLightCell(ck){
   const [gx,gy]=ck.split(',').map(Number);
   const cell=lCells.get(ck)||new Map();
-  const poles=lightAcc(true),heads=lightAcc(false),pools=lightAcc(false),glow=[];
+  const poles=lightAcc(true),heads=lightAcc(false),pools=lightAcc(false),lenses=lightAcc(true);
+  const glow=[],sigGlow=[],sigGlowCol=[];
   const occ=new Set();
   /* Street lamps */
   for(const r0 of cell.values()){
@@ -174,7 +177,7 @@ function buildLightCell(ck){
       }
     }
   }
-  /* Traffic lights: one pole per real approaching direction, at the stop line, on the right side */
+  /* Traffic lights: one per real approaching direction, bright lenses facing drivers */
   const sigs=sigCells.get(ck)||[];
   if(sigs.length){
     const near=[];
@@ -201,11 +204,14 @@ function buildLightCell(ck){
           const ax=-rx,az=-rz,reach=Math.min(r.W*0.75,7);
           poles.box(px+ax*reach/2,pz+az*reach/2,ax,az,reach,0.16,6.0,6.2,LCOL.pole);
           const hx=px+ax*(reach-0.3),hz=pz+az*(reach-0.3);
-          poles.box(hx,hz,fx,fz,0.4,0.42,4.9,6.0,LCOL.sigBox);
-          const fxo=hx-fx*0.05,fzo=hz-fz*0.05;
-          poles.box(fxo,fzo,fx,fz,0.42,0.30,5.65,5.9,LCOL.red);
-          poles.box(fxo,fzo,fx,fz,0.42,0.30,5.32,5.57,LCOL.amber);
-          poles.box(fxo,fzo,fx,fz,0.42,0.30,4.99,5.24,LCOL.green);
+          poles.box(hx,hz,fx,fz,0.42,0.5,4.75,6.0,LCOL.sigBox);
+          const lx=hx-fx*0.24,lz=hz-fz*0.24;
+          const lens=[[LCOL.red,5.62,5.92],[LCOL.amber,5.23,5.53],[LCOL.green,4.84,5.14]];
+          for(const [colr,y0,y1] of lens){
+            lenses.box(lx,lz,fx,fz,0.06,0.32,y0,y1,colr);
+            sigGlow.push(lx-fx*0.1,(y0+y1)/2,lz-fz*0.1);
+            sigGlowCol.push(colr.r,colr.g,colr.b);
+          }
         }
       }
     }
@@ -215,11 +221,19 @@ function buildLightCell(ck){
   if(pg){const m=new THREE.Mesh(pg,lMatPole);m.castShadow=true;m.frustumCulled=false;group.add(m);}
   const hg=lightGeom(heads);
   if(hg){const m=new THREE.Mesh(hg,lMatHead);m.frustumCulled=false;group.add(m);}
+  const lg=lightGeom(lenses);
+  if(lg){const m=new THREE.Mesh(lg,lMatLens);m.frustumCulled=false;group.add(m);}
   const qg=lightGeom(pools);
   if(qg){const m=new THREE.Mesh(qg,lMatPool);m.frustumCulled=false;m.renderOrder=2;group.add(m);}
   if(glow.length){
     const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(glow,3));
     const p=new THREE.Points(gg,lMatGlow);p.frustumCulled=false;group.add(p);
+  }
+  if(sigGlow.length){
+    const sg=new THREE.BufferGeometry();
+    sg.setAttribute('position',new THREE.Float32BufferAttribute(sigGlow,3));
+    sg.setAttribute('color',new THREE.Float32BufferAttribute(sigGlowCol,3));
+    const p=new THREE.Points(sg,lMatSigGlow);p.frustumCulled=false;group.add(p);
   }
   return group;
 }
@@ -231,6 +245,7 @@ function updateLightNight(){
   if(lMatHead) lMatHead.color.set(mixHex('#9a9a9a','#ffe2a8',nt));
   if(lMatPool) lMatPool.opacity=0.6*nt;
   if(lMatGlow) lMatGlow.opacity=0.9*nt;
+  if(lMatSigGlow) lMatSigGlow.opacity=0.3+0.6*nt;
 }
 
 function updateLights(force){
