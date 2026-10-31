@@ -1,4 +1,4 @@
-/* TessyNav performance v19: quality, shadows, culling, builders, snapping (screen roads first, smooth sideways), Street view, Model 3 car */
+/* TessyNav performance v20: quality, shadows, culling, roads, Model 3 car, and the rebuilt motion system (filter, match, smooth path) */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -69,9 +69,9 @@ function enableCulling(scene){
   });
 }
 
-/* ---------- Tessy: 2024 Model 3 in Stealth Grey ---------- */
-const CAR_COLOR='#4b4e53';
-let car3d=null,carTail=null,carBeam=null;
+/* ---------- Tessy: 2024 Model 3 in Stealth Grey, with steering front wheels ---------- */
+const CAR_COLOR='#4b4e53',WHEELBASE=2.875,REAR_AXLE=1.44;
+let car3d=null,carTail=null,carBeam=null,carFrontWheels=[];
 function sideShape(pts,w){
   const s=new THREE.Shape();
   pts.forEach((p,i)=>i?s.lineTo(p[0],p[1]):s.moveTo(p[0],p[1]));
@@ -112,18 +112,25 @@ function makeCar3D(){
   }
   const wg=new THREE.CylinderGeometry(0.34,0.34,0.24,18);wg.rotateZ(Math.PI/2);
   const hg2=new THREE.CylinderGeometry(0.25,0.25,0.25,18);hg2.rotateZ(Math.PI/2);
-  for(const x of [-0.84,0.84])for(const z of [-1.44,1.44]){add(wg,tire,x,0.34,z);add(hg2,rim,x*1.01,0.34,z);}
+  carFrontWheels=[];
+  for(const x of [-0.84,0.84])for(const z of [-REAR_AXLE,REAR_AXLE]){
+    const w=new THREE.Group();w.position.set(x,0.34,z);
+    const t=new THREE.Mesh(wg,tire);t.castShadow=true;t.userData.noCull=true;w.add(t);
+    const r=new THREE.Mesh(hg2,rim);r.position.x=x>0?0.01:-0.01;r.userData.noCull=true;w.add(r);
+    g.add(w);
+    if(z<0) carFrontWheels.push(w);
+  }
   return g;
 }
-function updateCar3D(){
-  if(!treeScene||!gPos) return;
+function updateCar3D(cx,cz,hd,steer){
+  if(!treeScene) return;
   if(!car3d){
     car3d=makeCar3D();treeScene.add(car3d);
     try{car.getElement().style.display='none';}catch(e){}
   }
-  const [x,z]=toLocal(gPos[0],gPos[1]);
-  car3d.position.set(x,0,z);
-  car3d.rotation.y=-gHd*R;
+  car3d.position.set(cx,0,cz);
+  car3d.rotation.y=-hd*R;
+  for(const w of carFrontWheels) w.rotation.y=-steer;
   const nt=typeof nightNow==='number'?nightNow:0;
   carBeam.material.opacity=0.45*nt;
   carTail.color.setHex(nt>0.3?0xff2a33:0xb0141c);
@@ -190,12 +197,42 @@ qBtn.onclick=()=>{
   cacheSet('quality',quality);showQuality();applyQuality();
 };
 
-/* ---------- Road snapping: screen roads first, hidden road data (bridges) as backup ---------- */
+/* =====================================================================
+   MOTION SYSTEM
+   1) Kalman filter on GPS (position + velocity)
+   2) Road matching once per GPS update (sticky, forks, one-ways, bridges)
+   3) Smooth curve through matched points, drawn 1 second behind
+   4) Car follows the curve, pivots on the rear axle, front wheels steer
+   ===================================================================== */
+const DELAY=1050;
 const SNAP_W={motorway:11,trunk:10,primary:10,secondary:9,tertiary:8,minor:7.5,service:5};
 const SNAP_CLASSES=['motorway','trunk','primary','secondary','tertiary','minor','service'];
 const SNAP_MAX=8,SNAP_ALIGN=0.8;
-let snapOff=[0,0],snapHd=null,snapLast=0,roadLayerIds=null,snapOk=false,gpsAcc=null,snapCls='',snapBridge=false;
-let stableHd=null,turnRate=0,lastHdV=null,lastHdT=0,curRoad=null,switchVotes=0,lastSnapOkT=0,slowMode=false;
+let snapOff=[0,0],snapOk=false,snapCls='',snapBridge=false,gpsAcc=null,roadLayerIds=null;
+let curRoad=null,switchVotes=0,lostCount=0,lastHd=null;
+let kfX=null,kfZ=null,kfT=0;
+let pts=[],corr=[0,0];
+let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,lastFrameT=0,steerNow=0,lastPathHd=null;
+
+/* ---- 1) Kalman filter, one per axis: state = position, velocity ---- */
+function kfPredict(a,dt,q){
+  a.p+=a.v*dt;
+  const P=a.P,dt2=dt*dt,dt3=dt2*dt,dt4=dt3*dt;
+  const p00=P[0][0]+dt*(P[1][0]+P[0][1])+dt2*P[1][1],p01=P[0][1]+dt*P[1][1],p10=P[1][0]+dt*P[1][1],p11=P[1][1];
+  a.P=[[p00+q*dt4/4,p01+q*dt3/2],[p10+q*dt3/2,p11+q*dt2]];
+}
+function kfUpdPos(a,z,r){
+  const P=a.P,S=P[0][0]+r,k0=P[0][0]/S,k1=P[1][0]/S,y=z-a.p;
+  a.p+=k0*y;a.v+=k1*y;
+  a.P=[[(1-k0)*P[0][0],(1-k0)*P[0][1]],[P[1][0]-k1*P[0][0],P[1][1]-k1*P[0][1]]];
+}
+function kfUpdVel(a,z,r){
+  const P=a.P,S=P[1][1]+r,k0=P[0][1]/S,k1=P[1][1]/S,y=z-a.v;
+  a.p+=k0*y;a.v+=k1*y;
+  a.P=[[P[0][0]-k0*P[1][0],P[0][1]-k0*P[1][1]],[(1-k1)*P[1][0],(1-k1)*P[1][1]]];
+}
+
+/* ---- 2) Road matching ---- */
 function getRoadLayers(){
   if(roadLayerIds) return roadLayerIds;
   roadLayerIds=map.getStyle().layers.filter(l=>l.type==='line'&&l['source-layer']==='transportation'&&
@@ -214,25 +251,8 @@ function sourceRoads(){
     return map.querySourceFeatures('openmaptiles',{sourceLayer:'transportation',filter:['in',['get','class'],['literal',SNAP_CLASSES]]});
   }catch(e){return [];}
 }
-function showGpsStatus(){
-  if(gpsAcc===null) return;
-  const mv=Math.round(Math.hypot(snapOff[0],snapOff[1]));
-  status.textContent='GPS '+Math.round(gpsAcc)+' m · '+(snapOk?('on road · moved '+mv+' m'+(snapCls?' ('+snapCls+(snapBridge?', bridge':'')+')':'')):'finding road');
-}
-function snapRelease(){snapOff=[0,0];snapHd=null;snapOk=false;curRoad=null;switchVotes=0;snapBridge=false;}
-function snapFail(){
-  if(snapOk&&performance.now()-lastSnapOkT<1000){
-    snapOff=[snapOff[0]*0.6,snapOff[1]*0.6];showGpsStatus();return;
-  }
-  snapRelease();showGpsStatus();
-}
-function onCurRoad(x,z){
-  const r=curRoad,t=(x-r.qx)*r.tx+(z-r.qz)*r.tz;
-  const px=r.qx+r.tx*t,pz=r.qz+r.tz*t;
-  return [px-r.tz*r.lane,pz+r.tx*r.lane,px,pz];
-}
-function findCandidates(feats,pos,x,z,fx,fz){
-  const lng=pos[0],lat=pos[1],pad=0.00025;
+function findCandidates(feats,lng,lat,x,z,fx,fz){
+  const pad=0.00025;
   let best=null,cont=null;
   for(const f of feats){
     const pr=f.properties||{},W=SNAP_W[pr.class];
@@ -256,7 +276,7 @@ function findCandidates(feats,pos,x,z,fx,fz){
         if(Math.abs(align)<SNAP_ALIGN) continue;
         if((oneway===1&&align<0)||(oneway===-1&&align>0)) continue;
         if(align<0){tx=-tx;tz=-tz;}
-        const c={d:d,qx:qx,qz:qz,tx:tx,tz:tz,W:W,oneway:oneway,lane:oneway?0:W/4,cls:pr.class,bridge:pr.brunnel==='bridge'};
+        const c={d:d,qx:qx,qz:qz,tx:tx,tz:tz,lane:oneway?0:W/4,cls:pr.class,bridge:pr.brunnel==='bridge'};
         if(!best||d<best.d) best=c;
         if(curRoad){
           const ang=curRoad.tx*tx+curRoad.tz*tz;
@@ -268,21 +288,20 @@ function findCandidates(feats,pos,x,z,fx,fz){
   }
   return {best:best,cont:cont};
 }
-function updateSnap(pos,spd,hd){
-  snapLast=performance.now();
-  const [x,z]=toLocal(pos[0],pos[1]);
-  slowMode=slowMode?spd<1.8:spd<0.8;
-  if(slowMode){
-    if(snapOk&&curRoad){
-      const s=onCurRoad(x,z),ox=s[0]-x,oz=s[1]-z;
-      if(Math.hypot(ox,oz)<=SNAP_MAX){snapOff=[ox,oz];showGpsStatus();return;}
-    }
-    snapRelease();showGpsStatus();return;
+function onCurRoad(x,z){
+  const r=curRoad,t=(x-r.qx)*r.tx+(z-r.qz)*r.tz;
+  const px=r.qx+r.tx*t,pz=r.qz+r.tz*t;
+  return [px-r.tz*r.lane,pz+r.tx*r.lane];
+}
+function matchRoad(x,z,spd){
+  if(spd<1.0){
+    if(curRoad){const s=onCurRoad(x,z);if(Math.hypot(s[0]-x,s[1]-z)<=SNAP_MAX) return {x:s[0],z:s[1],tx:curRoad.tx,tz:curRoad.tz};}
+    return null;
   }
-  if(hd===null){snapFail();return;}
-  const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
-  let c=findCandidates(renderedRoads(pos),pos,x,z,fx,fz);
-  if(!c.best) c=findCandidates(sourceRoads(),pos,x,z,fx,fz);
+  if(lastHd===null) return null;
+  const fx=Math.sin(lastHd*R),fz=-Math.cos(lastHd*R),ll=fromLocal(x,z);
+  let c=findCandidates(renderedRoads(ll),ll[0],ll[1],x,z,fx,fz);
+  if(!c.best) c=findCandidates(sourceRoads(),ll[0],ll[1],x,z,fx,fz);
   const best=c.best,cont=c.cont;
   let pick=null;
   if(cont&&best&&best!==cont){
@@ -291,19 +310,94 @@ function updateSnap(pos,spd,hd){
     else{pick=cont;switchVotes=0;}
   }else if(cont){pick=cont;switchVotes=0;}
   else pick=best;
-  if(!pick){snapFail();return;}
+  if(!pick){lostCount++;if(lostCount>=2) curRoad=null;return null;}
   const sx=pick.qx-pick.tz*pick.lane,sz=pick.qz+pick.tx*pick.lane;
-  const ox=sx-x,oz=sz-z;
-  if(Math.hypot(ox,oz)>SNAP_MAX){snapFail();return;}
-  curRoad=pick;snapOff=[ox,oz];
-  snapHd=(Math.atan2(pick.tx,-pick.tz)/R+360)%360;
-  snapCls=pick.cls||'';snapBridge=!!pick.bridge;
-  snapOk=true;lastSnapOkT=performance.now();showGpsStatus();
+  if(Math.hypot(sx-x,sz-z)>SNAP_MAX){lostCount++;if(lostCount>=2) curRoad=null;return null;}
+  lostCount=0;curRoad=pick;
+  return {x:sx,z:sz,tx:pick.tx,tz:pick.tz};
 }
+
+/* ---- 3) Smooth curve (Hermite) through matched points ---- */
+function hermite(a,b,tr){
+  const T=(b.t-a.t)/1000;
+  const u=Math.max(0,Math.min(1,(tr-a.t)/(b.t-a.t))),u2=u*u,u3=u2*u;
+  const h00=2*u3-3*u2+1,h10=u3-2*u2+u,h01=-2*u3+3*u2,h11=u3-u2;
+  const d00=6*u2-6*u,d10=3*u2-4*u+1,d01=-6*u2+6*u,d11=3*u2-2*u;
+  return {
+    x:h00*a.x+h10*T*a.vx+h01*b.x+h11*T*b.vx,
+    z:h00*a.z+h10*T*a.vz+h01*b.z+h11*T*b.vz,
+    dx:(d00*a.x+d10*T*a.vx+d01*b.x+d11*T*b.vx)/T,
+    dz:(d00*a.z+d10*T*a.vz+d01*b.z+d11*T*b.vz)/T
+  };
+}
+function pathAt(tr){
+  const n=pts.length;
+  if(!n) return null;
+  if(n===1||tr<=pts[0].t){const a=pts[0];return {x:a.x,z:a.z,dx:a.vx,dz:a.vz};}
+  for(let i=0;i<n-1;i++){if(tr<pts[i+1].t) return hermite(pts[i],pts[i+1],tr);}
+  const a=pts[n-1],ext=(tr-a.t)/1000;
+  if(ext<=1){
+    const b={t:a.t+1000,x:a.x+a.vx,z:a.z+a.vz,vx:a.vx,vz:a.vz};
+    return hermite(a,b,tr);
+  }
+  const e=Math.min(ext,2);
+  return {x:a.x+a.vx*e,z:a.z+a.vz*e,dx:a.vx,dz:a.vz};
+}
+
+/* ---- GPS input ---- */
+function showGpsStatus(){
+  if(gpsAcc===null) return;
+  const mv=Math.round(Math.hypot(snapOff[0],snapOff[1]));
+  status.textContent='GPS '+Math.round(gpsAcc)+' m · '+(snapOk?('on road · moved '+mv+' m'+(snapCls?' ('+snapCls+(snapBridge?', bridge':'')+')':'')):'finding road');
+}
+const baseOnPos=onPos,baseView=view;
+onPos=function(p){
+  baseOnPos(p);
+  const c=p.coords,now=performance.now();
+  gpsAcc=c.accuracy;
+  const [x,z]=toLocal(c.longitude,c.latitude);
+  if(!kfX||now-kfT>5000){
+    kfX={p:x,v:0,P:[[25,0],[0,25]]};kfZ={p:z,v:0,P:[[25,0],[0,25]]};pts=[];corr=[0,0];
+  }else{
+    const dt=Math.max(0.05,(now-kfT)/1000);
+    kfPredict(kfX,dt,4);kfPredict(kfZ,dt,4);
+  }
+  kfT=now;
+  const r=Math.pow(Math.max(3,c.accuracy||5),2);
+  kfUpdPos(kfX,x,r);kfUpdPos(kfZ,z,r);
+  const spd=c.speed;
+  if(spd!=null&&!isNaN(spd)){
+    if(spd<0.3){kfUpdVel(kfX,0,0.02);kfUpdVel(kfZ,0,0.02);}
+    else if(c.heading!=null&&!isNaN(c.heading)){
+      const h=c.heading*R;
+      kfUpdVel(kfX,spd*Math.sin(h),0.36);kfUpdVel(kfZ,-spd*Math.cos(h),0.36);
+    }
+  }
+  const fx=kfX.p,fz=kfZ.p,vx=kfX.v,vz=kfZ.v,fs=Math.hypot(vx,vz);
+  if(fs>1.5) lastHd=(Math.atan2(vx,-vz)/R+360)%360;
+  const m=matchRoad(fx,fz,fs);
+  let px=fx,pz=fz,pvx=vx,pvz=vz;
+  if(m){
+    px=m.x;pz=m.z;
+    const along=vx*m.tx+vz*m.tz;pvx=m.tx*along;pvz=m.tz*along;
+    snapOk=true;snapCls=curRoad?curRoad.cls:'';snapBridge=!!(curRoad&&curRoad.bridge);
+  }else{snapOk=false;snapCls='';snapBridge=false;}
+  snapOff=[px-fx,pz-fz];
+  const tr=now-DELAY,before=pathAt(tr);
+  pts.push({t:now,x:px,z:pz,vx:pvx,vz:pvz});
+  if(pts.length>8) pts.shift();
+  const after=pathAt(tr);
+  if(before&&after){corr[0]+=before.x-after.x;corr[1]+=before.z-after.z;}
+  gT={pos:[c.longitude,c.latitude],spd:spd||0,t:now};
+  showGpsStatus();
+};
+view=function(pos,ms){
+  if(watchId!==null&&gT){follow=true;return;}
+  baseView(pos,ms);
+};
 
 /* ---------- Camera: Street or Map view, speed-based, plus your pinch adjustment ---------- */
 let userZoomDelta=+(cacheGet('zoomDelta3_'+viewMode)||0),lastUserZoom=0,lastDrag=0,lastTouch=0;
-let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,gOff=[0,0],lastFrameT=0;
 function camSpec(){
   const kmh=gT?gT.spd*3.6:0;
   if(viewMode==='street'){
@@ -328,8 +422,6 @@ map.on('zoomend',e=>{
 map.on('dragstart',()=>{lastDrag=performance.now();follow=false;});
 map.on('rotatestart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.now();}});
 map.on('pitchstart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.now();}});
-
-/* ---------- Touch: one finger takes control instantly, two fingers just zoom ---------- */
 const touchArea=map.getCanvasContainer();
 touchArea.addEventListener('touchstart',e=>{
   lastTouch=performance.now();
@@ -339,56 +431,31 @@ touchArea.addEventListener('touchstart',e=>{
 touchArea.addEventListener('mousedown',()=>{lastTouch=performance.now();follow=false;lastDrag=lastTouch;});
 touchArea.addEventListener('wheel',()=>{lastUserZoom=performance.now();},{passive:true});
 
-/* ---------- Smooth gliding, following curves ---------- */
-const baseOnPos=onPos,baseView=view;
-onPos=function(p){
-  baseOnPos(p);
-  gpsAcc=p.coords.accuracy;
-  const spd=p.coords.speed||0,now=performance.now();
-  if(spd>2){
-    if(lastHdV!==null){
-      const d=((heading-lastHdV+540)%360)-180,dts=(now-lastHdT)/1000;
-      if(dts>0.3&&dts<3) turnRate=turnRate*0.4+Math.max(-35,Math.min(35,d/dts))*0.6;
-    }
-    lastHdV=heading;lastHdT=now;stableHd=heading;
-  }else{turnRate=0;}
-  gT={pos:[p.coords.longitude,p.coords.latitude],hd:heading,spd:spd,t:now};
-  showGpsStatus();
-};
-view=function(pos,ms){
-  if(watchId!==null&&gT){follow=true;return;}
-  baseView(pos,ms);
-};
+/* ---- 4) Every frame: move the car along the curve like a real car ---- */
 function glideFrame(){
   requestAnimationFrame(glideFrame);
   const now=performance.now(),fdt=Math.min(0.1,lastFrameT?(now-lastFrameT)/1000:0.016);
   lastFrameT=now;
-  if(!gT||watchId===null) return;
-  const dt=Math.min(1.0,(now-gT.t)/1000);
-  const baseHd=stableHd!==null?stableHd:gT.hd;
-  const rate=gT.spd>2?turnRate:0;
-  const midHd=baseHd+rate*dt/2,predHd=(baseHd+rate*dt+360)%360;
-  const m=gT.spd*dt*0.9,h=midHd*R;
-  const pred=[gT.pos[0]+(m*Math.sin(h))/(111320*Math.cos(gT.pos[1]*R)),gT.pos[1]+(m*Math.cos(h))/111320];
-  if(now-snapLast>200) updateSnap(pred,gT.spd,stableHd!==null?predHd:null);
-  /* sideways corrections: smoothed and limited to about 2.5 m per second */
-  const ex=snapOff[0]-gOff[0],ez=snapOff[1]-gOff[1],ed=Math.hypot(ex,ez);
-  if(ed>0.001){
-    const step=Math.min(ed*Math.min(1,fdt*3),2.5*fdt);
-    gOff[0]+=ex/ed*step;gOff[1]+=ez/ed*step;
-  }
-  const [px,pz]=toLocal(pred[0],pred[1]);
-  const target=fromLocal(px+gOff[0],pz+gOff[1]);
-  if(!gPos) gPos=target.slice();
-  gPos[0]+=(target[0]-gPos[0])*0.2;gPos[1]+=(target[1]-gPos[1])*0.2;
-  let wantHd=gHd;
-  if(gT.spd>1&&stableHd!==null){
-    wantHd=predHd;
-    if(snapHd!==null&&Math.abs(rate)<4){const df=Math.abs(((snapHd-predHd+540)%360)-180);if(df<20) wantHd=snapHd;}
-  }
-  const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
+  if(watchId===null||!pts.length) return;
+  const p=pathAt(now-DELAY);
+  if(!p) return;
+  const k=Math.exp(-fdt/0.35);corr[0]*=k;corr[1]*=k;
+  const rx=p.x+corr[0],rz=p.z+corr[1];
+  const v=Math.hypot(p.dx,p.dz);
+  let hd=lastPathHd!==null?lastPathHd:(lastHd!==null?lastHd:gHd);
+  if(v>0.7) hd=(Math.atan2(p.dx,-p.dz)/R+360)%360;
+  const dh=((hd-gHd+540)%360)-180;
+  const newHd=(gHd+dh*Math.min(1,fdt*8)+360)%360;
+  const turned=((newHd-gHd+540)%360)-180;
+  gHd=newHd;lastPathHd=hd;
+  let wantSteer=0;
+  if(v>1){const curv=(turned*R)/(v*fdt);wantSteer=Math.max(-0.5,Math.min(0.5,Math.atan(WHEELBASE*curv)));}
+  steerNow+=(wantSteer-steerNow)*Math.min(1,fdt*6);
+  const fx=Math.sin(gHd*R),fz=-Math.cos(gHd*R);
+  const cx=rx+fx*REAR_AXLE,cz=rz+fz*REAR_AXLE;
+  gPos=fromLocal(cx,cz);
   car.setLngLat(gPos).setRotation(gHd);
-  updateCar3D();
+  updateCar3D(cx,cz,gHd,steerNow);
   map.triggerRepaint();
   if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
   const cs=camSpec();
