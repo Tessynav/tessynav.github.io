@@ -32,17 +32,18 @@ function cacheSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}
 
 const ORIGIN=[-73.568,45.459];
 const startPos=cacheGet('lastPos')||ORIGIN;
-const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:startPos,zoom:17,pitch:60});
+const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:startPos,zoom:17,pitch:60,
+  attributionControl:{customAttribution:'Arbres : Ville de Montréal (CC BY 4.0)'}});
 const treesEl=document.getElementById('trees');
 
-/* ---------- Smooth 3D trees (three.js, batched) ---------- */
+/* ---------- Smooth 3D trees (three.js, drawn by area) ---------- */
 let treeCount=0,treesFailed=false,treeScene=null,treeMat=null;
-let pending=[];
-const cells=new Set(),doneAreas=new Set();
+const C=0.005;
+const buckets=new Map(),cellMeshes=new Map(),dirty=new Set(),occ=new Set(),doneAreas=new Set();
 const leafCols=['#5b7f3a','#4f7334','#6a8a42','#7d8a3a','#b9772f','#a8552a'].map(c=>new THREE.Color(c));
 const trunkCol=new THREE.Color('#5a4030');
 const trunkGeo=new THREE.CylinderGeometry(0.18,0.28,3.2,6);
-const ballGeo=new THREE.SphereGeometry(1,10,7);
+const ballGeo=new THREE.SphereGeometry(1,9,6);
 
 const treeLayer={
   id:'trees3d',type:'custom',renderingMode:'3d',
@@ -70,21 +71,23 @@ const treeLayer={
   }
 };
 
-function addTree(seed,lng,lat){
+function addTree(seed,lng,lat,size){
   if(treesFailed) return false;
   const k=Math.round(lng*9000)+','+Math.round(lat*12000);
-  if(cells.has(k)) return false; cells.add(k);
-  pending.push({
+  if(occ.has(k)) return false; occ.add(k);
+  const ck=Math.floor(lng/C)+','+Math.floor(lat/C);
+  let b=buckets.get(ck); if(!b){b=[];buckets.set(ck,b);}
+  b.push({
     x:(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R),
     z:-(lat-ORIGIN[1])*111320,
-    s:0.8+Math.random()*0.45,
-    col:leafCols[seed%leafCols.length],
+    s:size||(0.8+Math.random()*0.45),
+    col:leafCols[Math.abs(seed)%leafCols.length],
     jx:Math.random()-.5, jz:Math.random()-.5
   });
-  treeCount++; return true;
+  dirty.add(ck); treeCount++; return true;
 }
 
-function buildBatch(list){
+function buildMesh(list){
   const pos=[],nor=[],col=[],idx=[];let base=0;
   const m=new THREE.Matrix4(),nm=new THREE.Matrix3(),v=new THREE.Vector3(),q=new THREE.Quaternion(),p=new THREE.Vector3(),sc=new THREE.Vector3();
   function add(g,c){
@@ -110,26 +113,74 @@ function buildBatch(list){
   g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   g.setIndex(idx);
   const mesh=new THREE.Mesh(g,treeMat);mesh.frustumCulled=false;
-  treeScene.add(mesh);
+  return mesh;
 }
 
-function refreshTrees(){
+function updateTrees(){
   treesEl.textContent='Trees: '+treeCount;
   if(treesFailed||!treeScene) return;
-  if(pending.length){buildBatch(pending);pending=[];}
+  const c=map.getCenter(),cx=Math.floor(c.lng/C),cy=Math.floor(c.lat/C);
+  for(const [ck,mesh] of cellMeshes){
+    const [x,y]=ck.split(',').map(Number);
+    if(Math.abs(x-cx)>2||Math.abs(y-cy)>2){treeScene.remove(mesh);mesh.geometry.dispose();cellMeshes.delete(ck);}
+  }
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const ck=(cx+dx)+','+(cy+dy),b=buckets.get(ck);
+    if(!b) continue;
+    if(cellMeshes.has(ck)&&!dirty.has(ck)) continue;
+    const old=cellMeshes.get(ck);
+    if(old){treeScene.remove(old);old.geometry.dispose();}
+    const mesh=buildMesh(b);treeScene.add(mesh);cellMeshes.set(ck,mesh);dirty.delete(ck);
+  }
   map.triggerRepaint();
 }
 
-/* ---------- Tree loading: tiles + cache + backup server ---------- */
-const TILE=0.01;
+/* ---------- Tree data: our own Montreal files first ---------- */
+const T=0.05;
+let treeIndex=null;
+const ownLoaded=new Set();
+async function loadOwn(k){
+  ownLoaded.add(k);
+  try{
+    const r=await fetch('trees/'+k+'.json');
+    if(!r.ok) throw new Error('missing');
+    const a=await r.json();
+    const [tx,ty]=k.split('_').map(Number);
+    for(let i=0;i<a.length;i+=3){
+      const lng=tx*T+a[i]/1e5,lat=ty*T+a[i+1]/1e5,d=a[i+2];
+      const size=d>0?Math.min(1.6,Math.max(0.55,0.5+d/45)):0;
+      addTree(a[i]+a[i+1],lng,lat,size||undefined);
+    }
+    updateTrees();
+  }catch(e){ownLoaded.delete(k);}
+}
+function loadAround(lng,lat){
+  if(!treeIndex) return;
+  const tx=Math.floor(lng/T),ty=Math.floor(lat/T);
+  const fx=lng-tx*T,fy=lat-ty*T;
+  const xs=[0],ys=[0];
+  if(fx<0.012)xs.push(-1); if(T-fx<0.012)xs.push(1);
+  if(fy<0.009)ys.push(-1); if(T-fy<0.009)ys.push(1);
+  for(const dx of xs)for(const dy of ys){
+    const k=(tx+dx)+'_'+(ty+dy);
+    if(treeIndex.has(k)&&!ownLoaded.has(k)) loadOwn(k);
+  }
+  if(!treeIndex.has(tx+'_'+ty)) loadAroundOSM(lng,lat);
+}
+fetch('trees/index.json').then(r=>r.ok?r.json():null)
+  .then(j=>{treeIndex=new Set(j?j.tiles:[]);loadAround(startPos[0],startPos[1]);})
+  .catch(()=>{treeIndex=new Set();loadAround(startPos[0],startPos[1]);});
+
+/* ---------- Backup: OpenStreetMap trees outside Montreal ---------- */
+const OT=0.01;
 const SERVERS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-const loadedTiles=new Set();
+const osmTiles=new Set();
 let queue=[],working=false;
 function addTreeList(list){for(const t of list) addTree(t[0],t[1],t[2]);}
 async function fetchTile(tx,ty){
   const key='tt:'+tx+','+ty;
-  if(loadedTiles.has(key)) return;
-  const s=(ty*TILE).toFixed(4),w=(tx*TILE).toFixed(4),n=((ty+1)*TILE).toFixed(4),e=((tx+1)*TILE).toFixed(4);
+  if(osmTiles.has(key)) return;
+  const s=(ty*OT).toFixed(4),w=(tx*OT).toFixed(4),n=((ty+1)*OT).toFixed(4),e=((tx+1)*OT).toFixed(4);
   const q='[out:json][timeout:25];node["natural"="tree"]('+s+','+w+','+n+','+e+');out;';
   for(const url of SERVERS){
     try{
@@ -137,8 +188,8 @@ async function fetchTile(tx,ty){
       if(!r.ok) throw new Error('busy');
       const j=await r.json();
       const list=j.elements.map(t=>[t.id%1000,+t.lon.toFixed(6),+t.lat.toFixed(6)]);
-      cacheSet(key,list);loadedTiles.add(key);
-      addTreeList(list);refreshTrees();
+      cacheSet(key,list);osmTiles.add(key);
+      addTreeList(list);updateTrees();
       return;
     }catch(err){}
   }
@@ -149,22 +200,22 @@ async function pump(){
   while(queue.length){const [tx,ty]=queue.shift();await fetchTile(tx,ty);}
   working=false;
 }
-function loadAround(lng,lat){
-  const tx=Math.floor(lng/TILE),ty=Math.floor(lat/TILE);
+function loadAroundOSM(lng,lat){
+  const tx=Math.floor(lng/OT),ty=Math.floor(lat/OT);
   const order=[[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
   const next=[];let fromCache=false;
   for(const [dx,dy] of order){
     const x=tx+dx,y=ty+dy,key='tt:'+x+','+y;
-    if(loadedTiles.has(key)) continue;
+    if(osmTiles.has(key)) continue;
     const cached=cacheGet(key);
-    if(cached){loadedTiles.add(key);addTreeList(cached);fromCache=true;}
+    if(cached){osmTiles.add(key);addTreeList(cached);fromCache=true;}
     else next.push([x,y]);
   }
-  if(fromCache) refreshTrees();
+  if(fromCache) updateTrees();
   queue=next;pump();
 }
-loadAround(startPos[0],startPos[1]);
 
+/* ---------- Generated trees in parks and woods ---------- */
 function inside(pt,rg){let ins=false;for(let i=0,j=rg.length-1;i<rg.length;j=i++){const xi=rg[i][0],yi=rg[i][1],xj=rg[j][0],yj=rg[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
 function parkTrees(){
   if(map.getZoom()<15.5||treesFailed||!treeScene)return;
@@ -188,7 +239,7 @@ function parkTrees(){
       }
     }
   }
-  if(added) refreshTrees();
+  if(added) updateTrees();
 }
 
 /* ---------- Map styling ---------- */
@@ -228,8 +279,8 @@ map.on('load',()=>{
       'fill-extrusion-base':['coalesce',['get','render_height'],8],
       'fill-extrusion-height':['+',['coalesce',['get','render_height'],8],0.4]}});
   map.addLayer(treeLayer);
-  refreshTrees();
-  map.on('moveend',()=>{if(map.getZoom()>=15){const c=map.getCenter();loadAround(c.lng,c.lat);}});
+  updateTrees();
+  map.on('moveend',()=>{const c=map.getCenter();if(map.getZoom()>=15)loadAround(c.lng,c.lat);updateTrees();});
   map.on('idle',parkTrees);
 });
 
@@ -250,7 +301,7 @@ function onPos(p){
   status.textContent='GPS accuracy: '+Math.round(p.coords.accuracy)+' m';
   if(p.coords.accuracy<100){
     cacheSet('lastPos',[+pos[0].toFixed(5),+pos[1].toFixed(5)]);
-    const t=Math.floor(pos[0]/TILE)+','+Math.floor(pos[1]/TILE);
+    const t=Math.floor(pos[0]/OT)+','+Math.floor(pos[1]/OT);
     if(t!==lastTile){lastTile=t;loadAround(pos[0],pos[1]);}
   }
   if(follow) view(pos,1000);
