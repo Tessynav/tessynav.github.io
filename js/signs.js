@@ -1,10 +1,11 @@
-/* TessyNav signs: real Montreal road signs in 3D, plus alerts for school zones, crossings and speed limits */
+/* TessyNav signs v2: real Montreal road signs in 3D, plus alerts for safety-related signs */
 const SC=0.005,ST=0.05,SG=8,SCELL=128;
 const sCells=new Map(),sMeshes=new Map(),sLoaded=new Set();
 let sIndex=null,sFailed=false,sLast=0,sDirtyAll=false;
 let sMat=null,sBackMat=null;
 const SCOL={pole:new THREE.Color('#8a8d90')};
 const SSIZE={s:[0.75,0.75],a:[0.6,0.3],y:[0.8,0.72],v:[0.6,0.75],o:[0.8,0.8],x:[0.6,0.6],e:[0.7,0.7],p:[0.7,0.7]};
+const ALERT_LABELS={e:'School zone',p:'Pedestrian crossing',k:'Playground ahead',w:'Stop ahead',x:'No entry'};
 
 /* ---------- Sign artwork, drawn once into a texture atlas ---------- */
 const sAtlasCanvas=document.createElement('canvas');sAtlasCanvas.width=sAtlasCanvas.height=SG*SCELL;
@@ -192,7 +193,6 @@ function buildSignCell(ck){
       const m=new THREE.Mesh(ng,mat);m.frustumCulled=false;m.userData.nameMat=true;group.add(m);
     }
   }
-  group.userData.roads=near.length;
   return group;
 }
 function disposeSignGroup(g){
@@ -245,7 +245,7 @@ function updateSigns(force){
   }
 }
 
-/* ---------- Alerts: school zones, pedestrian crossings, speed limits ---------- */
+/* ---------- Alerts ---------- */
 const alertBox=document.createElement('div');
 alertBox.style.cssText='position:absolute;top:16px;left:50%;transform:translate(-50%,-20px);opacity:0;display:flex;align-items:center;gap:14px;'+
   'background:rgba(10,18,32,.92);color:#e8f1fa;font-family:sans-serif;border-radius:16px;padding:10px 20px 10px 10px;transition:opacity .35s,transform .35s;pointer-events:none;z-index:5';
@@ -294,7 +294,8 @@ function checkAlerts(){
   const reach=Math.max(70,carSpeed*7);
   const gx=Math.floor(carPos[0]/SC),gy=Math.floor(carPos[1]/SC);
   let best=null;
-  for(const [k,pos] of alerted){if(Math.hypot(pos[0]-cx,pos[1]-cz)>250) alerted.delete(k);}
+  for(const [k,v] of alerted){if(Math.hypot(v.x-cx,v.z-cz)>250) alerted.delete(k);}
+  const recentSame=(kind,x,z)=>{for(const v of alerted.values()){if(v.kind===kind&&Math.hypot(v.x-x,v.z-z)<60) return true;}return false;};
   for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
     const list=sCells.get((gx+dx)+','+(gy+dy));if(!list) continue;
     for(const p of list){
@@ -305,17 +306,17 @@ function checkAlerts(){
       if(fwd<5||fwd>reach||Math.abs(Math.atan2(lat,fwd))>0.6) continue;
       const key=p.lng.toFixed(6)+','+p.lat.toFixed(6);
       for(const t of p.types){
-        let label=null;
-        if(t==='e') label='School zone';
-        else if(t==='p') label='Pedestrian crossing';
-        else if(t[0]==='v'&&+t.slice(1)!==curLimit) label='Speed limit '+t.slice(1)+' km/h';
-        if(!label||alerted.has(key+t)) continue;
-        if(!best||fwd<best.fwd) best={fwd:fwd,kind:t,label:label,key:key+t,x:p.x,z:p.z};
+        let label=ALERT_LABELS[t]||null;
+        if(!label&&t[0]==='v'&&+t.slice(1)!==curLimit) label='Speed limit '+t.slice(1)+' km/h';
+        if(!label) continue;
+        const kind=t[0]==='v'?'v':t;
+        if(alerted.has(key+t)||recentSame(kind,p.x,p.z)) continue;
+        if(!best||fwd<best.fwd) best={fwd:fwd,kind:t,group:kind,label:label,key:key+t,x:p.x,z:p.z};
       }
     }
   }
   updateLimitBox();
-  if(best&&(!curAlert||best.fwd<curAlert.fwd-20)){alerted.set(best.key,[best.x,best.z]);showAlert(best);}
+  if(best&&(!curAlert||best.fwd<curAlert.fwd-20)){alerted.set(best.key,{x:best.x,z:best.z,kind:best.group});showAlert(best);}
   else if(curAlert){
     const vx=curAlert.x-cx,vz=curAlert.z-cz,fwd=vx*fx+vz*fz;
     if(fwd<0||fwd>reach*1.6) hideAlert();
