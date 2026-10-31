@@ -6,7 +6,7 @@
 <title>TessyNav</title>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 <style>
 html,body,#map{margin:0;height:100%}
 .hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px}
@@ -34,7 +34,7 @@ const treesEl=document.getElementById('trees');
 
 /* ---------- Smooth 3D trees (three.js) ---------- */
 const MAXT=30000;
-let treeCount=0,trunkMesh=null,leafMesh=null,topMesh=null;
+let treeCount=0,trunkMesh=null,leafMesh=null,topMesh=null,treesFailed=false;
 const cells=new Set(),seen=new Set(),doneAreas=new Set();
 const leafCols=['#5b7f3a','#4f7334','#6a8a42','#7d8a3a','#b9772f','#a8552a'].map(c=>new THREE.Color(c));
 const tM=new THREE.Matrix4(),tQ=new THREE.Quaternion(),tS=new THREE.Vector3(),tP=new THREE.Vector3();
@@ -42,31 +42,36 @@ const tM=new THREE.Matrix4(),tQ=new THREE.Quaternion(),tS=new THREE.Vector3(),tP
 const treeLayer={
   id:'trees3d',type:'custom',renderingMode:'3d',
   onAdd(m,gl){
-    this.camera=new THREE.Camera();
-    this.scene=new THREE.Scene();
-    this.scene.add(new THREE.HemisphereLight(0xeef6ff,0x5a6b4a,0.85));
-    const sun=new THREE.DirectionalLight(0xffffff,0.75);sun.position.set(-40,80,30);this.scene.add(sun);
-    const trunkGeo=new THREE.CylinderGeometry(0.18,0.28,3.2,6);
-    const ball=new THREE.SphereGeometry(1,14,10);
-    trunkMesh=new THREE.InstancedMesh(trunkGeo,new THREE.MeshLambertMaterial({color:0x5a4030}),MAXT);
-    leafMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
-    topMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
-    for(const mm of [leafMesh,topMesh]) mm.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(MAXT*3),3);
-    for(const mm of [trunkMesh,leafMesh,topMesh]){mm.count=0;mm.frustumCulled=false;this.scene.add(mm);}
-    this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
-    this.renderer.autoClear=false;
-    const mc=maplibregl.MercatorCoordinate.fromLngLat(ORIGIN,0),sc=mc.meterInMercatorCoordinateUnits();
-    this.model=new THREE.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new THREE.Vector3(sc,-sc,sc)).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2));
+    try{
+      this.camera=new THREE.Camera();
+      this.scene=new THREE.Scene();
+      this.scene.add(new THREE.HemisphereLight(0xeef6ff,0x5a6b4a,2.4));
+      const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(-40,80,30);this.scene.add(sun);
+      const trunkGeo=new THREE.CylinderGeometry(0.18,0.28,3.2,6);
+      const ball=new THREE.SphereGeometry(1,14,10);
+      trunkMesh=new THREE.InstancedMesh(trunkGeo,new THREE.MeshLambertMaterial({color:0x5a4030}),MAXT);
+      leafMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
+      topMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
+      for(const mm of [leafMesh,topMesh]) mm.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(MAXT*3),3);
+      for(const mm of [trunkMesh,leafMesh,topMesh]){mm.count=0;mm.frustumCulled=false;this.scene.add(mm);}
+      this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
+      this.renderer.autoClear=false;
+      const mc=maplibregl.MercatorCoordinate.fromLngLat(ORIGIN,0),sc=mc.meterInMercatorCoordinateUnits();
+      this.model=new THREE.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new THREE.Vector3(sc,-sc,sc)).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2));
+    }catch(e){treesFailed=true;treesEl.textContent='3D trees error: '+e.message;}
   },
   render(gl,matrix){
-    this.camera.projectionMatrix=new THREE.Matrix4().fromArray(matrix).multiply(this.model);
-    this.renderer.resetState();
-    this.renderer.render(this.scene,this.camera);
+    if(treesFailed) return;
+    try{
+      this.camera.projectionMatrix=new THREE.Matrix4().fromArray(matrix).multiply(this.model);
+      this.renderer.resetState();
+      this.renderer.render(this.scene,this.camera);
+    }catch(e){treesFailed=true;treesEl.textContent='3D trees error: '+e.message;}
   }
 };
 
 function addTree(seed,lng,lat){
-  if(!leafMesh||treeCount>=MAXT) return false;
+  if(!leafMesh||treesFailed||treeCount>=MAXT) return false;
   const k=Math.round(lng*9000)+','+Math.round(lat*12000);
   if(cells.has(k)) return false; cells.add(k);
   const x=(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R), z=-(lat-ORIGIN[1])*111320;
@@ -77,6 +82,7 @@ function addTree(seed,lng,lat){
   treeCount++; return true;
 }
 function refreshTrees(){
+  if(!leafMesh||treesFailed) return;
   for(const mm of [trunkMesh,leafMesh,topMesh]){mm.count=treeCount;mm.instanceMatrix.needsUpdate=true;if(mm.instanceColor)mm.instanceColor.needsUpdate=true;}
   treesEl.textContent='Trees: '+treeCount;
   map.triggerRepaint();
@@ -95,13 +101,13 @@ async function loadTrees(){
     const j=await r.json();
     for(const t of j.elements){if(!seen.has(t.id)){seen.add(t.id);addTree(t.id,t.lon,t.lat);}}
     refreshTrees();
-  }catch(err){treesEl.textContent='Trees: '+treeCount+' (tree service error)';lastFetch=null;}
+  }catch(err){if(!treesFailed)treesEl.textContent='Trees: '+treeCount+' (tree service error)';lastFetch=null;}
   busy=false;
 }
 
 function inside(pt,rg){let ins=false;for(let i=0,j=rg.length-1;i<rg.length;j=i++){const xi=rg[i][0],yi=rg[i][1],xj=rg[j][0],yj=rg[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
 function parkTrees(){
-  if(map.getZoom()<15.5||!leafMesh)return;
+  if(map.getZoom()<15.5||!leafMesh||treesFailed)return;
   let added=0;
   const feats=map.querySourceFeatures('openmaptiles',{sourceLayer:'park'})
     .concat(map.querySourceFeatures('openmaptiles',{sourceLayer:'landcover',filter:['==',['get','class'],'wood']}));
@@ -168,4 +174,28 @@ map.on('load',()=>{
 });
 
 /* ---------- Driving view ---------- */
-const
+const el=document.createElement('div');
+el.innerHTML='<svg viewBox="0 0 34 34" width="52" height="52"><path d="M17 3 L29 30 L17 23 L5 30 Z" fill="#3fd1b0" stroke="#fff" stroke-width="2"/></svg>';
+const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat(ORIGIN).addTo(map);
+let follow=false,last=null,heading=0,watchId=null;
+const status=document.getElementById('status'),speedEl=document.getElementById('speed'),btn=document.getElementById('btn');
+function view(pos,ms){map.easeTo({center:pos,zoom:18,pitch:65,bearing:heading,duration:ms,offset:[0,150]});}
+function onPos(p){
+  const pos=[p.coords.longitude,p.coords.latitude];
+  if(p.coords.heading!=null&&!isNaN(p.coords.heading)&&(p.coords.speed||0)>1) heading=p.coords.heading;
+  else if(last&&dist(last,pos)>4) heading=bearing(last,pos);
+  if(!last||dist(last,pos)>4) last=pos;
+  car.setLngLat(pos).setRotation(heading);
+  speedEl.innerHTML=Math.round((p.coords.speed||0)*3.6)+' <small>km/h</small>';
+  status.textContent='GPS accuracy: '+Math.round(p.coords.accuracy)+' m';
+  if(follow) view(pos,1000);
+}
+btn.onclick=()=>{
+  follow=true;btn.textContent='Recenter';
+  if(watchId===null){watchId=navigator.geolocation.watchPosition(onPos,()=>{status.textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});}
+  else if(last) view(last,800);
+};
+map.on('dragstart',()=>{follow=false;});
+</script>
+</body>
+</html>
