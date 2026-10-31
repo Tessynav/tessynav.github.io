@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TessyNav tree converter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+body{font-family:sans-serif;max-width:640px;margin:40px auto;padding:0 16px}
+#log{white-space:pre-wrap;background:#f1f1f1;padding:12px;border-radius:8px;min-height:40px}
+a{display:inline-block;margin-top:16px;font-size:18px}
+</style>
+</head>
+<body>
+<h1>TessyNav tree converter</h1>
+<p>Choose the Montreal public trees CSV file you downloaded.</p>
+<input type="file" id="f" accept=".csv">
+<p id="log">Waiting for file...</p>
+<script>
+const T=0.05;
+const log=s=>{document.getElementById('log').textContent=s;};
+function parseLine(line){
+  const out=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(q){if(ch==='"'){if(line[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;}
+    else if(ch==='"')q=true;
+    else if(ch===','){out.push(cur);cur='';}
+    else cur+=ch;
+  }
+  out.push(cur);return out;
+}
+document.getElementById('f').onchange=async e=>{
+  const file=e.target.files[0];if(!file)return;
+  log('Reading '+file.name+'...');
+  const reader=file.stream().pipeThrough(new TextDecoderStream()).getReader();
+  let buf='',header=null,iLon=-1,iLat=-1,iD=-1,rows=0,kept=0;
+  const tiles={};
+  function handle(line){
+    if(!line.trim())return;
+    const c=parseLine(line);
+    if(!header){
+      header=c.map(h=>h.trim().replace(/^\uFEFF/,''));
+      iLon=header.findIndex(h=>/^longitude$/i.test(h));
+      iLat=header.findIndex(h=>/^latitude$/i.test(h));
+      iD=header.findIndex(h=>/^dhp$/i.test(h));
+      return;
+    }
+    rows++;
+    const lon=parseFloat(c[iLon]),lat=parseFloat(c[iLat]);
+    if(!isFinite(lon)||!isFinite(lat)||lon>-70||lon<-80||lat<40||lat>50)return;
+    const d=Math.max(0,Math.min(250,Math.round(parseFloat(iD>=0?c[iD]:'')||0)));
+    const tx=Math.floor(lon/T),ty=Math.floor(lat/T),k=tx+'_'+ty;
+    (tiles[k]||(tiles[k]=[])).push(Math.round((lon-tx*T)*1e5),Math.round((lat-ty*T)*1e5),d);
+    kept++;
+  }
+  while(true){
+    const {done,value}=await reader.read();
+    if(done)break;
+    buf+=value;
+    const lines=buf.split('\n');buf=lines.pop();
+    for(const l of lines)handle(l.replace(/\r$/,''));
+    log('Rows read: '+rows);
+  }
+  if(buf)handle(buf);
+  if(iLon<0||iLat<0){log('Could not find Longitude/Latitude columns. Columns found: '+(header||[]).join(', '));return;}
+  const keys=Object.keys(tiles);
+  log('Trees kept: '+kept+' of '+rows+' rows, in '+keys.length+' files. Building zip...');
+  const zip=new JSZip(),dir=zip.folder('trees');
+  for(const k of keys)dir.file(k+'.json',JSON.stringify(tiles[k]));
+  dir.file('index.json',JSON.stringify({tile:T,tiles:keys}));
+  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='trees.zip';a.textContent='Download trees.zip again';
+  document.body.appendChild(a);a.click();
+  log('Done! '+kept+' trees in '+keys.length+' files. trees.zip was downloaded.');
+};
+</script>
+</body>
+</html>
