@@ -6,6 +6,7 @@
 <title>TessyNav</title>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 html,body,#map{margin:0;height:100%}
 .hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px}
@@ -27,25 +28,59 @@ const R=Math.PI/180;
 function dist(a,b){const dLat=(b[1]-a[1])*R,dLng=(b[0]-a[0])*R;const h=Math.sin(dLat/2)**2+Math.cos(a[1]*R)*Math.cos(b[1]*R)*Math.sin(dLng/2)**2;return 12742000*Math.asin(Math.sqrt(h));}
 function bearing(a,b){const y=Math.sin((b[0]-a[0])*R)*Math.cos(b[1]*R);const x=Math.cos(a[1]*R)*Math.sin(b[1]*R)-Math.sin(a[1]*R)*Math.cos(b[1]*R)*Math.cos((b[0]-a[0])*R);return (Math.atan2(y,x)/R+360)%360;}
 
-const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:[-73.568,45.459],zoom:17,pitch:60});
+const ORIGIN=[-73.568,45.459];
+const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:ORIGIN,zoom:17,pitch:60});
 const treesEl=document.getElementById('trees');
 
-const treeData={type:'FeatureCollection',features:[]};
+/* ---------- Smooth 3D trees (three.js) ---------- */
+const MAXT=30000;
+let treeCount=0,trunkMesh=null,leafMesh=null,topMesh=null;
 const cells=new Set(),seen=new Set(),doneAreas=new Set();
-let treeCount=0;
-const leaf=['#5b7f3a','#4f7334','#6a8a42','#8a8f3c','#b9772f','#a8552a'];
-function ring(lng,lat,r){const pts=[],dl=r/111320,dg=r/(111320*Math.cos(lat*R));for(let i=0;i<=8;i++){const a=i/8*2*Math.PI;pts.push([lng+Math.cos(a)*dg,lat+Math.sin(a)*dl]);}return [pts];}
+const leafCols=['#5b7f3a','#4f7334','#6a8a42','#7d8a3a','#b9772f','#a8552a'].map(c=>new THREE.Color(c));
+const tM=new THREE.Matrix4(),tQ=new THREE.Quaternion(),tS=new THREE.Vector3(),tP=new THREE.Vector3();
+
+const treeLayer={
+  id:'trees3d',type:'custom',renderingMode:'3d',
+  onAdd(m,gl){
+    this.camera=new THREE.Camera();
+    this.scene=new THREE.Scene();
+    this.scene.add(new THREE.HemisphereLight(0xeef6ff,0x5a6b4a,0.85));
+    const sun=new THREE.DirectionalLight(0xffffff,0.75);sun.position.set(-40,80,30);this.scene.add(sun);
+    const trunkGeo=new THREE.CylinderGeometry(0.18,0.28,3.2,6);
+    const ball=new THREE.SphereGeometry(1,14,10);
+    trunkMesh=new THREE.InstancedMesh(trunkGeo,new THREE.MeshLambertMaterial({color:0x5a4030}),MAXT);
+    leafMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
+    topMesh=new THREE.InstancedMesh(ball,new THREE.MeshLambertMaterial({color:0xffffff}),MAXT);
+    for(const mm of [leafMesh,topMesh]) mm.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(MAXT*3),3);
+    for(const mm of [trunkMesh,leafMesh,topMesh]){mm.count=0;mm.frustumCulled=false;this.scene.add(mm);}
+    this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
+    this.renderer.autoClear=false;
+    const mc=maplibregl.MercatorCoordinate.fromLngLat(ORIGIN,0),sc=mc.meterInMercatorCoordinateUnits();
+    this.model=new THREE.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new THREE.Vector3(sc,-sc,sc)).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2));
+  },
+  render(gl,matrix){
+    this.camera.projectionMatrix=new THREE.Matrix4().fromArray(matrix).multiply(this.model);
+    this.renderer.resetState();
+    this.renderer.render(this.scene,this.camera);
+  }
+};
+
 function addTree(seed,lng,lat){
+  if(!leafMesh||treeCount>=MAXT) return false;
   const k=Math.round(lng*9000)+','+Math.round(lat*12000);
   if(cells.has(k)) return false; cells.add(k);
-  const c=leaf[seed%leaf.length],s=0.8+Math.random()*0.45,j=Math.random()*0.3;
-  treeData.features.push(
-    {type:'Feature',properties:{c:'#5a4030',b:0,h:3*s},geometry:{type:'Polygon',coordinates:ring(lng,lat,0.3)}},
-    {type:'Feature',properties:{c:c,b:2.5*s,h:6.2*s+j},geometry:{type:'Polygon',coordinates:ring(lng,lat,2.3*s)}},
-    {type:'Feature',properties:{c:c,b:6.2*s+j,h:8*s+j},geometry:{type:'Polygon',coordinates:ring(lng,lat,1.5*s)}});
+  const x=(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R), z=-(lat-ORIGIN[1])*111320;
+  const s=0.8+Math.random()*0.45, col=leafCols[seed%leafCols.length], i=treeCount;
+  tP.set(x,1.6*s,z);tS.set(s,s,s);tM.compose(tP,tQ,tS);trunkMesh.setMatrixAt(i,tM);
+  tP.set(x,4.6*s,z);tS.set(2.6*s,2.3*s,2.6*s);tM.compose(tP,tQ,tS);leafMesh.setMatrixAt(i,tM);leafMesh.setColorAt(i,col);
+  tP.set(x+(Math.random()-.5)*s,6.3*s,z+(Math.random()-.5)*s);tS.set(1.7*s,1.6*s,1.7*s);tM.compose(tP,tQ,tS);topMesh.setMatrixAt(i,tM);topMesh.setColorAt(i,col);
   treeCount++; return true;
 }
-function refreshTrees(){map.getSource('trees').setData(treeData);treesEl.textContent='Trees: '+treeCount;}
+function refreshTrees(){
+  for(const mm of [trunkMesh,leafMesh,topMesh]){mm.count=treeCount;mm.instanceMatrix.needsUpdate=true;if(mm.instanceColor)mm.instanceColor.needsUpdate=true;}
+  treesEl.textContent='Trees: '+treeCount;
+  map.triggerRepaint();
+}
 
 let lastFetch=null,busy=false;
 async function loadTrees(){
@@ -60,13 +95,13 @@ async function loadTrees(){
     const j=await r.json();
     for(const t of j.elements){if(!seen.has(t.id)){seen.add(t.id);addTree(t.id,t.lon,t.lat);}}
     refreshTrees();
-  }catch(err){treesEl.textContent='Trees: '+treeCount+' (tree service error)';}
+  }catch(err){treesEl.textContent='Trees: '+treeCount+' (tree service error)';lastFetch=null;}
   busy=false;
 }
 
 function inside(pt,rg){let ins=false;for(let i=0,j=rg.length-1;i<rg.length;j=i++){const xi=rg[i][0],yi=rg[i][1],xj=rg[j][0],yj=rg[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
 function parkTrees(){
-  if(map.getZoom()<15.5)return;
+  if(map.getZoom()<15.5||!leafMesh)return;
   let added=0;
   const feats=map.querySourceFeatures('openmaptiles',{sourceLayer:'park'})
     .concat(map.querySourceFeatures('openmaptiles',{sourceLayer:'landcover',filter:['==',['get','class'],'wood']}));
@@ -90,6 +125,11 @@ function parkTrees(){
   if(added) refreshTrees();
 }
 
+/* ---------- Map styling ---------- */
+function roadWidth(z13,z20){
+  const m=v=>['match',['get','class'],['motorway','trunk','primary'],v[0],['secondary','tertiary'],v[1],'minor',v[2],v[3]];
+  return ['interpolate',['exponential',2],['zoom'],13,m(z13),20,m(z20)];
+}
 map.on('load',()=>{
   for(const l of map.getStyle().layers){
     if(l.type==='symbol'&&/poi|transit|parking/i.test(l.id)) map.setLayoutProperty(l.id,'visibility','none');
@@ -102,8 +142,13 @@ map.on('load',()=>{
   for(const l of map.getStyle().layers){
     if(l.type!=='line'||l['source-layer']!=='transportation') continue;
     if(/rail|path|ferry|aerialway|pier/i.test(l.id)) continue;
-    if(/casing/i.test(l.id)) map.setPaintProperty(l.id,'line-color','#b9b4aa');
-    else map.setPaintProperty(l.id,'line-color','#4b4f56');
+    if(/casing/i.test(l.id)){
+      map.setPaintProperty(l.id,'line-color','#b9b4aa');
+      map.setPaintProperty(l.id,'line-width',roadWidth([3,2.5,1.5,0.8],[136,104,82,44]));
+    }else{
+      map.setPaintProperty(l.id,'line-color','#4b4f56');
+      map.setPaintProperty(l.id,'line-width',roadWidth([2,1.5,1,0.5],[120,90,70,35]));
+    }
   }
   map.addLayer({id:'lane-lines',type:'line',source:'openmaptiles','source-layer':'transportation',minzoom:16,
     filter:['in',['get','class'],['literal',['motorway','trunk','primary','secondary','tertiary','minor']]],
@@ -116,36 +161,11 @@ map.on('load',()=>{
     paint:{'fill-extrusion-color':'#9a958d',
       'fill-extrusion-base':['coalesce',['get','render_height'],8],
       'fill-extrusion-height':['+',['coalesce',['get','render_height'],8],0.4]}});
-  map.addSource('trees',{type:'geojson',data:treeData});
-  map.addLayer({id:'trees',type:'fill-extrusion',source:'trees',
-    paint:{'fill-extrusion-color':['get','c'],'fill-extrusion-height':['get','h'],'fill-extrusion-base':['get','b']}});
+  map.addLayer(treeLayer);
   loadTrees();
   map.on('moveend',loadTrees);
   map.on('idle',parkTrees);
 });
 
-const el=document.createElement('div');
-el.innerHTML='<svg viewBox="0 0 34 34" width="52" height="52"><path d="M17 3 L29 30 L17 23 L5 30 Z" fill="#3fd1b0" stroke="#fff" stroke-width="2"/></svg>';
-const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat([-73.568,45.459]).addTo(map);
-let follow=false,last=null,heading=0,watchId=null;
-const status=document.getElementById('status'),speedEl=document.getElementById('speed'),btn=document.getElementById('btn');
-function view(pos,ms){map.easeTo({center:pos,zoom:18,pitch:65,bearing:heading,duration:ms,offset:[0,150]});}
-function onPos(p){
-  const pos=[p.coords.longitude,p.coords.latitude];
-  if(p.coords.heading!=null&&!isNaN(p.coords.heading)&&(p.coords.speed||0)>1) heading=p.coords.heading;
-  else if(last&&dist(last,pos)>4) heading=bearing(last,pos);
-  if(!last||dist(last,pos)>4) last=pos;
-  car.setLngLat(pos).setRotation(heading);
-  speedEl.innerHTML=Math.round((p.coords.speed||0)*3.6)+' <small>km/h</small>';
-  status.textContent='GPS accuracy: '+Math.round(p.coords.accuracy)+' m';
-  if(follow) view(pos,1000);
-}
-btn.onclick=()=>{
-  follow=true;btn.textContent='Recenter';
-  if(watchId===null){watchId=navigator.geolocation.watchPosition(onPos,()=>{status.textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});}
-  else if(last) view(last,800);
-};
-map.on('dragstart',()=>{follow=false;});
-</script>
-</body>
-</html>
+/* ---------- Driving view ---------- */
+const
