@@ -1,4 +1,4 @@
-/* TessyNav performance v3: quality levels, lighter shadows, culling, smooth gliding, rate-limited builders */
+/* TessyNav performance v4: quality, lighter shadows, culling, rate-limited builders, road snapping, speed-based zoom */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -100,8 +100,37 @@ qBtn.onclick=()=>{
   cacheSet('quality',quality);showQuality();applyQuality();
 };
 
-/* ---------- Smooth gliding between GPS updates ---------- */
-let gPos=null,gHd=0,gT=null;
+/* ---------- Road snapping: keep the arrow on the road you are driving on ---------- */
+function fromLocal(x,z){return [x/(111320*Math.cos(ORIGIN[1]*R))+ORIGIN[0],-z/111320+ORIGIN[1]];}
+let snapOff=[0,0],snapHd=null,snapLast=0;
+function updateSnap(pos,hd){
+  snapLast=performance.now();
+  if(typeof lCells==='undefined'||typeof localRoad!=='function'){snapOff=[0,0];snapHd=null;return;}
+  const [x,z]=toLocal(pos[0],pos[1]);
+  const fx=Math.sin(hd*R),fz=-Math.cos(hd*R);
+  const gx=Math.floor(pos[0]/LC),gy=Math.floor(pos[1]/LC);
+  let best=null;
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const cell=lCells.get((gx+dx)+','+(gy+dy));if(!cell) continue;
+    for(const r0 of cell.values()){
+      const r=localRoad(r0);if(!r) continue;
+      const b=closestOn(r,x,z,14);if(!b) continue;
+      const align=b.tx*fx+b.tz*fz;
+      if(Math.abs(align)<0.7) continue;
+      const score=b.d-Math.abs(align)*3;
+      if(!best||score<best.score){best=b;best.score=score;best.road=r;best.align=align;}
+    }
+  }
+  if(!best){snapOff=[0,0];snapHd=null;return;}
+  const dsg=best.align>=0?1:-1,tx=best.tx*dsg,tz=best.tz*dsg,rx=-tz,rz=tx;
+  const lane=best.road.oneway?0:best.road.W/4;
+  const sx=best.px+rx*lane,sz=best.pz+rz*lane;
+  snapOff=[sx-x,sz-z];
+  snapHd=(Math.atan2(tx,-tz)/R+360)%360;
+}
+
+/* ---------- Smooth gliding and speed-based zoom ---------- */
+let gPos=null,gHd=0,gT=null,gZoom=19;
 const baseOnPos=onPos,baseView=view;
 onPos=function(p){
   baseOnPos(p);
@@ -114,16 +143,23 @@ view=function(pos,ms){
 function glideFrame(){
   requestAnimationFrame(glideFrame);
   if(!gT||watchId===null) return;
-  const now=performance.now(),dt=Math.min(1.5,(now-gT.t)/1000);
+  const now=performance.now(),dt=Math.min(1.2,(now-gT.t)/1000);
   const h=gT.hd*R,m=gT.spd*dt;
   const pred=[gT.pos[0]+(m*Math.sin(h))/(111320*Math.cos(gT.pos[1]*R)),gT.pos[1]+(m*Math.cos(h))/111320];
-  if(!gPos) gPos=pred.slice();
-  gPos[0]+=(pred[0]-gPos[0])*0.2;gPos[1]+=(pred[1]-gPos[1])*0.2;
-  const dh=((gT.hd-gHd+540)%360)-180;gHd=(gHd+dh*0.15+360)%360;
+  if(now-snapLast>200) updateSnap(pred,gT.hd);
+  const [px,pz]=toLocal(pred[0],pred[1]);
+  const target=fromLocal(px+snapOff[0],pz+snapOff[1]);
+  if(!gPos) gPos=target.slice();
+  gPos[0]+=(target[0]-gPos[0])*0.18;gPos[1]+=(target[1]-gPos[1])*0.18;
+  const wantHd=(snapHd!==null&&gT.spd>1)?snapHd:gT.hd;
+  const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
   car.setLngLat(gPos).setRotation(gHd);
+  const kmh=gT.spd*3.6;
+  const wantZoom=Math.max(18.2,Math.min(19.5,19.5-kmh/55))-(skyOn?0.4:0);
+  gZoom+=(wantZoom-gZoom)*0.03;
   if(follow){
-    map.jumpTo({center:gPos,bearing:gHd,zoom:skyOn?17.6:18,pitch:skyOn?80:65,
-      padding:{top:skyOn?520:300,bottom:0,left:0,right:0}});
+    map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:skyOn?78:60,
+      padding:{top:skyOn?480:340,bottom:0,left:0,right:0}});
   }
 }
 requestAnimationFrame(glideFrame);
