@@ -1,4 +1,4 @@
-/* TessyNav performance v4: quality, lighter shadows, culling, rate-limited builders, road snapping, speed-based zoom */
+/* TessyNav performance v5: quality, shadows, culling, rate-limited builders, road snapping, speed zoom, pinch-friendly follow */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -129,7 +129,25 @@ function updateSnap(pos,hd){
   snapHd=(Math.atan2(tx,-tz)/R+360)%360;
 }
 
-/* ---------- Smooth gliding and speed-based zoom ---------- */
+/* ---------- Zoom: speed-based, plus your own pinch adjustment (remembered) ---------- */
+let userZoomDelta=+(cacheGet('zoomDelta')||0),lastUserZoom=0,lastDrag=0;
+function baseZoom(){
+  const kmh=gT?gT.spd*3.6:0;
+  return Math.max(18.2,Math.min(19.5,19.5-kmh/55))-(skyOn?0.4:0);
+}
+map.on('zoom',e=>{if(e.originalEvent) lastUserZoom=performance.now();});
+map.on('zoomend',e=>{
+  if(!e.originalEvent) return;
+  lastUserZoom=performance.now();
+  userZoomDelta=Math.max(-3,Math.min(2,map.getZoom()-baseZoom()));
+  cacheSet('zoomDelta',userZoomDelta);
+  gZoom=map.getZoom();
+});
+map.on('dragstart',()=>{lastDrag=performance.now();});
+map.on('rotatestart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.now();}});
+map.on('pitchstart',e=>{if(e.originalEvent){follow=false;lastDrag=performance.now();}});
+
+/* ---------- Smooth gliding ---------- */
 let gPos=null,gHd=0,gT=null,gZoom=19;
 const baseOnPos=onPos,baseView=view;
 onPos=function(p){
@@ -154,8 +172,8 @@ function glideFrame(){
   const wantHd=(snapHd!==null&&gT.spd>1)?snapHd:gT.hd;
   const dh=((wantHd-gHd+540)%360)-180;gHd=(gHd+dh*0.12+360)%360;
   car.setLngLat(gPos).setRotation(gHd);
-  const kmh=gT.spd*3.6;
-  const wantZoom=Math.max(18.2,Math.min(19.5,19.5-kmh/55))-(skyOn?0.4:0);
+  if(now-lastUserZoom<500) return;
+  const wantZoom=baseZoom()+userZoomDelta;
   gZoom+=(wantZoom-gZoom)*0.03;
   if(follow){
     map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:skyOn?78:60,
@@ -165,8 +183,6 @@ function glideFrame(){
 requestAnimationFrame(glideFrame);
 
 /* ---------- Follow resumes automatically after a touch, once driving ---------- */
-let lastDrag=0;
-map.on('dragstart',()=>{lastDrag=performance.now();});
 setInterval(()=>{
   if(follow||watchId===null||!gT) return;
   if(performance.now()-lastDrag>10000&&gT.spd>2){follow=true;btn.textContent='Recenter';}
