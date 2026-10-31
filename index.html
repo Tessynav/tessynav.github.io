@@ -292,4 +292,75 @@ function parkTrees(){
 /* ---------- Map styling ---------- */
 function roadWidth(z13,z20){
   const m=v=>['match',['get','class'],['motorway','trunk','primary'],v[0],['secondary','tertiary'],v[1],'minor',v[2],v[3]];
-  return
+  return ['interpolate',['exponential',2],['zoom'],13,m(z13),20,m(z20)];
+}
+map.on('load',()=>{
+  for(const l of map.getStyle().layers){
+    if(l.type==='symbol'&&/poi|transit|parking/i.test(l.id)) map.setLayoutProperty(l.id,'visibility','none');
+  }
+  if(!map.getLayer('building-3d')){
+    map.addLayer({id:'building-3d',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',
+      paint:{'fill-extrusion-height':['coalesce',['get','render_height'],8],
+      'fill-extrusion-base':['coalesce',['get','render_min_height'],0]}});
+  }
+  for(const l of map.getStyle().layers){
+    if(l.type!=='line'||l['source-layer']!=='transportation') continue;
+    if(/rail|path|ferry|aerialway|pier/i.test(l.id)) continue;
+    if(/casing/i.test(l.id)){
+      map.setPaintProperty(l.id,'line-color','#b9b4aa');
+      map.setPaintProperty(l.id,'line-width',roadWidth([3,2.5,1.5,0.8],[136,104,82,44]));
+    }else{
+      map.setPaintProperty(l.id,'line-color','#4b4f56');
+      map.setPaintProperty(l.id,'line-width',roadWidth([2,1.5,1,0.5],[120,90,70,35]));
+    }
+  }
+  map.addLayer({id:'lane-lines',type:'line',source:'openmaptiles','source-layer':'transportation',minzoom:16,
+    filter:['in',['get','class'],['literal',['motorway','trunk','primary','secondary','tertiary','minor']]],
+    paint:{'line-color':['match',['get','class'],['motorway','trunk','primary'],'#e2b21f','#f2f2ee'],
+      'line-width':['interpolate',['exponential',2],['zoom'],16,0.6,19,2],
+      'line-dasharray':[4,4]}},'building-3d');
+  map.setPaintProperty('building-3d','fill-extrusion-color',['interpolate',['linear'],['coalesce',['get','render_height'],8],0,'#e3d5c1',10,'#d9c7b0',20,'#cfd3d6',60,'#b9c3cc']);
+  map.setPaintProperty('building-3d','fill-extrusion-opacity',1);
+  map.addLayer({id:'roofs',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',
+    paint:{'fill-extrusion-color':'#9a958d',
+      'fill-extrusion-base':['coalesce',['get','render_height'],8],
+      'fill-extrusion-height':['+',['coalesce',['get','render_height'],8],0.4]}});
+  map.addLayer(treeLayer);
+  updateTrees();
+  updateSun();
+  setInterval(updateSun,60000);
+  map.on('moveend',()=>{const c=map.getCenter();if(map.getZoom()>=15)loadAround(c.lng,c.lat);updateTrees();});
+  map.on('idle',parkTrees);
+});
+
+/* ---------- Driving view ---------- */
+const el=document.createElement('div');
+el.innerHTML='<svg viewBox="0 0 34 34" width="52" height="52"><path d="M17 3 L29 30 L17 23 L5 30 Z" fill="#3fd1b0" stroke="#fff" stroke-width="2"/></svg>';
+const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat(startPos).addTo(map);
+let follow=false,last=null,heading=0,watchId=null,lastTile='';
+const status=document.getElementById('status'),speedEl=document.getElementById('speed'),btn=document.getElementById('btn');
+function view(pos,ms){map.easeTo({center:pos,zoom:18,pitch:65,bearing:heading,duration:ms,offset:[0,150]});}
+function onPos(p){
+  const pos=[p.coords.longitude,p.coords.latitude];
+  if(p.coords.heading!=null&&!isNaN(p.coords.heading)&&(p.coords.speed||0)>1) heading=p.coords.heading;
+  else if(last&&dist(last,pos)>4) heading=bearing(last,pos);
+  if(!last||dist(last,pos)>4) last=pos;
+  car.setLngLat(pos).setRotation(heading);
+  speedEl.innerHTML=Math.round((p.coords.speed||0)*3.6)+' <small>km/h</small>';
+  status.textContent='GPS accuracy: '+Math.round(p.coords.accuracy)+' m';
+  if(p.coords.accuracy<100){
+    cacheSet('lastPos',[+pos[0].toFixed(5),+pos[1].toFixed(5)]);
+    const t=Math.floor(pos[0]/OT)+','+Math.floor(pos[1]/OT);
+    if(t!==lastTile){lastTile=t;loadAround(pos[0],pos[1]);}
+  }
+  if(follow) view(pos,1000);
+}
+btn.onclick=()=>{
+  follow=true;btn.textContent='Recenter';
+  if(watchId===null){watchId=navigator.geolocation.watchPosition(onPos,()=>{status.textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});}
+  else if(last) view(last,800);
+};
+map.on('dragstart',()=>{follow=false;});
+</script>
+</body>
+</html>
