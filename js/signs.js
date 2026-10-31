@@ -1,10 +1,12 @@
-/* TessyNav signs v2: real Montreal road signs in 3D, plus alerts for safety-related signs */
-const SC=0.005,ST=0.05,SG=8,SCELL=128;
-const sCells=new Map(),sMeshes=new Map(),sLoaded=new Set();
-let sIndex=null,sFailed=false,sLast=0,sDirtyAll=false;
+/* TessyNav signs v3: city signs in 3D, OpenStreetMap backup where city data is missing, safety alerts */
+const SC=0.005,ST=0.05,SG=8,SCELL=128,OSM_T=0.01;
+const sCells=new Map(),sMeshes=new Map(),sLoaded=new Set(),sDone=new Set(),cityCells=new Set();
+const oLoaded=new Set(),oQueue=[];
+let sIndex=null,sFailed=false,sLast=0,sDirtyAll=false,oBusy=false;
 let sMat=null,sBackMat=null;
 const SCOL={pole:new THREE.Color('#8a8d90')};
-const SSIZE={s:[0.75,0.75],a:[0.6,0.3],y:[0.8,0.72],v:[0.6,0.75],o:[0.8,0.8],x:[0.6,0.6],e:[0.7,0.7],p:[0.7,0.7]};
+const SSIZE={s:[0.95,0.95],a:[0.75,0.38],y:[1.0,0.9],v:[0.75,0.95],o:[1.0,1.0],x:[0.75,0.75],e:[0.88,0.88],p:[0.88,0.88]};
+const SDEF=[0.75,0.75];
 const ALERT_LABELS={e:'School zone',p:'Pedestrian crossing',k:'Playground ahead',w:'Stop ahead',x:'No entry'};
 
 /* ---------- Sign artwork, drawn once into a texture atlas ---------- */
@@ -100,19 +102,22 @@ function makeSignMaterials(){
   sBackMat.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\ndiffuseColor.rgb=vec3(0.5,0.52,0.54);');};
 }
 
-/* ---------- Loading the sign data ---------- */
+/* ---------- City sign data ---------- */
+function addPole(lng,lat,types,osm){
+  const [x,z]=toLocal(lng,lat);
+  const ck=Math.floor(lng/SC)+','+Math.floor(lat/SC);
+  if(!sCells.has(ck)) sCells.set(ck,[]);
+  sCells.get(ck).push({x:x,z:z,lng:lng,lat:lat,types:types,osm:!!osm});
+  if(!osm) cityCells.add(ck);
+}
 async function loadSignTile(k){
   sLoaded.add(k);
   try{
     const r=await fetch('signs/'+k+'.json');if(!r.ok) throw new Error('missing');
     const a=await r.json();
     const [tx,ty]=k.split('_').map(Number);
-    for(const e of a){
-      const lng=tx*ST+e[0]/1e5,lat=ty*ST+e[1]/1e5,[x,z]=toLocal(lng,lat);
-      const ck=Math.floor(lng/SC)+','+Math.floor(lat/SC);
-      if(!sCells.has(ck)) sCells.set(ck,[]);
-      sCells.get(ck).push({x:x,z:z,lng:lng,lat:lat,types:e[2].split('|')});
-    }
+    for(const e of a) addPole(tx*ST+e[0]/1e5,ty*ST+e[1]/1e5,e[2].split('|'),false);
+    sDone.add(k);
     sDirtyAll=true;updateSigns(true);
   }catch(err){sLoaded.delete(k);}
 }
@@ -123,6 +128,62 @@ function signsLoadAround(lng,lat){
   if(fx<0.012)xs.push(-1); if(ST-fx<0.012)xs.push(1);
   if(fy<0.009)ys.push(-1); if(ST-fy<0.009)ys.push(1);
   for(const dx of xs)for(const dy of ys){const k=(tx+dx)+'_'+(ty+dy);if(sIndex.has(k)&&!sLoaded.has(k)) loadSignTile(k);}
+  osmSignsAround(lng,lat);
+}
+
+/* ---------- OpenStreetMap backup: stop and yield signs where the city has no data ---------- */
+function cityNear(lng,lat){
+  const gx=Math.floor(lng/SC),gy=Math.floor(lat/SC);
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++) if(cityCells.has((gx+dx)+','+(gy+dy))) return true;
+  return false;
+}
+function osmSignsAround(lng,lat){
+  if(!sIndex) return;
+  const tk=Math.floor(lng/ST)+'_'+Math.floor(lat/ST);
+  if(sIndex.has(tk)&&!sDone.has(tk)) return;
+  if(cityNear(lng,lat)) return;
+  const tx=Math.floor(lng/OSM_T),ty=Math.floor(lat/OSM_T);
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const k=(tx+dx)+','+(ty+dy);
+    if(oLoaded.has(k)) continue;
+    oLoaded.add(k);oQueue.push([tx+dx,ty+dy]);
+  }
+  pumpOsm();
+}
+async function pumpOsm(){
+  if(oBusy) return; oBusy=true;
+  while(oQueue.length){const [tx,ty]=oQueue.shift();await fetchOsmSigns(tx,ty);}
+  oBusy=false;
+}
+async function fetchOsmSigns(tx,ty){
+  const key='os:'+tx+','+ty;
+  let list=cacheGet(key);
+  if(!list){
+    const s=(ty*OSM_T).toFixed(4),w=(tx*OSM_T).toFixed(4),n=((ty+1)*OSM_T).toFixed(4),e=((tx+1)*OSM_T).toFixed(4);
+    const q='[out:json][timeout:25];node["highway"~"^(stop|give_way)$"]('+s+','+w+','+n+','+e+');out;';
+    for(const url of SERVERS){
+      try{
+        const r=await fetch(url+'?data='+encodeURIComponent(q));
+        if(!r.ok) throw new Error('busy');
+        const j=await r.json();
+        list=j.elements.map(el=>{
+          const tg=el.tags||{};
+          const t=tg.highway==='stop'?(tg.stop==='all'?'s|a':'s'):'y';
+          return [+el.lon.toFixed(6),+el.lat.toFixed(6),t];
+        });
+        cacheSet(key,list);
+        break;
+      }catch(err){}
+    }
+  }
+  if(!list){oLoaded.delete(tx+','+ty);return;}
+  let added=0;
+  for(const it of list){
+    const ck=Math.floor(it[0]/SC)+','+Math.floor(it[1]/SC);
+    if(cityCells.has(ck)) continue;
+    addPole(it[0],it[1],it[2].split('|'),true);added++;
+  }
+  if(added){sDirtyAll=true;updateSigns(true);}
 }
 
 /* ---------- Building the 3D signs ---------- */
@@ -138,30 +199,37 @@ function buildSignCell(ck){
   const nameIdx=new Map(),nameList=[],nameQuads=[];
   for(const p of list){
     let best=null;
-    for(const r of near){const b=closestOn(r,p.x,p.z,30);if(b&&(!best||b.d<best.d)) best=b;}
-    let tx=1,tz=0,nx=0,nz=1;
+    for(const r of near){const b=closestOn(r,p.x,p.z,30);if(b&&(!best||b.d<best.d)){best=b;best.road=r;}}
+    let px=p.x,pz=p.z,tx=1,tz=0,nx=0,nz=1;
     if(best){
       tx=best.tx;tz=best.tz;
-      const vx=p.x-best.px,vz=p.z-best.pz,s=-tz*vx+tx*vz;
-      const fx=s>=0?tx:-tx,fz=s>=0?tz:-tz;
-      nx=-fx;nz=-fz;
+      if(p.osm){
+        const toward=best.s>best.road.L/2?1:-1;
+        const fx=tx*toward,fz=tz*toward,rx=-fz,rz=fx,o=best.road.W/2+1.5;
+        px=best.px+rx*o;pz=best.pz+rz*o;nx=-fx;nz=-fz;
+      }else{
+        const vx=p.x-best.px,vz=p.z-best.pz,s=-tz*vx+tx*vz;
+        const fx=s>=0?tx:-tx,fz=s>=0?tz:-tz;
+        nx=-fx;nz=-fz;
+      }
     }
+    p.dx=px;p.dz=pz;
     const regular=p.types.filter(t=>t.indexOf('n:')!==0);
     const nms=p.types.filter(t=>t.indexOf('n:')===0).map(t=>t.slice(2)).slice(0,2);
-    let y=2.95;
+    let y=3.2;
     for(const t of regular){
-      const sz=SSIZE[t[0]==='v'?'v':t]||[0.6,0.6],w=sz[0],h=sz[1];
+      const sz=SSIZE[t[0]==='v'?'v':t]||SDEF,w=sz[0],h=sz[1];
       const cy=y-h/2,uv=sUV(t);
-      sQuad(front,p.x+nx*0.06,cy,p.z+nz*0.06,nx,nz,w,h,uv);
-      sQuad(backs,p.x+nx*0.05,cy,p.z+nz*0.05,-nx,-nz,w,h,uv);
+      sQuad(front,px+nx*0.06,cy,pz+nz*0.06,nx,nz,w,h,uv);
+      sQuad(backs,px+nx*0.05,cy,pz+nz*0.05,-nx,-nz,w,h,uv);
       y-=h+0.08;
     }
-    const poleH=nms.length?3.15+nms.length*0.26:2.95;
-    metal.box(p.x,p.z,1,0,0.08,0.08,0,poleH,SCOL.pole);
+    const poleH=nms.length?3.45+nms.length*0.32:3.2;
+    metal.box(px,pz,1,0,0.09,0.09,0,poleH,SCOL.pole);
     nms.forEach((nm,i)=>{
       if(!nameIdx.has(nm)){if(nameList.length>=64) return;nameIdx.set(nm,nameList.length);nameList.push(nm);}
       const bnx=i%2?tx:-tz,bnz=i%2?tz:tx;
-      nameQuads.push([p.x,3.12+i*0.26,p.z,bnx,bnz,nameIdx.get(nm)]);
+      nameQuads.push([px,3.4+i*0.32,pz,bnx,bnz,nameIdx.get(nm)]);
     });
   }
   const group=new THREE.Group();
@@ -184,8 +252,8 @@ function buildSignCell(ck){
     const tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=4;
     for(const q of nameQuads){
       const r=q[5],uv=[0,1-(r+1)/n,1,1-r/n];
-      sQuad(names,q[0],q[1],q[2],q[3],q[4],1.5,0.22,uv);
-      sQuad(names,q[0],q[1],q[2],-q[3],-q[4],1.5,0.22,uv);
+      sQuad(names,q[0],q[1],q[2],q[3],q[4],1.8,0.28,uv);
+      sQuad(names,q[0],q[1],q[2],-q[3],-q[4],1.8,0.28,uv);
     }
     const ng=lightGeom(names);
     if(ng){
@@ -299,7 +367,8 @@ function checkAlerts(){
   for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
     const list=sCells.get((gx+dx)+','+(gy+dy));if(!list) continue;
     for(const p of list){
-      const vx=p.x-cx,vz=p.z-cz,fwd=vx*fx+vz*fz,lat=vx*rx+vz*rz;
+      const sx=p.dx!==undefined?p.dx:p.x,sz=p.dz!==undefined?p.dz:p.z;
+      const vx=sx-cx,vz=sz-cz,fwd=vx*fx+vz*fz,lat=vx*rx+vz*rz;
       if(lat<-4||lat>16) continue;
       const sp=p.types.find(t=>t[0]==='v');
       if(sp&&fwd<3&&fwd>-15) curLimit=+sp.slice(1);
@@ -310,8 +379,8 @@ function checkAlerts(){
         if(!label&&t[0]==='v'&&+t.slice(1)!==curLimit) label='Speed limit '+t.slice(1)+' km/h';
         if(!label) continue;
         const kind=t[0]==='v'?'v':t;
-        if(alerted.has(key+t)||recentSame(kind,p.x,p.z)) continue;
-        if(!best||fwd<best.fwd) best={fwd:fwd,kind:t,group:kind,label:label,key:key+t,x:p.x,z:p.z};
+        if(alerted.has(key+t)||recentSame(kind,sx,sz)) continue;
+        if(!best||fwd<best.fwd) best={fwd:fwd,kind:t,group:kind,label:label,key:key+t,x:sx,z:sz};
       }
     }
   }
@@ -336,11 +405,13 @@ btn.addEventListener('click',()=>{
 });
 
 map.on('load',()=>{
+  for(const l of map.getStyle().layers){
+    if(l.type==='symbol'&&/shield/i.test(l.id)){try{map.setLayerZoomRange(l.id,l.minzoom||0,16.5);}catch(e){}}
+  }
   fetch('signs/index.json').then(r=>r.ok?r.json():null).then(j=>{
-    if(!j) return;
-    sIndex=new Set(j.tiles);
+    sIndex=new Set(j?j.tiles:[]);
     const c=map.getCenter();signsLoadAround(c.lng,c.lat);
-  }).catch(()=>{});
+  }).catch(()=>{sIndex=new Set();});
   map.on('idle',()=>updateSigns(false));
   map.on('moveend',()=>updateSigns(true));
   setInterval(signNight,30000);
