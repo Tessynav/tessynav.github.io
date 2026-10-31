@@ -21,22 +21,75 @@ html,body,#map{margin:0;height:100%}
 <div id="speed" class="hud">0 <small>km/h</small></div>
 <button id="btn" class="hud">Start</button>
 <script>
-const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:[-73.568,45.459],zoom:16,pitch:60});
-map.on('load',()=>{
-  if(!map.getLayer('building-3d')){
-    map.addLayer({id:'building-3d',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',
-      paint:{'fill-extrusion-color':'#c9b8a3','fill-extrusion-height':['coalesce',['get','render_height'],8],
-      'fill-extrusion-base':['coalesce',['get','render_min_height'],0],'fill-extrusion-opacity':0.9}});
-  }
-});
-const el=document.createElement('div');
-el.innerHTML='<svg viewBox="0 0 34 34" width="34" height="34"><path d="M17 3 L29 30 L17 23 L5 30 Z" fill="#3fd1b0" stroke="#fff" stroke-width="2"/></svg>';
-const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat([-73.568,45.459]).addTo(map);
-let follow=false,last=null,heading=0,watchId=null;
-const status=document.getElementById('status'),speedEl=document.getElementById('speed'),btn=document.getElementById('btn');
 const R=Math.PI/180;
 function dist(a,b){const dLat=(b[1]-a[1])*R,dLng=(b[0]-a[0])*R;const h=Math.sin(dLat/2)**2+Math.cos(a[1]*R)*Math.cos(b[1]*R)*Math.sin(dLng/2)**2;return 12742000*Math.asin(Math.sqrt(h));}
 function bearing(a,b){const y=Math.sin((b[0]-a[0])*R)*Math.cos(b[1]*R);const x=Math.cos(a[1]*R)*Math.sin(b[1]*R)-Math.sin(a[1]*R)*Math.cos(b[1]*R)*Math.cos((b[0]-a[0])*R);return (Math.atan2(y,x)/R+360)%360;}
+
+const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:[-73.568,45.459],zoom:17,pitch:60});
+
+function windowPattern(){
+  const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
+  x.fillStyle='#d2c4ae';x.fillRect(0,0,64,64);
+  x.fillStyle='rgba(0,0,0,.06)';for(let y=0;y<64;y+=4)x.fillRect(0,y,64,1);
+  for(const [wx,wy] of [[8,8],[40,8],[8,40],[40,40]]){
+    x.fillStyle='#f3efe6';x.fillRect(wx-2,wy-2,20,20);
+    x.fillStyle='#3e4c5a';x.fillRect(wx,wy,16,16);
+    x.fillStyle='rgba(255,255,255,.18)';x.fillRect(wx,wy,6,16);
+  }
+  return x.getImageData(0,0,64,64);
+}
+
+const treeData={type:'FeatureCollection',features:[]};const seen=new Set();
+const leaf=['#4e7a2c','#c9661f','#a5341f','#d8a22b','#6b8f33','#b8501d'];
+function ring(lng,lat,r){const pts=[],dl=r/111320,dg=r/(111320*Math.cos(lat*R));for(let i=0;i<=8;i++){const a=i/8*2*Math.PI;pts.push([lng+Math.cos(a)*dg,lat+Math.sin(a)*dl]);}return [pts];}
+function addTree(id,lng,lat){
+  const c=leaf[id%leaf.length];
+  treeData.features.push(
+    {type:'Feature',properties:{c:'#5a4030',b:0,h:3},geometry:{type:'Polygon',coordinates:ring(lng,lat,0.35)}},
+    {type:'Feature',properties:{c:c,b:2.5,h:6.5},geometry:{type:'Polygon',coordinates:ring(lng,lat,2.8)}},
+    {type:'Feature',properties:{c:c,b:6.5,h:8.5},geometry:{type:'Polygon',coordinates:ring(lng,lat,1.9)}});
+}
+let lastFetch=null,busy=false;
+async function loadTrees(){
+  if(busy||map.getZoom()<15.5)return;
+  const c=map.getCenter(),p=[c.lng,c.lat];
+  if(lastFetch&&dist(lastFetch,p)<200)return;
+  busy=true;lastFetch=p;
+  const d=0.005,s=c.lat-d,n=c.lat+d,w=c.lng-d*1.4,e=c.lng+d*1.4;
+  try{
+    const q='[out:json][timeout:15];node["natural"="tree"]('+s+','+w+','+n+','+e+');out;';
+    const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+    const j=await r.json();
+    for(const t of j.elements){if(!seen.has(t.id)){seen.add(t.id);addTree(t.id,t.lon,t.lat);}}
+    map.getSource('trees').setData(treeData);
+  }catch(err){}
+  busy=false;
+}
+
+map.on('load',()=>{
+  for(const l of map.getStyle().layers){
+    if(l.type==='symbol'&&/poi|transit|parking/i.test(l.id)) map.setLayoutProperty(l.id,'visibility','none');
+  }
+  map.addImage('windows',windowPattern(),{pixelRatio:2});
+  if(!map.getLayer('building-3d')){
+    map.addLayer({id:'building-3d',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',
+      paint:{'fill-extrusion-height':['coalesce',['get','render_height'],8],
+      'fill-extrusion-base':['coalesce',['get','render_min_height'],0]}});
+  }
+  map.setPaintProperty('building-3d','fill-extrusion-pattern','windows');
+  map.setPaintProperty('building-3d','fill-extrusion-opacity',1);
+  map.addSource('trees',{type:'geojson',data:treeData});
+  map.addLayer({id:'trees',type:'fill-extrusion',source:'trees',
+    paint:{'fill-extrusion-color':['get','c'],'fill-extrusion-height':['get','h'],'fill-extrusion-base':['get','b']}});
+  loadTrees();
+  map.on('moveend',loadTrees);
+});
+
+const el=document.createElement('div');
+el.innerHTML='<svg viewBox="0 0 34 34" width="52" height="52"><path d="M17 3 L29 30 L17 23 L5 30 Z" fill="#3fd1b0" stroke="#fff" stroke-width="2"/></svg>';
+const car=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'}).setLngLat([-73.568,45.459]).addTo(map);
+let follow=false,last=null,heading=0,watchId=null;
+const status=document.getElementById('status'),speedEl=document.getElementById('speed'),btn=document.getElementById('btn');
 function view(pos,ms){map.easeTo({center:pos,zoom:18,pitch:65,bearing:heading,duration:ms,offset:[0,150]});}
 function onPos(p){
   const pos=[p.coords.longitude,p.coords.latitude];
@@ -49,7 +102,7 @@ function onPos(p){
   if(follow) view(pos,1000);
 }
 btn.onclick=()=>{
-  follow=true; btn.textContent='Recenter';
+  follow=true;btn.textContent='Recenter';
   if(watchId===null){watchId=navigator.geolocation.watchPosition(onPos,()=>{status.textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});}
   else if(last) view(last,800);
 };
