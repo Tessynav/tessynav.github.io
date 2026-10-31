@@ -12,6 +12,7 @@ html,body,#map{margin:0;height:100%}
 .hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px}
 #status{top:12px;left:12px;font-size:15px}
 #sun{top:64px;left:12px;font-size:13px}
+#shbtn{top:110px;left:12px;font-size:13px;border:0;cursor:pointer}
 #trees{top:12px;right:56px;font-size:14px}
 #speed{bottom:24px;left:12px;font-size:34px;font-weight:bold}
 #speed small{font-size:15px;font-weight:normal;opacity:.7}
@@ -22,6 +23,7 @@ html,body,#map{margin:0;height:100%}
 <div id="map"></div>
 <div id="status" class="hud">Tap Start to follow Tessy</div>
 <div id="sun" class="hud">Sun: calculating...</div>
+<button id="shbtn" class="hud">Shadows: On</button>
 <div id="trees" class="hud">Trees: 0</div>
 <div id="speed" class="hud">0 <small>km/h</small></div>
 <button id="btn" class="hud">Start</button>
@@ -36,14 +38,21 @@ const ORIGIN=[-73.568,45.459];
 const startPos=cacheGet('lastPos')||ORIGIN;
 const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:startPos,zoom:17,pitch:60,
   attributionControl:{customAttribution:'Arbres : Ville de Montréal (CC BY 4.0)'}});
-const treesEl=document.getElementById('trees'),sunEl=document.getElementById('sun');
+const treesEl=document.getElementById('trees'),sunEl=document.getElementById('sun'),shBtn=document.getElementById('shbtn');
+function toLocal(lng,lat){return [(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R),-(lat-ORIGIN[1])*111320];}
+
+/* ---------- Shadows setting ---------- */
+let shadowsOn=cacheGet('shadows')!==false;
+function showShadowBtn(){shBtn.textContent='Shadows: '+(shadowsOn?'On':'Off');}
+showShadowBtn();
+shBtn.onclick=()=>{shadowsOn=!shadowsOn;cacheSet('shadows',shadowsOn);showShadowBtn();map.triggerRepaint();};
 
 /* ---------- Real sun position ---------- */
 function sunPos(date,lat,lng){
   const d=date.getTime()/864e5-0.5+2440588-2451545;
   const M=R*(357.5291+0.98560028*d);
-  const C=R*(1.9148*Math.sin(M)+0.02*Math.sin(2*M)+0.0003*Math.sin(3*M));
-  const L=M+C+R*102.9372+Math.PI;
+  const Cc=R*(1.9148*Math.sin(M)+0.02*Math.sin(2*M)+0.0003*Math.sin(3*M));
+  const L=M+Cc+R*102.9372+Math.PI;
   const e=R*23.4397;
   const dec=Math.asin(Math.sin(e)*Math.sin(L));
   const ra=Math.atan2(Math.sin(L)*Math.cos(e),Math.cos(L));
@@ -59,7 +68,8 @@ function nowForSun(){
   if(testHour!==null&&testHour!==''){const h=parseFloat(testHour);d.setHours(Math.floor(h),Math.round((h%1)*60),0,0);}
   return d;
 }
-let hemiLight=null,sunLight=null;
+let hemiLight=null,sunLight=null,shadowPlane=null,sunUp=false;
+const sunDir=new THREE.Vector3(-0.4,0.8,0.3).normalize();
 function updateSun(){
   const c=map.getCenter();
   const s=sunPos(nowForSun(),c.lat,c.lng);
@@ -67,14 +77,15 @@ function updateSun(){
   const dirs=['N','NE','E','SE','S','SW','W','NW'];
   sunEl.textContent=altDeg>0?('Sun: '+Math.round(altDeg)+'° high, '+dirs[Math.round(azDeg/45)%8]+(testHour?' (test '+testHour+'h)':''))
                             :('Sun is down'+(testHour?' (test '+testHour+'h)':''));
-  const up=Math.max(0,Math.sin(s.alt));
+  sunUp=altDeg>2;
+  const up=Math.max(0,Math.sin(s.alt)),ce=Math.cos(s.alt);
+  sunDir.set(ce*Math.sin(s.az),Math.max(0.05,Math.sin(s.alt)),-ce*Math.cos(s.az)).normalize();
   if(sunLight&&hemiLight){
-    const ce=Math.cos(s.alt);
-    sunLight.position.set(ce*Math.sin(s.az)*100,Math.max(0.05,Math.sin(s.alt))*100,-ce*Math.cos(s.az)*100);
     sunLight.intensity=altDeg>0?1.2+2.6*Math.min(1,up*1.6):0;
     hemiLight.intensity=altDeg>0?0.9+0.5*up:0.55;
     sunLight.color.set(altDeg<12?0xffc890:0xfff4e4);
   }
+  if(shadowPlane) shadowPlane.material.opacity=0.18+0.17*Math.min(1,up*2);
   if(map.isStyleLoaded()){
     map.setLight({anchor:'map',color:altDeg<12?'#ffd2a0':'#ffffff',
       intensity:altDeg>0?0.35+0.3*up:0.15,
@@ -99,17 +110,34 @@ const treeLayer={
       this.camera=new THREE.Camera();
       this.scene=new THREE.Scene();treeScene=this.scene;
       hemiLight=new THREE.HemisphereLight(0xdfeeff,0x4a5a3a,1.2);this.scene.add(hemiLight);
-      sunLight=new THREE.DirectionalLight(0xfff4e4,3.0);sunLight.position.set(-40,80,30);this.scene.add(sunLight);
+      sunLight=new THREE.DirectionalLight(0xfff4e4,3.0);
+      sunLight.castShadow=true;
+      sunLight.shadow.mapSize.set(2048,2048);
+      const sc=sunLight.shadow.camera;sc.left=-250;sc.right=250;sc.top=250;sc.bottom=-250;sc.near=1;sc.far=900;
+      sunLight.shadow.bias=-0.0008;
+      this.scene.add(sunLight);this.scene.add(sunLight.target);
+      shadowPlane=new THREE.Mesh(new THREE.PlaneGeometry(700,700),new THREE.ShadowMaterial({opacity:0.32,depthWrite:false}));
+      shadowPlane.rotation.x=-Math.PI/2;shadowPlane.position.y=0.15;shadowPlane.receiveShadow=true;
+      this.scene.add(shadowPlane);
       treeMat=new THREE.MeshLambertMaterial({vertexColors:true});
       this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
       this.renderer.autoClear=false;
-      const mc=maplibregl.MercatorCoordinate.fromLngLat(ORIGIN,0),sc=mc.meterInMercatorCoordinateUnits();
-      this.model=new THREE.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new THREE.Vector3(sc,-sc,sc)).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2));
+      this.renderer.shadowMap.enabled=true;
+      this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+      const mc=maplibregl.MercatorCoordinate.fromLngLat(ORIGIN,0),msc=mc.meterInMercatorCoordinateUnits();
+      this.model=new THREE.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new THREE.Vector3(msc,-msc,msc)).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2));
     }catch(e){treesFailed=true;treesEl.textContent='3D trees error: '+e.message;}
   },
   render(gl,matrix){
     if(treesFailed) return;
     try{
+      const c=map.getCenter(),[cx,cz]=toLocal(c.lng,c.lat);
+      const useShadows=shadowsOn&&sunUp;
+      sunLight.target.position.set(cx,0,cz);sunLight.target.updateMatrixWorld();
+      sunLight.position.set(cx+sunDir.x*400,sunDir.y*400,cz+sunDir.z*400);
+      shadowPlane.position.x=cx;shadowPlane.position.z=cz;
+      shadowPlane.visible=useShadows;
+      this.renderer.shadowMap.autoUpdate=useShadows;
       this.camera.projectionMatrix=new THREE.Matrix4().fromArray(matrix).multiply(this.model);
       this.renderer.resetState();
       this.renderer.setViewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
@@ -124,13 +152,8 @@ function addTree(seed,lng,lat,size){
   if(occ.has(k)) return false; occ.add(k);
   const ck=Math.floor(lng/C)+','+Math.floor(lat/C);
   let b=buckets.get(ck); if(!b){b=[];buckets.set(ck,b);}
-  b.push({
-    x:(lng-ORIGIN[0])*111320*Math.cos(ORIGIN[1]*R),
-    z:-(lat-ORIGIN[1])*111320,
-    s:size||(0.8+Math.random()*0.45),
-    col:leafCols[Math.abs(seed)%leafCols.length],
-    jx:Math.random()-.5, jz:Math.random()-.5
-  });
+  const [x,z]=toLocal(lng,lat);
+  b.push({x:x,z:z,s:size||(0.8+Math.random()*0.45),col:leafCols[Math.abs(seed)%leafCols.length],jx:Math.random()-.5,jz:Math.random()-.5});
   dirty.add(ck); treeCount++; return true;
 }
 
@@ -159,7 +182,8 @@ function buildMesh(list){
   g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
   g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   g.setIndex(idx);
-  const mesh=new THREE.Mesh(g,treeMat);mesh.frustumCulled=false;
+  const mesh=new THREE.Mesh(g,treeMat);
+  mesh.frustumCulled=false;mesh.castShadow=true;
   return mesh;
 }
 
