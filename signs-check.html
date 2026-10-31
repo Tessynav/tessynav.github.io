@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>TessyNav sign converter</title>
+<title>TessyNav sign converter v2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 body{font-family:sans-serif;max-width:900px;margin:40px auto;padding:0 16px}
@@ -13,7 +13,7 @@ a{display:inline-block;margin:12px 0;font-size:18px}
 </style>
 </head>
 <body>
-<h1>TessyNav sign converter</h1>
+<h1>TessyNav sign converter v2</h1>
 <p>Choose the Montreal road signs CSV file ("Signalisation routière").</p>
 <input type="file" id="f" accept=".csv">
 <div id="log">Waiting for file...</div>
@@ -21,7 +21,10 @@ a{display:inline-block;margin:12px 0;font-size:18px}
 <div id="skipped"></div>
 <script>
 const T=0.05;
-const NAMES={s:'Stop',a:'All-way plate',y:'Yield',o:'One way',x:'No entry',t:'Turn restriction',p:'Pedestrian crossing',e:'School zone'};
+const NAMES={s:'Stop',a:'All-way plate',y:'Yield',o:'One way',x:'No entry',t:'Turn restriction',p:'Pedestrian crossing',
+  e:'School zone',w:'Stop ahead',b:'Speed bump ahead',k:'Playground ahead',r:'Bumpy road',c:'Cul-de-sac',
+  m1:'Mandatory: straight',m2:'Mandatory: right',m3:'Mandatory: left',m4:'Mandatory: straight or right',
+  m5:'Mandatory: straight or left',m6:'Mandatory: right or left',n:'Street name'};
 function parseLine(line,d){
   const out=[];let cur='',q=false;
   for(let i=0;i<line.length;i++){
@@ -38,12 +41,24 @@ const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[
 function classify(desc,code){
   const d=norm(desc),c=norm(code);
   if(/AUTOBUS|\bBUS\b/.test(d)) return null;
-  if(/TOUTES DIRECTIONS/.test(d)) return 'a';
+  if(/^TOPONYME/.test(d)) return 'n';
+  if(/TOUTES LES APPROCHES|TOUTES DIRECTIONS/.test(d)) return 'a';
+  if(/SIGNAL AVANCE D.ARRET/.test(d)) return 'w';
   if(c==='RA-A'||/^ARRET\b/.test(d)) return 's';
   if(/CEDEZ/.test(d)) return 'y';
   if(/^MAXIMUM|VITESSE MAX/.test(d)){const m=d.match(/(\d{2,3})/);return m?'v'+m[1]:null;}
   if(/SENS UNIQUE/.test(d)) return 'o';
   if(/ACCES INTERDIT|ENTREE INTERDITE|SENS INTERDIT/.test(d)) return 'x';
+  if(/^OBLIG/.test(d)){
+    const st=/TOUT DROIT/.test(d),r=/DROITE/.test(d),l=/GAUCHE/.test(d);
+    if(st&&r) return 'm4'; if(st&&l) return 'm5'; if(r&&l) return 'm6';
+    if(st) return 'm1'; if(r) return 'm2'; if(l) return 'm3';
+    return null;
+  }
+  if(/RALENTISSEUR/.test(d)) return 'b';
+  if(/TERRAIN DE JEUX/.test(d)) return 'k';
+  if(/ROUTE CAHOTEUSE/.test(d)) return 'r';
+  if(/CUL-DE-SAC/.test(d)) return 'c';
   if(/INTERDICTION|INTERDIT|DEMI-TOUR/.test(d)&&/TOURN|VIRA|DEMI-TOUR|DROITE|GAUCHE/.test(d)) return 't';
   if(/PIETON|TRAVERSE/.test(d)) return 'p';
   if(/ECOLE|SCOLAIRE/.test(d)) return 'e';
@@ -54,7 +69,7 @@ document.getElementById('f').onchange=async e=>{
   const log=document.getElementById('log');
   log.textContent='Reading '+file.name+'...';
   const reader=file.stream().pipeThrough(new TextDecoderStream()).getReader();
-  let buf='',header=null,d=',',rows=0,iLon=-1,iLat=-1,iDesc=-1,iCode=-1,iPole=-1,iPos=-1;
+  let buf='',header=null,d=',',rows=0,iLon=-1,iLat=-1,iDesc=-1,iCode=-1,iPole=-1,iPos=-1,iTopo=-1;
   const poles=new Map(),kept={},skipped={};
   function handle(line){
     if(!line.trim())return;
@@ -64,16 +79,21 @@ document.getElementById('f').onchange=async e=>{
       const find=re=>header.findIndex(h=>re.test(h));
       iLon=find(/^longitude$/i);iLat=find(/^latitude$/i);
       iDesc=find(/^DESCRIPTION_RPA$/i);iCode=find(/^CODE_RPA$/i);
-      iPole=find(/^POTEAU_ID_POT$/i);iPos=find(/^POSITION_POP$/i);
+      iPole=find(/^POTEAU_ID_POT$/i);iPos=find(/^POSITION_POP$/i);iTopo=find(/^TOPONYME/i);
       return;
     }
     const c=parseLine(line,d);rows++;
     const desc=c[iDesc],code=c[iCode];
-    const type=classify(desc,code);
+    let type=classify(desc,code);
     if(!type){const k=norm(desc)||'(empty)';skipped[k]=(skipped[k]||0)+1;return;}
+    if(type==='n'){
+      const nm=(iTopo>=0?c[iTopo]:'').replace(/[|,]/g,' ').trim();
+      if(!nm){return;}
+      type='n:'+nm;
+    }
     const lng=parseFloat(c[iLon]),lat=parseFloat(c[iLat]);
     if(!isFinite(lng)||!isFinite(lat)||lng<-80||lng>-70||lat<40||lat>50) return;
-    const name=type[0]==='v'?'Speed limit '+type.slice(1):NAMES[type];
+    const name=type[0]==='v'?'Speed limit '+type.slice(1):(type.indexOf('n:')===0?'Street name':NAMES[type]);
     kept[name]=(kept[name]||0)+1;
     const pid=iPole>=0?c[iPole]:(lng.toFixed(6)+','+lat.toFixed(6));
     let p=poles.get(pid);
@@ -95,7 +115,7 @@ document.getElementById('f').onchange=async e=>{
   for(const p of poles.values()){
     p.signs.sort((a,b)=>b[1]-a[1]);
     const tx=Math.floor(p.lng/T),ty=Math.floor(p.lat/T),k=tx+'_'+ty;
-    (tiles[k]||(tiles[k]=[])).push([Math.round((p.lng-tx*T)*1e5),Math.round((p.lat-ty*T)*1e5),p.signs.map(s=>s[0]).join(',')]);
+    (tiles[k]||(tiles[k]=[])).push([Math.round((p.lng-tx*T)*1e5),Math.round((p.lat-ty*T)*1e5),p.signs.map(s=>s[0]).join('|')]);
   }
   const keys=Object.keys(tiles);
   const zip=new JSZip(),dir=zip.folder('signs');
@@ -107,7 +127,7 @@ document.getElementById('f').onchange=async e=>{
   log.after(a);a.click();
   const kl=Object.entries(kept).sort((x,y)=>y[1]-x[1]);
   document.getElementById('kept').innerHTML='<h3>Signs kept</h3><table>'+kl.map(([k,v])=>'<tr><td>'+esc(k)+'</td><td>'+v+'</td></tr>').join('')+'</table>';
-  const sl=Object.entries(skipped).sort((x,y)=>y[1]-x[1]).slice(0,60);
+  const sl=Object.entries(skipped).sort((x,y)=>y[1]-x[1]).slice(0,40);
   document.getElementById('skipped').innerHTML='<h3>Most common signs skipped</h3><table>'+sl.map(([k,v])=>'<tr><td>'+esc(k)+'</td><td>'+v+'</td></tr>').join('')+'</table>';
 };
 </script>
