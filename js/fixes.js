@@ -1,5 +1,5 @@
-/* TessyNav fixes v3: hidden map roads under detailed roads, lamps off medians, highway exits (match by road edge),
-   less lag (look-ahead), lighter road rebuilds, car drives ON bridges and ramps */
+/* TessyNav fixes v6: hidden map roads under detailed roads, lamps off medians, highway exits (match by road edge),
+   lighter road rebuilds, car on bridges, NO look-ahead (0.7 s smooth delay), replay panel at top, clean replay jumps */
 
 /* ---------- Map's own roads disappear where our detailed roads are loaded ---------- */
 function r3SetNarrow(narrow){
@@ -167,15 +167,14 @@ function updateCar3D(cx,cz,hd,steer){
   carTail.color.setHex(nt>0.3?0xff2a33:0xb0141c);
 }
 
-/* ---------- Drawing: smooth path, plus a look-ahead that cancels the delay ---------- */
-const LEAD=1.4;
-let kappaS=0,dispHd=0;
+/* ---------- Drawing: the smooth path, 0.7 s behind, no prediction ---------- */
+const DRAW_DELAY=700;
 function glideFrame(){
   requestAnimationFrame(glideFrame);
   const now=performance.now(),fdt=Math.min(0.1,lastFrameT?(now-lastFrameT)/1000:0.016);
   lastFrameT=now;
   if(watchId===null||!pts.length) return;
-  const p=pathAt(now-DELAY);
+  const p=pathAt(now-DRAW_DELAY);
   if(!p) return;
   const k=Math.exp(-fdt/0.35);corr[0]*=k;corr[1]*=k;
   const rx=p.x+corr[0],rz=p.z+corr[1];
@@ -186,32 +185,21 @@ function glideFrame(){
   const newHd=(gHd+dh*Math.min(1,fdt*8)+360)%360;
   const turned=((newHd-gHd+540)%360)-180;
   gHd=newHd;lastPathHd=hd;
-  if(v>1){
-    const kap=Math.max(-0.2,Math.min(0.2,(turned*R)/(v*fdt)));
-    kappaS+=(kap-kappaS)*Math.min(1,fdt*2.5);
-  }else kappaS*=0.9;
-  const last=pts[pts.length-1];
-  let s=v*LEAD*Math.max(0.25,1-Math.abs(kappaS)*25);
-  const capS=Math.hypot(last.x-rx,last.z-rz)+Math.hypot(last.vx,last.vz)*((now-last.t)/1000+0.4);
-  s=Math.max(0,Math.min(s,capS));
-  let ax=rx,az=rz,ah=gHd*R;
-  const steps=6,ds=s/steps;
-  for(let i=0;i<steps;i++){ah+=kappaS*ds/2;ax+=Math.sin(ah)*ds;az-=Math.cos(ah)*ds;ah+=kappaS*ds/2;}
-  dispHd=(ah/R+360)%360;
-  const wantSteer=v>1?Math.max(-0.5,Math.min(0.5,Math.atan(WHEELBASE*kappaS))):0;
+  let wantSteer=0;
+  if(v>1){const curv=(turned*R)/(v*fdt);wantSteer=Math.max(-0.5,Math.min(0.5,Math.atan(WHEELBASE*curv)));}
   steerNow+=(wantSteer-steerNow)*Math.min(1,fdt*6);
-  const fx=Math.sin(dispHd*R),fz=-Math.cos(dispHd*R);
-  const cx=ax+fx*REAR_AXLE,cz=az+fz*REAR_AXLE;
+  const fx=Math.sin(gHd*R),fz=-Math.cos(gHd*R);
+  const cx=rx+fx*REAR_AXLE,cz=rz+fz*REAR_AXLE;
   gPos=fromLocal(cx,cz);
-  car.setLngLat(gPos).setRotation(dispHd);
-  updateCar3D(cx,cz,dispHd,steerNow);
+  car.setLngLat(gPos).setRotation(gHd);
+  updateCar3D(cx,cz,gHd,steerNow);
   map.triggerRepaint();
   if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
   const cs=camSpec();
   gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
   gPitch+=(cs.pitch-gPitch)*0.06;
   const H=map.getContainer().clientHeight||800;
-  map.jumpTo({center:gPos,bearing:dispHd,zoom:gZoom,pitch:gPitch,
+  map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
     padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
 }
 
@@ -322,7 +310,8 @@ function buildLightCell(ck){
 
 if(typeof lDirtyAll!=='undefined') lDirtyAll=true;
 map.on('load',()=>{lDirtyAll=true;});
-/* Replay panel: at the top under the Trips button, tap the time text to collapse it */
+
+/* ---------- Replay panel at the top, tap the time text to collapse it ---------- */
 setInterval(()=>{
   if(typeof rpUi==='undefined'||!rpUi||rpUi.dataset.moved) return;
   rpUi.dataset.moved='1';
@@ -331,17 +320,18 @@ setInterval(()=>{
   rpUi.style.padding='6px 12px';
   const row=rpUi.lastChild;
   if(rpTxt&&row){
-   rpTxt.style.cursor='pointer';
-   rpTxt.addEventListener('click',()=>{row.style.display=row.style.display==='none'?'flex':'none';});
+    rpTxt.style.cursor='pointer';
+    rpTxt.addEventListener('click',()=>{row.style.display=row.style.display==='none'?'flex':'none';});
   }
 },500);
-/* Replay jumps (±30 s): reset the motion memory so the car teleports cleanly */
+
+/* ---------- Replay jumps (±30 s): reset the motion memory so the car teleports cleanly ---------- */
 if(typeof rpSeek==='function'){
   const baseRpSeek=rpSeek;
   rpSeek=function(t){
     kfX=null;kfZ=null;pts=[];corr=[0,0];lastOff=[0,0];
     curRoad=null;switchVotes=0;lostCount=0;preTurn=null;turning=false;prevFixHd=null;
-    lastPathHd=null;kappaS=0;steerNow=0;
+    lastPathHd=null;steerNow=0;
     carY=0;brTarget=0;brLastXZ=null;carPitch=0;
     baseRpSeek(t);
   };
