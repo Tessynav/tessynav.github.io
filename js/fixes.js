@@ -1,5 +1,5 @@
-/* TessyNav fixes v2: hidden map roads under detailed roads, lamps off medians,
-   highway exits (match by road edge), less lag (look-ahead), lighter road rebuilds */
+/* TessyNav fixes v3: hidden map roads under detailed roads, lamps off medians, highway exits (match by road edge),
+   less lag (look-ahead), lighter road rebuilds, car drives ON bridges and ramps */
 
 /* ---------- Map's own roads disappear where our detailed roads are loaded ---------- */
 function r3SetNarrow(narrow){
@@ -118,6 +118,55 @@ function matchRoad(x,z,spd){
   return {x:sx,z:sz,tx:pick.tx,tz:pick.tz};
 }
 
+/* ---------- The car follows the surface under it: ground, ramps, bridge decks ---------- */
+let carY=0,carPitch=0,brLastT=0,brTarget=0,brLastXZ=null;
+const brRay=new THREE.Raycaster(),brDown=new THREE.Vector3(0,-1,0),brOrigin=new THREE.Vector3();
+function bridgeSurfaces(x,z){
+  const ys=[0];
+  if(typeof brMeshes==='undefined'||!brMeshes.size) return ys;
+  const objs=[];
+  for(const v of brMeshes.values()){
+    const o=v&&v.isObject3D?v:(v&&(v.group||v.mesh));
+    if(o&&o.visible!==false) objs.push(o);
+  }
+  if(!objs.length) return ys;
+  brOrigin.set(x,60,z);brRay.set(brOrigin,brDown);brRay.far=80;
+  for(const h of brRay.intersectObjects(objs,true)){
+    if(h.face&&h.face.normal.y<0.3) continue;
+    ys.push(h.point.y);
+  }
+  return ys;
+}
+function updateCar3D(cx,cz,hd,steer){
+  if(!treeScene) return;
+  if(!car3d){
+    car3d=makeCar3D();car3d.rotation.order='YXZ';treeScene.add(car3d);
+    try{car.getElement().style.display='none';}catch(e){}
+  }
+  const now=performance.now();
+  if(now-brLastT>100){
+    brLastT=now;
+    let best=null;
+    for(const y of bridgeSurfaces(cx,cz)){
+      if(y>carY-1.6&&y<carY+1.0&&(best===null||y>best)) best=y;
+    }
+    brTarget=best!==null?best:Math.max(0,carY-0.5);
+    if(brLastXZ){
+      const ds=Math.hypot(cx-brLastXZ[0],cz-brLastXZ[1]);
+      if(ds>0.3){carPitch+=(Math.atan2(brTarget-carY,ds)-carPitch)*0.3;brLastXZ=[cx,cz];}
+    }else brLastXZ=[cx,cz];
+  }
+  carY+=(brTarget-carY)*0.15;
+  if(Math.abs(brTarget-carY)<0.05) carPitch*=0.9;
+  car3d.position.set(cx,carY,cz);
+  car3d.rotation.y=-hd*R;
+  car3d.rotation.x=Math.max(-0.25,Math.min(0.25,carPitch));
+  for(const w of carFrontWheels) w.rotation.y=-steer;
+  const nt=typeof nightNow==='number'?nightNow:0;
+  carBeam.material.opacity=0.45*nt;
+  carTail.color.setHex(nt>0.3?0xff2a33:0xb0141c);
+}
+
 /* ---------- Drawing: smooth path, plus a look-ahead that cancels the delay ---------- */
 const LEAD=1.4;
 let kappaS=0,dispHd=0;
@@ -141,7 +190,6 @@ function glideFrame(){
     const kap=Math.max(-0.2,Math.min(0.2,(turned*R)/(v*fdt)));
     kappaS+=(kap-kappaS)*Math.min(1,fdt*2.5);
   }else kappaS*=0.9;
-  /* look ahead along the curve, never past the latest real GPS position */
   const last=pts[pts.length-1];
   let s=v*LEAD*Math.max(0.25,1-Math.abs(kappaS)*25);
   const capS=Math.hypot(last.x-rx,last.z-rz)+Math.hypot(last.vx,last.vz)*((now-last.t)/1000+0.4);
