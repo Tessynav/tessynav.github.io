@@ -199,7 +199,7 @@ function rpButtons(){
   mk('Pause',b=>{rpPaused=!rpPaused;b.textContent=rpPaused?'Play':'Pause';});
   mk('Speed',()=>{rpSpeed=rpSpeed>=8?1:rpSpeed*2;});
   mk('+30 s',()=>rpSeek(rpClock+30000));
-    mk('Save analysis',()=>{try{const d=new Date(),name='tessynav-analysis-'+d.getHours()+'h'+String(d.getMinutes()).padStart(2,'0')+'.json';const blob=new Blob([JSON.stringify({v:21,trip:rpTrip.info,start:rpTrip.start,log:motionLog})],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);}catch(e){alert('Could not save: '+e.message);}});
+  mk('Save analysis',()=>{try{const d=new Date(),name='tessynav-analysis-'+d.getHours()+'h'+String(d.getMinutes()).padStart(2,'0')+'.json';const blob=new Blob([JSON.stringify({v:21,trip:rpTrip.info,start:rpTrip.start,log:motionLog})],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);}catch(e){alert('Could not save: '+e.message);}});
   rpUi.appendChild(row);document.body.appendChild(rpUi);
 }
 function rpPlay(trip){
