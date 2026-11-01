@@ -1,4 +1,4 @@
-/* TessyNav roads v5: own road shapes from OpenStreetMap (real widths, joined pieces, straight divided-road ends), curbs, markings, crosswalks, stop lines, one-way arrows */
+/* TessyNav roads v6: own road shapes from OpenStreetMap (real widths, joined pieces, local bend straightening), curbs, markings, crosswalks, stop lines, one-way arrows */
 const ROAD_PPM15=512*Math.pow(2,15)/(40075016.686*Math.cos(45.5*Math.PI/180));
 const ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5,track:4,busway:7,raceway:8};
 const ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4,track:4,busway:4,raceway:8};
@@ -218,27 +218,35 @@ function r3Back(pts,dist){
   }
   return null;
 }
+/* Fix only the final bend: find a kink in the last 30 m, extend the road straight from it */
 function r3Straighten(W,atEnd){
   const pts=atEnd?W.pts.slice():W.pts.slice().reverse();
   const n=pts.length;
-  const P45=r3Back(pts,45);if(!P45) return false;
-  const P90=r3Back(pts,90)||{p:pts[0],i:1};
-  const dx=P45.p[0]-P90.p[0],dz=P45.p[1]-P90.p[1],dl=Math.hypot(dx,dz);
-  if(dl<10) return false;
-  const ux=dx/dl,uz=dz/dl;
-  const dev=p=>ux*(p[1]-P45.p[1])-uz*(p[0]-P45.p[0]);
-  const N=pts[n-1],latN=dev(N);
-  if(Math.abs(latN)<1||Math.abs(latN)>12) return false;
-  let A=P45.p,iA=P45.i;
-  for(let i=P45.i;i<n-1;i++){
-    if(Math.abs(dev(pts[i]))>0.8) break;
-    A=pts[i];iA=i+1;
+  if(n<3) return false;
+  const N=pts[n-1];
+  const cMin=Math.cos(70*Math.PI/180),cMax=Math.cos(8*Math.PI/180);
+  let acc=0,K=-1;
+  for(let i=n-2;i>=1;i--){
+    acc+=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);
+    if(acc>30) break;
+    const a=pts[i-1],b=pts[i],c=pts[i+1];
+    const d1x=b[0]-a[0],d1z=b[1]-a[1],d2x=c[0]-b[0],d2z=c[1]-b[1];
+    const l1=Math.hypot(d1x,d1z),l2=Math.hypot(d2x,d2z);
+    if(l1<0.5||l2<0.5) continue;
+    const cs=(d1x*d2x+d1z*d2z)/(l1*l2);
+    if(cs<cMax&&cs>cMin) K=i;
   }
-  const fwd=ux*(N[0]-A[0])+uz*(N[1]-A[1]);
-  if(fwd<3) return false;
-  const np=pts.slice(0,iA);
-  if(!np.length||np[np.length-1]!==A) np.push(A);
-  np.push([A[0]+ux*fwd,A[1]+uz*fwd]);
+  if(K<1) return false;
+  const Kp=pts[K];
+  const P=r3Back(pts.slice(0,K+1),20)||{p:pts[0]};
+  let ux=Kp[0]-P.p[0],uz=Kp[1]-P.p[1];
+  const ul=Math.hypot(ux,uz);
+  if(ul<8) return false;
+  ux/=ul;uz/=ul;
+  const vx=N[0]-Kp[0],vz=N[1]-Kp[1],lat=ux*vz-uz*vx,fwd=ux*vx+uz*vz;
+  if(Math.abs(lat)<1||Math.abs(lat)>10||fwd<3||fwd>35) return false;
+  const np=pts.slice(0,K+1);
+  np.push([Kp[0]+ux*fwd,Kp[1]+uz*fwd]);
   W.pts=atEnd?np:np.reverse();
   return true;
 }
