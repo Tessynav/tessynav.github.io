@@ -335,3 +335,14 @@ setInterval(()=>{
    rpTxt.addEventListener('click',()=>{row.style.display=row.style.display==='none'?'flex':'none';});
   }
 },500);
+/* Replay jumps (±30 s): reset the motion memory so the car teleports cleanly */
+if(typeof rpSeek==='function'){
+  const baseRpSeek=rpSeek;
+  rpSeek=function(t){
+    kfX=null;kfZ=null;pts=[];corr=[0,0];lastOff=[0,0];
+    curRoad=null;switchVotes=0;lostCount=0;preTurn=null;turning=false;prevFixHd=null;
+    lastPathHd=null;kappaS=0;steerNow=0;
+    carY=0;brTarget=0;brLastXZ=null;carPitch=0;
+    baseRpSeek(t);
+  };
+}
