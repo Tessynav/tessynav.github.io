@@ -322,3 +322,16 @@ function buildLightCell(ck){
 
 if(typeof lDirtyAll!=='undefined') lDirtyAll=true;
 map.on('load',()=>{lDirtyAll=true;});
+/* Replay panel: at the top under the Trips button, tap the time text to collapse it */
+setInterval(()=>{
+  if(typeof rpUi==='undefined'||!rpUi||rpUi.dataset.moved) return;
+  rpUi.dataset.moved='1';
+  rpUi.style.bottom='';
+  rpUi.style.top='64px';
+  rpUi.style.padding='6px 12px';
+  const row=rpUi.lastChild;
+  if(rpTxt&&row){
+   rpTxt.style.cursor='pointer';
+   rpTxt.addEventListener('click',()=>{row.style.display=row.style.display==='none'?'flex':'none';});
+  }
+},500);
