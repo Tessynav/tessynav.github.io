@@ -1,4 +1,4 @@
-/* TessyNav performance v22: motion system (no matching past road ends, free-flowing turns, tuned filter) + decision log */
+/* TessyNav performance v24: motion system (corner-free matching, smooth offsets, turns redrawn through intersections) + decision log */
 let quality=cacheGet('quality')||'standard';
 const qBtn=document.createElement('button');
 qBtn.className='hud';
@@ -208,6 +208,7 @@ const MOTION_LOG=new URLSearchParams(location.search).has('replay');
 let motionLog=[];
 let snapOff=[0,0],snapOk=false,snapCls='',snapBridge=false,gpsAcc=null,roadLayerIds=null;
 let curRoad=null,switchVotes=0,lostCount=0,lastHd=null,lastMatchInfo=null,prevFixHd=null,prevFixT=0,turning=false;
+let preTurn=null,lastSnapT=0,turnRedrawn=false;
 let kfX=null,kfZ=null,kfT=0;
 let pts=[],corr=[0,0],lastOff=[0,0];
 let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,lastFrameT=0,steerNow=0,lastPathHd=null;
@@ -257,8 +258,7 @@ function findCandidates(feats,lng,lat,x,z,fx,fz){
     const g=f.geometry;
     const lines=g.type==='LineString'?[g.coordinates]:g.type==='MultiLineString'?g.coordinates:[];
     for(const ln of lines){
-      const last=ln.length-2;
-      for(let i=0;i<=last;i++){
+      for(let i=0;i<ln.length-1;i++){
         const p0=ln[i],p1=ln[i+1];
         if(lng<Math.min(p0[0],p1[0])-pad||lng>Math.max(p0[0],p1[0])+pad||lat<Math.min(p0[1],p1[1])-pad||lat>Math.max(p0[1],p1[1])+pad) continue;
         const a=toLocal(p0[0],p0[1]),b=toLocal(p1[0],p1[1]);
@@ -266,7 +266,7 @@ function findCandidates(feats,lng,lat,x,z,fx,fz){
         if(l2<0.01) continue;
         const l=Math.sqrt(l2);
         const traw=((x-a[0])*dx+(z-a[1])*dz)/l2;
-        /* never match beyond the end of a road line: that froze the car and pulled it backwards */
+        /* never match past the end of any piece of road: the next piece takes over */
         if(traw<0&&-traw*l>1.5) continue;
         if(traw>1&&(traw-1)*l>1.5) continue;
         const t=Math.max(0,Math.min(1,traw));
@@ -326,6 +326,32 @@ function matchRoad(x,z,spd){
   return {x:sx,z:sz,tx:pick.tx,tz:pick.tz};
 }
 
+/* After a turn: redraw the turn as a curve from the old lane to the new lane, guided by where they meet */
+function redrawTurn(m,now){
+  turnRedrawn=false;
+  if(!preTurn||now-preTurn.t>12000) return false;
+  let iA=-1;
+  for(let i=0;i<pts.length;i++) if(pts[i].t===preTurn.t) iA=i;
+  if(iA<0||iA===pts.length-1) return false;
+  const A=pts[iA],dA=[preTurn.tx,preTurn.tz],dB=[m.tx,m.tz];
+  const cross=dA[0]*dB[1]-dA[1]*dB[0];
+  if(Math.abs(cross)<0.35) return false;
+  const w=[m.x-A.x,m.z-A.z];
+  const s=(w[0]*dB[1]-w[1]*dB[0])/cross,u=(dA[0]*w[1]-dA[1]*w[0])/cross;
+  if(!(s>0&&u>0&&s<45&&u<45)) return false;
+  const C=[A.x+dA[0]*s,A.z+dA[1]*s],T=(now-A.t)/1000;
+  if(T<0.5) return false;
+  for(let k=iA+1;k<pts.length;k++){
+    const tau=(pts[k].t-A.t)/(now-A.t),it=1-tau;
+    pts[k].x=it*it*A.x+2*it*tau*C[0]+tau*tau*m.x;
+    pts[k].z=it*it*A.z+2*it*tau*C[1]+tau*tau*m.z;
+    pts[k].vx=(2*it*(C[0]-A.x)+2*tau*(m.x-C[0]))/T;
+    pts[k].vz=(2*it*(C[1]-A.z)+2*tau*(m.z-C[1]))/T;
+  }
+  turnRedrawn=true;
+  return true;
+}
+
 function hermite(a,b,tr){
   const T=(b.t-a.t)/1000;
   const u=Math.max(0,Math.min(1,(tr-a.t)/(b.t-a.t))),u2=u*u,u3=u2*u;
@@ -364,7 +390,7 @@ onPos=function(p){
   gpsAcc=c.accuracy;
   const [x,z]=toLocal(c.longitude,c.latitude);
   if(!kfX||now-kfT>5000){
-    kfX={p:x,v:0,P:[[25,0],[0,25]]};kfZ={p:z,v:0,P:[[25,0],[0,25]]};pts=[];corr=[0,0];lastOff=[0,0];
+    kfX={p:x,v:0,P:[[25,0],[0,25]]};kfZ={p:z,v:0,P:[[25,0],[0,25]]};pts=[];corr=[0,0];lastOff=[0,0];preTurn=null;
   }else{
     const dt=Math.max(0.05,(now-kfT)/1000);
     kfPredict(kfX,dt,KF_Q);kfPredict(kfZ,dt,KF_Q);
@@ -389,31 +415,40 @@ onPos=function(p){
     }
     prevFixHd=lastHd;prevFixT=now;
   }else{turning=false;}
+  if(turning&&curRoad&&!preTurn&&lastSnapT) preTurn={t:lastSnapT,tx:curRoad.tx,tz:curRoad.tz};
+  if(preTurn&&now-preTurn.t>12000) preTurn=null;
   const m=matchRoad(fx,fz,fs);
- let pvx=vx,pvz=vz;
-  const want=m?[m.x-fx,m.z-fz]:[lastOff[0]*0.6,lastOff[1]*0.6];
-  let ddx=want[0]-lastOff[0],ddz=want[1]-lastOff[1];
-  const dm=Math.hypot(ddx,ddz);
-  if(dm>2.5){ddx*=2.5/dm;ddz*=2.5/dm;}
-  lastOff=[lastOff[0]+ddx,lastOff[1]+ddz];
-  const px=fx+lastOff[0],pz=fz+lastOff[1];
+  const tr=now-DELAY,before=pathAt(tr);
+  let pvx=vx,pvz=vz,px,pz;
+  if(m&&preTurn&&redrawTurn(m,now)){
+    lastOff=[m.x-fx,m.z-fz];px=m.x;pz=m.z;preTurn=null;
+  }else{
+    const want=m?[m.x-fx,m.z-fz]:[lastOff[0]*0.6,lastOff[1]*0.6];
+    let ddx=want[0]-lastOff[0],ddz=want[1]-lastOff[1];
+    const dm=Math.hypot(ddx,ddz);
+    if(dm>2.5){ddx*=2.5/dm;ddz*=2.5/dm;}
+    lastOff=[lastOff[0]+ddx,lastOff[1]+ddz];
+    px=fx+lastOff[0];pz=fz+lastOff[1];
+    if(m&&preTurn) preTurn=null;
+  }
   if(m){
     const along=vx*m.tx+vz*m.tz;pvx=m.tx*along;pvz=m.tz*along;
     snapOk=true;snapCls=curRoad?curRoad.cls:'';snapBridge=!!(curRoad&&curRoad.bridge);
+    lastSnapT=now;
   }else{snapOk=false;snapCls='';snapBridge=false;}
   snapOff=[px-fx,pz-fz];
-  const tr=now-DELAY,before=pathAt(tr);
   pts.push({t:now,x:px,z:pz,vx:pvx,vz:pvz});
-  if(pts.length>8) pts.shift();
+  if(pts.length>14) pts.shift();
   const after=pathAt(tr);
   if(before&&after){corr[0]+=before.x-after.x;corr[1]+=before.z-after.z;}
   if(MOTION_LOG){
     const fl=fromLocal(fx,fz),pl=fromLocal(px,pz);
     motionLog.push({t:Math.round(now),raw:[c.longitude,c.latitude],acc:c.accuracy,spd:spd,gpsHd:c.heading,
       filt:[Math.round(fl[0]*1e7)/1e7,Math.round(fl[1]*1e7)/1e7],fspd:Math.round(fs*100)/100,hd:lastHd===null?null:Math.round(lastHd),
-      turning:turning,out:[Math.round(pl[0]*1e7)/1e7,Math.round(pl[1]*1e7)/1e7],snap:snapOk,info:lastMatchInfo});
+      turning:turning,redrawn:turnRedrawn,out:[Math.round(pl[0]*1e7)/1e7,Math.round(pl[1]*1e7)/1e7],snap:snapOk,info:lastMatchInfo});
     if(motionLog.length>20000) motionLog.shift();
   }
+  turnRedrawn=false;
   gT={pos:[c.longitude,c.latitude],spd:spd||0,t:now};
   showGpsStatus();
 };
