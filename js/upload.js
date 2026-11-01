@@ -166,3 +166,31 @@ recStop=function(){
     [['Upload',()=>uploadTrip(trip)],['Download',()=>downloadTrip(trip)],
      ['Replay',()=>{location.href=location.pathname+'?replay='+encodeURIComponent('rec:trip:'+trip.start);}],['Close',hidePanel]]);
 };
+
+/* Auto-update: if a newer version is published, load it (never in the middle of a drive) */
+(function(){
+  if(typeof REPLAY!=='undefined'&&REPLAY) return;
+  const mine=[...document.querySelectorAll('script[src]')].map(s=>s.getAttribute('src')).join('|');
+  let updBtn=null;
+  function reloadNew(){location.replace(location.pathname+'?r='+Date.now());}
+  async function check(){
+    try{
+      const r=await fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'});
+      if(!r.ok) return;
+      const html=await r.text();
+      const srcs=[...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map(m=>m[1]).join('|');
+      if(!srcs||srcs===mine) return;
+      const busy=(typeof rec!=='undefined'&&rec)||(typeof watchId!=='undefined'&&watchId!==null);
+      if(!busy){reloadNew();return;}
+      if(!updBtn){
+        updBtn=document.createElement('button');
+        updBtn.className='hud';updBtn.textContent='↻ Update ready';
+        updBtn.style.cssText='top:12px;left:50%;transform:translateX(-50%);font-size:14px;border:0;cursor:pointer;z-index:9;color:#7fe3d4';
+        updBtn.onclick=()=>{if(typeof rec!=='undefined'&&rec){showPanel('Stop the recording first, then update.',[['Close',hidePanel]]);return;}reloadNew();};
+        document.body.appendChild(updBtn);
+      }
+    }catch(e){}
+  }
+  setTimeout(check,5000);
+  setInterval(check,10*60*1000);
+})();
