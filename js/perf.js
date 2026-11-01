@@ -209,7 +209,7 @@ let motionLog=[];
 let snapOff=[0,0],snapOk=false,snapCls='',snapBridge=false,gpsAcc=null,roadLayerIds=null;
 let curRoad=null,switchVotes=0,lostCount=0,lastHd=null,lastMatchInfo=null,prevFixHd=null,prevFixT=0,turning=false;
 let kfX=null,kfZ=null,kfT=0;
-let pts=[],corr=[0,0];
+let pts=[],corr=[0,0],lastOff=[0,0];
 let gPos=null,gHd=0,gT=null,gZoom=19,gPitch=60,lastFrameT=0,steerNow=0,lastPathHd=null;
 
 function kfPredict(a,dt,q){
@@ -267,8 +267,8 @@ function findCandidates(feats,lng,lat,x,z,fx,fz){
         const l=Math.sqrt(l2);
         const traw=((x-a[0])*dx+(z-a[1])*dz)/l2;
         /* never match beyond the end of a road line: that froze the car and pulled it backwards */
-        if(traw<0&&-traw*l>1.5&&i===0) continue;
-        if(traw>1&&(traw-1)*l>1.5&&i===last) continue;
+        if(traw<0&&-traw*l>1.5) continue;
+        if(traw>1&&(traw-1)*l>1.5) continue;
         const t=Math.max(0,Math.min(1,traw));
         const qx=a[0]+dx*t,qz=a[1]+dz*t,d=Math.hypot(qx-x,qz-z);
         if(d>12) continue;
@@ -364,7 +364,7 @@ onPos=function(p){
   gpsAcc=c.accuracy;
   const [x,z]=toLocal(c.longitude,c.latitude);
   if(!kfX||now-kfT>5000){
-    kfX={p:x,v:0,P:[[25,0],[0,25]]};kfZ={p:z,v:0,P:[[25,0],[0,25]]};pts=[];corr=[0,0];
+    kfX={p:x,v:0,P:[[25,0],[0,25]]};kfZ={p:z,v:0,P:[[25,0],[0,25]]};pts=[];corr=[0,0];lastOff=[0,0];
   }else{
     const dt=Math.max(0.05,(now-kfT)/1000);
     kfPredict(kfX,dt,KF_Q);kfPredict(kfZ,dt,KF_Q);
@@ -390,9 +390,14 @@ onPos=function(p){
     prevFixHd=lastHd;prevFixT=now;
   }else{turning=false;}
   const m=matchRoad(fx,fz,fs);
-  let px=fx,pz=fz,pvx=vx,pvz=vz;
+ let pvx=vx,pvz=vz;
+  const want=m?[m.x-fx,m.z-fz]:[lastOff[0]*0.6,lastOff[1]*0.6];
+  let ddx=want[0]-lastOff[0],ddz=want[1]-lastOff[1];
+  const dm=Math.hypot(ddx,ddz);
+  if(dm>2.5){ddx*=2.5/dm;ddz*=2.5/dm;}
+  lastOff=[lastOff[0]+ddx,lastOff[1]+ddz];
+  const px=fx+lastOff[0],pz=fz+lastOff[1];
   if(m){
-    px=m.x;pz=m.z;
     const along=vx*m.tx+vz*m.tz;pvx=m.tx*along;pvz=m.tz*along;
     snapOk=true;snapCls=curRoad?curRoad.cls:'';snapBridge=!!(curRoad&&curRoad.bridge);
   }else{snapOk=false;snapCls='';snapBridge=false;}
