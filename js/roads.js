@@ -1,4 +1,4 @@
-/* TessyNav roads v3: own road shapes from OpenStreetMap (real widths, straight divided-road ends), curbs, markings, crosswalks, stop lines, one-way arrows */
+/* TessyNav roads v4: own road shapes from OpenStreetMap (real widths, straight divided-road ends), curbs, markings, crosswalks, stop lines, one-way arrows */
 const ROAD_PPM15=512*Math.pow(2,15)/(40075016.686*Math.cos(45.5*Math.PI/180));
 const ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5,track:4,busway:7,raceway:8};
 const ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4,track:4,busway:4,raceway:8};
@@ -77,7 +77,7 @@ function r3SetNarrow(narrow){
 const R3T=0.005,R3_CLS={motorway:'motorway',trunk:'trunk',primary:'primary',secondary:'secondary',tertiary:'tertiary',
   unclassified:'minor',residential:'minor',living_street:'minor',service:'service'};
 const r3Tiles=new Map(),r3Wanted=new Set(),r3Queue=[];
-let r3Busy=false,r3RebuildT=null,r3Ready=false,r3LastWant=0;
+let r3Busy=false,r3RebuildT=null,r3Ready=false,r3LastWant=0,r3LastCenter='';
 function r3CacheGet(k){try{const v=localStorage.getItem('rd3:'+k);return v?JSON.parse(v):null;}catch(e){return null;}}
 function r3CacheSet(k,v){
   let idx=cacheGet('rd3:idx')||[];
@@ -169,7 +169,6 @@ function r3Want(){
   r3SetNarrow(r3Tiles.has(tx+','+ty));
   if(tx+','+ty!==r3LastCenter){r3LastCenter=tx+','+ty;r3Schedule();}
 }
-let r3LastCenter='';
 function r3Schedule(){if(r3RebuildT) return;r3RebuildT=setTimeout(r3Rebuild,300);}
 
 /* ---------- Geometry helpers (local meters) ---------- */
@@ -199,33 +198,52 @@ function r3Ribbon(pts,h){
   }
   return polys;
 }
-/* Straighten the last stretch of a divided-road half that bends inward to its twin */
+function r3DistToLine(pts,p){
+  let best=1e9;
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i],b=pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz;
+    if(l2<0.01) continue;
+    const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dz)/l2));
+    const d=Math.hypot(a[0]+dx*t-p[0],a[1]+dz*t-p[1]);
+    if(d<best) best=d;
+  }
+  return best;
+}
+/* Point at a given distance back from the last point of a polyline */
+function r3Back(pts,dist){
+  let acc=0;
+  for(let i=pts.length-1;i>0;i--){
+    const a=pts[i],b=pts[i-1],l=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    if(acc+l>=dist){const t=(dist-acc)/l;return {p:[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],i:i};}
+    acc+=l;
+  }
+  return null;
+}
+/* Straighten the end of a divided-road half that bends toward its twin before an intersection */
 function r3Straighten(W,atEnd){
   const pts=atEnd?W.pts.slice():W.pts.slice().reverse();
   const n=pts.length;
-  let acc=0,A=null,B=null,iA=-1;
-  for(let i=n-1;i>0;i--){
-    const a=pts[i],b=pts[i-1],l=Math.hypot(b[0]-a[0],b[1]-a[1]);
-    if(!A&&acc+l>=20){const t=(20-acc)/l;A=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];iA=i;}
-    if(acc+l>=55){const t=(55-acc)/l;B=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];break;}
-    acc+=l;
+  const P45=r3Back(pts,45);if(!P45) return false;
+  const P90=r3Back(pts,90)||{p:pts[0],i:1};
+  const dx=P45.p[0]-P90.p[0],dz=P45.p[1]-P90.p[1],dl=Math.hypot(dx,dz);
+  if(dl<10) return false;
+  const ux=dx/dl,uz=dz/dl;
+  const dev=p=>ux*(p[1]-P45.p[1])-uz*(p[0]-P45.p[0]);
+  const N=pts[n-1],latN=dev(N);
+  if(Math.abs(latN)<1||Math.abs(latN)>12) return false;
+  /* find where the bend starts: last vertex (walking toward the end) still on the straight line */
+  let A=P45.p,iA=P45.i;
+  for(let i=P45.i;i<n-1;i++){
+    if(Math.abs(dev(pts[i]))>0.8) break;
+    A=pts[i];iA=i+1;
   }
-  if(!A) return;
-  if(!B) B=pts[0];
-  const dx=A[0]-B[0],dz=A[1]-B[1],dl=Math.hypot(dx,dz);
-  if(dl<5) return;
-  const ux=dx/dl,uz=dz/dl,N=pts[n-1],vx=N[0]-A[0],vz=N[1]-A[1];
-  const lat=ux*vz-uz*vx,fwd=ux*vx+uz*vz;
-  if(Math.abs(lat)<1||Math.abs(lat)>15||fwd<5) return;
-  const np=pts.slice(0,iA);np.push(A,[A[0]+ux*fwd,A[1]+uz*fwd]);
+  const fwd=ux*(N[0]-A[0])+uz*(N[1]-A[1]);
+  if(fwd<3) return false;
+  const np=pts.slice(0,iA);
+  if(!np.length||np[np.length-1]!==A) np.push(A);
+  np.push([A[0]+ux*fwd,A[1]+uz*fwd]);
   W.pts=atEnd?np:np.reverse();
-}
-function r3Away(W,atEnd){
-  const pts=atEnd?W.pts.slice().reverse():W.pts;
-  const a=pts[0];let b=pts[pts.length-1],acc=0;
-  for(let i=1;i<pts.length;i++){acc+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);if(acc>=15){b=pts[i];break;}}
-  const dx=b[0]-a[0],dz=b[1]-a[1],l=Math.hypot(dx,dz)||1;
-  return [dx/l,dz/l];
+  return true;
 }
 function r3Nearest(ways,p,maxD){
   let best=null;
@@ -245,6 +263,7 @@ function r3Nearest(ways,p,maxD){
 }
 
 /* ---------- Build all shapes for the area around the map center ---------- */
+let r3Straightened=0;
 function r3Rebuild(){
   r3RebuildT=null;
   if(!r3Ready||!map.getSource('r3-area')) return;
@@ -258,21 +277,18 @@ function r3Rebuild(){
     }
     for(const nd of t.n) nodes.push(nd);
   }
-  /* divided roads: two one-way halves with the same name meeting at one point in a V */
-  const ends=new Map();
-  const addEnd=(nid,W,atEnd)=>{if(!ends.has(nid)) ends.set(nid,[]);ends.get(nid).push({W:W,atEnd:atEnd});};
-  for(const W of ways){if(W.ow&&W.name){addEnd(W.n0,W,false);addEnd(W.n1,W,true);}}
-  for(const list of ends.values()){
-    if(list.length<2) continue;
-    for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
-      const a=list[i],b=list[j];
-      if(a.W===b.W||a.W.name!==b.W.name) continue;
-      const aIn=(a.atEnd&&a.W.ow===1)||(!a.atEnd&&a.W.ow===-1);
-      const bIn=(b.atEnd&&b.W.ow===1)||(!b.atEnd&&b.W.ow===-1);
-      if(aIn===bIn) continue;
-      const va=r3Away(a.W,a.atEnd),vb=r3Away(b.W,b.atEnd);
-      if(va[0]*vb[0]+va[1]*vb[1]<0.5) continue;
-      r3Straighten(a.W,a.atEnd);r3Straighten(b.W,b.atEnd);
+  /* divided roads: a one-way half whose twin (same name) is within 30 m of its end */
+  r3Straightened=0;
+  const byName=new Map();
+  for(const W of ways){if(W.ow&&W.name&&W.pts.length>1){if(!byName.has(W.name)) byName.set(W.name,[]);byName.get(W.name).push(W);}}
+  for(const group of byName.values()){
+    if(group.length<2) continue;
+    for(const W of group){
+      for(const atEnd of [false,true]){
+        const N=atEnd?W.pts[W.pts.length-1]:W.pts[0];
+        const twin=group.some(V=>V!==W&&r3DistToLine(V.pts,N)<30);
+        if(twin&&r3Straighten(W,atEnd)) r3Straightened++;
+      }
     }
   }
   const area=[],lines=[];
@@ -319,6 +335,7 @@ function r3Rebuild(){
   try{
     map.getSource('r3-area').setData({type:'FeatureCollection',features:area});
     map.getSource('r3-lines').setData({type:'FeatureCollection',features:lines});
+    console.log('Roads built:',ways.length,'roads,',r3Straightened,'divided-road ends straightened');
   }catch(e){console.warn('roads rebuild',e);}
 }
 
