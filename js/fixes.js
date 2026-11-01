@@ -336,3 +336,101 @@ if(typeof rpSeek==='function'){
     baseRpSeek(t);
   };
 }
+
+/* ===== fixes v7: built for Tessy's 10-per-second GPS, adaptive delay, lighter autosave, profiler ===== */
+
+/* Road matching at most every 0.4 s; in between, slide along the current road. Turning measured over ~1 s */
+let mrLastT=0,hdHist=[];
+matchRoad=(function(full){return function(x,z,spd){
+  const now=performance.now();
+  if(lastHd!==null){
+    hdHist.push([now,lastHd]);
+    while(hdHist.length&&now-hdHist[0][0]>1200) hdHist.shift();
+    if(hdHist.length>1&&now-hdHist[0][0]>600){
+      const dh=Math.abs(((lastHd-hdHist[0][1]+540)%360)-180);
+      turning=spd>1.5&&dh/((now-hdHist[0][0])/1000)>TURN_RATE;
+    }
+  }
+  if(now-mrLastT<400&&curRoad&&!turning&&spd>=1){
+    const s=onCurRoad(x,z);
+    if(Math.hypot(s[0]-x,s[1]-z)<=SNAP_MAX+4){lastMatchInfo={why:'between'};return {x:s[0],z:s[1],tx:curRoad.tx,tz:curRoad.tz};}
+  }
+  mrLastT=now;
+  return full(x,z,spd);
+};})(matchRoad);
+
+/* Drawing delay adapts to the GPS rate: ~0.25 s with Tessy's fast GPS, ~1 s with a phone */
+let drawDelay=700;
+glideFrame=function(){
+  requestAnimationFrame(glideFrame);
+  const now=performance.now(),fdt=Math.min(0.1,lastFrameT?(now-lastFrameT)/1000:0.016);
+  lastFrameT=now;
+  if(watchId===null||!pts.length) return;
+  if(pts.length>3){
+    const iv=[];
+    for(let i=Math.max(1,pts.length-8);i<pts.length;i++) iv.push(pts[i].t-pts[i-1].t);
+    iv.sort((a,b)=>a-b);
+    const want=Math.max(250,Math.min(1050,iv[Math.floor(iv.length/2)]*2.2));
+    drawDelay+=(want-drawDelay)*Math.min(1,fdt*0.5);
+  }
+  const p=pathAt(now-drawDelay);
+  if(!p) return;
+  const k=Math.exp(-fdt/0.35);corr[0]*=k;corr[1]*=k;
+  const rx=p.x+corr[0],rz=p.z+corr[1];
+  const v=Math.hypot(p.dx,p.dz);
+  let hd=lastPathHd!==null?lastPathHd:(lastHd!==null?lastHd:gHd);
+  if(v>0.7) hd=(Math.atan2(p.dx,-p.dz)/R+360)%360;
+  const dh=((hd-gHd+540)%360)-180;
+  const newHd=(gHd+dh*Math.min(1,fdt*8)+360)%360;
+  const turned=((newHd-gHd+540)%360)-180;
+  gHd=newHd;lastPathHd=hd;
+  let wantSteer=0;
+  if(v>1){const curv=(turned*R)/(v*fdt);wantSteer=Math.max(-0.5,Math.min(0.5,Math.atan(WHEELBASE*curv)));}
+  steerNow+=(wantSteer-steerNow)*Math.min(1,fdt*6);
+  const fx=Math.sin(gHd*R),fz=-Math.cos(gHd*R);
+  const cx=rx+fx*REAR_AXLE,cz=rz+fz*REAR_AXLE;
+  gPos=fromLocal(cx,cz);
+  car.setLngLat(gPos).setRotation(gHd);
+  updateCar3D(cx,cz,gHd,steerNow);
+  map.triggerRepaint();
+  if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
+  const cs=camSpec();
+  gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
+  gPitch+=(cs.pitch-gPitch)*0.06;
+  const H=map.getContainer().clientHeight||800;
+  map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
+    padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
+};
+
+/* Profiler: time spent in each part of TessyNav, saved into recordings */
+const PROF={};
+function profWrap(name){
+  const f=window[name];
+  if(typeof f!=='function') return;
+  window[name]=function(){
+    const t0=performance.now();
+    try{return f.apply(this,arguments);}
+    finally{PROF[name]=(PROF[name]||0)+performance.now()-t0;}
+  };
+}
+['r3Rebuild','r3Want','buildLightCell','buildSignCell','buildMesh','updateBuildings','updateBridges','updateTrees',
+ 'updateLights','updateSigns','parkTrees','loadAround','matchRoad','onPos','checkAlerts','updateSkyObjects','applyQuality'].forEach(profWrap);
+
+/* Recording: lighter autosave (every 60 s) and profiler numbers every second */
+recTick=function(){
+  if(!rec) return;
+  recTicks++;
+  if(gPos){
+    const mv=Math.hypot(snapOff[0],snapOff[1]);
+    rec.f.push([recT(),r1(gPos[1],7),r1(gPos[0],7),r1(gHd,1),snapOk?1:0,snapCls||'',r1(mv,1),follow?1:0,r1(map.getZoom(),2)]);
+  }
+  if(recTicks%2===0){
+    rec.p.push([recT(),recFrames,Math.round(recMaxGap)]);recFrames=0;recMaxGap=0;
+    const snap={};
+    for(const k in PROF){if(PROF[k]>=1) snap[k]=Math.round(PROF[k]);PROF[k]=0;}
+    if(!rec.x) rec.x=[];
+    rec.x.push([recT(),snap]);
+    recLabel();
+  }
+  if(recTicks%120===0){rec.dur=recT();try{localStorage.setItem('rec:current',JSON.stringify(rec));}catch(e){}}
+};
