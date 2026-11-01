@@ -153,3 +153,16 @@ upBtn.onclick=()=>{
   buttons.push(['Close',hidePanel]);
   showPanel('<b>Upload a saved trip</b>'+(list.length?'':'<br><small>No saved trips yet.</small>'),buttons);
 };
+/* Auto-upload: after Stop, the trip uploads by itself when upload is set up on this device */
+recStop=function(){
+  if(!rec) return;
+  clearInterval(recTimer);
+  rec.dur=recT();
+  const trip=rec;rec=null;recLabel();
+  try{localStorage.removeItem('rec:current');}catch(e){}
+  const saved=saveTrip(trip);
+  if(upGet('token')&&upGet('pass')){uploadTrip(trip);return;}
+  showPanel('Trip recorded: '+mmss(trip.dur)+' · '+trip.g.length+' GPS points'+(saved?'':'<br><b>Not enough space to keep it here, upload or download it now.</b>'),
+    [['Upload',()=>uploadTrip(trip)],['Download',()=>downloadTrip(trip)],
+     ['Replay',()=>{location.href=location.pathname+'?replay='+encodeURIComponent('rec:trip:'+trip.start);}],['Close',hidePanel]]);
+};
