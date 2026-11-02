@@ -930,3 +930,19 @@ map.on('load',()=>{
     },6000);
   }catch(e){console.warn('credits',e);}
 });
+/* Horizon haze follows the time of day (no more white band under the night sky) */
+function applySkyColors(){
+  const nt=typeof nightNow==='number'?nightNow:0;
+  const warm='#f2b27a';
+  const sky=mixHex('#6fa8e8','#0b1633',nt);
+  const hor=nt<0.5?mixHex('#d6e6f5',warm,nt*2):mixHex(warm,'#13214a',(nt-0.5)*2);
+  const fog=nt<0.5?mixHex('#e4ecf3','#c99a7a',nt*2):mixHex('#c99a7a','#101a36',(nt-0.5)*2);
+  try{
+    map.setSky({'sky-color':sky,'horizon-color':hor,'fog-color':fog,
+      'sky-horizon-blend':0.5,'horizon-fog-blend':0.6,'fog-ground-blend':0.6,'atmosphere-blend':0.6});
+  }catch(e){}
+}
+if(typeof updateSun==='function'){
+  updateSun=(function(base){return function(){const r=base.apply(this,arguments);applySkyColors();return r;};})(updateSun);
+}
+map.on('load',()=>{applySkyColors();setInterval(applySkyColors,5000);});
