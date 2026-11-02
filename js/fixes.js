@@ -640,3 +640,22 @@ function makeCar3D(){
   return g;
 }
 if(typeof car3d!=='undefined'&&car3d&&treeScene){treeScene.remove(car3d);car3d=null;}
+
+/* Night: keep Tessy readable (soft paint lift + a gentle light above the car) */
+let carNightLight=null;
+updateCar3D=(function(base){return function(cx,cz,hd,steer){
+  base(cx,cz,hd,steer);
+  if(!car3d) return;
+  const nt=typeof nightNow==='number'?nightNow:0;
+  if(!carNightLight){
+    carNightLight=new THREE.PointLight(0xdfe6ff,0,14,2);
+    treeScene.add(carNightLight);
+  }
+  carNightLight.position.set(cx,4.5+(typeof carY==='number'?carY:0),cz);
+  carNightLight.intensity=1.6*nt;
+  car3d.traverse(o=>{
+    if(o.isMesh&&o.material&&o.material.isMeshPhongMaterial&&o.material.color.getHexString()===M3B_PAINT.slice(1)){
+      o.material.emissive.setRGB(0.055+0.07*nt,0.06+0.075*nt,0.07+0.085*nt);
+    }
+  });
+};})(updateCar3D);
