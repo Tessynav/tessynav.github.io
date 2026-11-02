@@ -1,4 +1,4 @@
-/* TessyNav objects v2 (v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v4 (v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -9,9 +9,15 @@
       a little and tilts down a little), so it no longer ends up under the deck.
    Replaces buildLightCell (fixes.js) and buildBridgeMesh (bridges.js) with the same code plus these checks. */
 
+/* v4 bridge colors */
+const TNO_COL={barrier:new THREE.Color('#cdcac2'),pier:new THREE.Color('#bdb9b0'),pole:new THREE.Color('#8a8d92'),head:new THREE.Color('#fff4d6')};
+
 /* --- the drawn roads (the same roads the car follows) --- */
+let tnoG=null,tnoGT=0;
 function tnoRoadHit(px,pz,pad){
-  const G=(typeof r3GetGrid==='function')?r3GetGrid():null;
+  const now=performance.now();
+  if(!tnoG||now-tnoGT>300){tnoG=(typeof r3GetGrid==='function')?r3GetGrid():null;tnoGT=now;}
+  const G=tnoG;
   if(!G||!G.size) return null;
   const l=G.get(Math.floor(px/25)+','+Math.floor(pz/25));
   if(!l) return null;
@@ -54,6 +60,55 @@ function tnoSlopeOnRoad(L0,L1,R0,R1,nx,nz,k){
     if(tnoRoadHit(rx-nx*k*f,rz-nz*k*f,-0.5)) return true;
   }
   return false;
+}
+
+
+/* --- bridges: one height for a whole bridge ---
+   The map data cuts a long bridge into many pieces (at map tile edges and wherever OpenStreetMap splits it),
+   and each piece used to pick its own height from its own length (15 m, 13 m, 5 m or 1.2 m), so a bridge
+   looked broken into sections with steps between them. Now connected pieces are joined into one bridge,
+   and every piece gets the height of the whole bridge. */
+let tnoChains=null,tnoChainsT=0;
+function tnoBuildChains(cross){
+  const all=[];
+  for(const cell of brCells.values()) for(const b of cell.values()) all.push(b);
+  const parent=new Map();all.forEach(b=>parent.set(b,b));
+  const find=b=>{while(parent.get(b)!==b){parent.set(b,parent.get(parent.get(b)));b=parent.get(b);}return b;};
+  const rail=b=>b.cls==='rail'||b.cls==='transit';
+  const ends=new Map();
+  for(const b of all){
+    for(const p of [b.pts[0],b.pts[b.pts.length-1]]){
+      for(const k of nearKeys(p)){
+        const l=ends.get(k);
+        if(l) for(const o of l) if(rail(o)===rail(b)) parent.set(find(o),find(b));
+      }
+      const k=endKey(p);if(!ends.has(k)) ends.set(k,[]);ends.get(k).push(b);
+    }
+  }
+  const groups=new Map();
+  for(const b of all){
+    const r=find(b);let g=groups.get(r);if(!g){g={L:0,overH:0};groups.set(r,g);}
+    const pts=b.pts.map(p=>toLocal(p[0],p[1]));
+    const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+    const L=cum[cum.length-1];g.L+=L;
+    if(L>=2&&crossesRoad(pts,cum,L,cross)) g.overH=Math.max(g.overH,6.5*b.layer);
+  }
+  const out=new Map();
+  for(const b of all){
+    const g=groups.get(find(b));
+    let H,low=false,rampMul=1;
+    if(g.L>400){H=Math.max(15,g.overH);rampMul=1.8;}
+    else if(g.L>120){H=Math.max(5,g.overH);rampMul=0.8;}
+    else if(g.overH){H=g.overH;}
+    else{H=1.2;low=true;}
+    out.set(b,{H:H,low:low,rampMul:rampMul});
+  }
+  return out;
+}
+function tnoChainH(b,cross){
+  const now=performance.now();
+  if(!tnoChains||now-tnoChainsT>200||!tnoChains.has(b)){tnoChains=tnoBuildChains(cross);tnoChainsT=now;}
+  return tnoChains.get(b)||{H:1.2,low:true,rampMul:1};
 }
 
 /* --- street lamps and traffic lights (fixes.js buildLightCell, plus the curb rule) --- */
@@ -160,6 +215,7 @@ buildLightCell=function(ck){
 
 /* --- bridges (bridges.js buildBridgeMesh, plus the pier and slope checks) --- */
 buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
+  const tnoHeads=[];
   const pos=[],nor=[],col=[],idx=[];let base=0;
   function quad(v,n,c){
     for(const p of v){pos.push(p[0],p[1],p[2]);nor.push(n[0],n[1],n[2]);col.push(c.r,c.g,c.b);}
@@ -204,8 +260,16 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
         quad([[Rp[i][0],h0-t0,Rp[i][1]],[Lp[i][0],h0-t0,Lp[i][1]],[Lp[i+1][0],h1-t1,Lp[i+1][1]],[Rp[i+1][0],h1-t1,Rp[i+1][1]]],[0,-1,0],BR_COL.side);
       }
       if(opt.railings&&(h0+h1)/2>opt.railMin){
-        quad([[Lp[i][0],h0,Lp[i][1]],[Lp[i+1][0],h1,Lp[i+1][1]],[Lp[i+1][0],h1+0.9,Lp[i+1][1]],[Lp[i][0],h0+0.9,Lp[i][1]]],[nx,0,nz],railC);
-        quad([[Rp[i+1][0],h1,Rp[i+1][1]],[Rp[i][0],h0,Rp[i][1]],[Rp[i][0],h0+0.9,Rp[i][1]],[Rp[i+1][0],h1+0.9,Rp[i+1][1]]],[-nx,0,-nz],railC);
+        /* v4: concrete barrier (1.05 m high, 0.45 m thick) instead of a thin railing */
+        const bh=1.05,bt=0.45,bc=TNO_COL.barrier;
+        const Li0=[Lp[i][0]-nx*bt,Lp[i][1]-nz*bt],Li1=[Lp[i+1][0]-nx*bt,Lp[i+1][1]-nz*bt];
+        const Ri0=[Rp[i][0]+nx*bt,Rp[i][1]+nz*bt],Ri1=[Rp[i+1][0]+nx*bt,Rp[i+1][1]+nz*bt];
+        quad([[Lp[i][0],h0,Lp[i][1]],[Lp[i+1][0],h1,Lp[i+1][1]],[Lp[i+1][0],h1+bh,Lp[i+1][1]],[Lp[i][0],h0+bh,Lp[i][1]]],[nx,0,nz],bc);
+        quad([[Li1[0],h1,Li1[1]],[Li0[0],h0,Li0[1]],[Li0[0],h0+bh,Li0[1]],[Li1[0],h1+bh,Li1[1]]],[-nx,0,-nz],bc);
+        quad([[Lp[i][0],h0+bh,Lp[i][1]],[Lp[i+1][0],h1+bh,Lp[i+1][1]],[Li1[0],h1+bh,Li1[1]],[Li0[0],h0+bh,Li0[1]]],[0,1,0],bc);
+        quad([[Rp[i+1][0],h1,Rp[i+1][1]],[Rp[i][0],h0,Rp[i][1]],[Rp[i][0],h0+bh,Rp[i][1]],[Rp[i+1][0],h1+bh,Rp[i+1][1]]],[-nx,0,-nz],bc);
+        quad([[Ri0[0],h0,Ri0[1]],[Ri1[0],h1,Ri1[1]],[Ri1[0],h1+bh,Ri1[1]],[Ri0[0],h0+bh,Ri0[1]]],[nx,0,nz],bc);
+        quad([[Rp[i+1][0],h1+bh,Rp[i+1][1]],[Rp[i][0],h0+bh,Rp[i][1]],[Ri0[0],h0+bh,Ri0[1]],[Ri1[0],h1+bh,Ri1[1]]],[0,1,0],bc);
       }
     }
     const at=s=>{
@@ -222,12 +286,49 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
       }
     }
     if(opt.pillars){
-      for(let s=14;s<L-6;s+=28){
+      /* v4: piers = one column (narrow decks) or two columns (wide decks) with a cap beam under the deck */
+      const step=W>=9?36:28;
+      for(let s=step/2;s<L-6;s+=step){
         const h=hAt(s);
         if(h<3) continue;
-        const p=at(s);
-        if(tnoPierOnRoad(p.x,p.z,p.tx,p.tz,Math.max(1.4,W*0.55))) continue;
-        box(p.x,p.z,p.tx,p.tz,1.1,Math.max(1.4,W*0.55),0,h-BR_T,BR_COL.pillar);
+        const p=at(s),nx2=-p.tz,nz2=p.tx,top=h-BR_T;
+        const cols=W>=9?[-W*0.3,W*0.3]:[0];
+        const cw=W>=9?1.3:1.2;
+        let ok=true;
+        for(const o of cols) if(tnoPierOnRoad(p.x+nx2*o,p.z+nz2*o,p.tx,p.tz,cw)) ok=false;
+        if(!ok) continue;
+        for(const o of cols) box(p.x+nx2*o,p.z+nz2*o,p.tx,p.tz,cw,cw,0,top-0.9,TNO_COL.pier);
+        box(p.x,p.z,p.tx,p.tz,1.6,W>=9?W*0.85:Math.max(2.4,W*0.5),top-0.9,top,TNO_COL.pier);
+      }
+    }
+    if(opt.lamps){
+      /* v4: street lights on road bridges, every 40 m, along the edges */
+      for(let s=20;s<L-10;s+=40){
+        const h=hAt(s);if(h<2) continue;
+        const p=at(s),nx2=-p.tz,nz2=p.tx;
+        const sides=W>=9?[1,-1]:[1];
+        for(const sd of sides){
+          const ex=p.x+nx2*(W/2-0.25)*sd,ez=p.z+nz2*(W/2-0.25)*sd;
+          box(ex,ez,p.tx,p.tz,0.2,0.2,h+1.05,h+9,TNO_COL.pole);
+          const ax=-nx2*sd,az=-nz2*sd;
+          box(ex+ax*1.0,ez+az*1.0,ax,az,2.0,0.12,h+8.85,h+9,TNO_COL.pole);
+          box(ex+ax*1.9,ez+az*1.9,ax,az,0.6,0.3,h+8.6,h+8.85,TNO_COL.head);
+          tnoHeads.push([ex+ax*1.9,h+8.55,ez+az*1.9,h]);
+        }
+      }
+    }
+    if(opt.rem){
+      /* v4: T-shaped light posts along REM / train tracks, every 30 m, lighting the tracks */
+      for(let s=15;s<L-8;s+=30){
+        const h=hAt(s);if(h<1) continue;
+        const p=at(s),nx2=-p.tz,nz2=p.tx;
+        box(p.x,p.z,p.tx,p.tz,0.3,0.3,h,h+6.5,TNO_COL.pole);
+        box(p.x,p.z,nx2,nz2,Math.min(W*0.8,4.6),0.18,h+6.3,h+6.5,TNO_COL.pole);
+        for(const sd of [1,-1]){
+          const hx=p.x+nx2*sd*Math.min(W*0.38,2.2),hz=p.z+nz2*sd*Math.min(W*0.38,2.2);
+          box(hx,hz,p.tx,p.tz,0.6,0.3,h+6.05,h+6.3,TNO_COL.head);
+          tnoHeads.push([hx,h+6.0,hz,h]);
+        }
       }
     }
   }
@@ -241,12 +342,8 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
     if(L<2) continue;
     const W=BR_W[b.cls]||7,isRail=b.cls==='rail'||b.cls==='transit';
     /* Height depends on what the bridge crosses */
-    const over=crossesRoad(pts,cum,L,cross);
     let H,low=false,rampMul=1;
-    if(over){H=6.5*b.layer;}
-    else if(L>400){H=15;rampMul=1.8;}
-    else if(L>120){H=5;rampMul=0.8;}
-    else{H=1.2;low=true;}
+    {const ch=tnoChainH(b,cross);H=ch.H;low=ch.low;rampMul=ch.rampMul;}
     const lineCol=(isRail||b.cls==='path'||b.cls==='track')?null:(b.oneway?BR_COL.white:BR_COL.yellow);
     const railCol=low?BR_COL.railLow:BR_COL.rail;
     const ends=[
@@ -275,7 +372,7 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
     });
     const RLin=Math.min(low?12:45,L*0.45);
     const hAt=s=>H*(ramp[0]?sm(s/RLin):1)*(ramp[1]?sm((L-s)/RLin):1);
-    ribbon(pts,hAt,W,{deck:isRail?BR_COL.ballast:BR_COL.asphalt,embank:false,line:lineCol,pillars:!low,railings:true,railMin:low?0.3:1.5,railCol:railCol});
+    ribbon(pts,hAt,W,{deck:isRail?BR_COL.ballast:BR_COL.asphalt,embank:false,line:lineCol,pillars:!low,railings:true,railMin:low?0.3:1.5,railCol:railCol,lamps:!isRail&&!low&&b.cls!=='path'&&b.cls!=='track',rem:isRail});
   }
   if(!pos.length) return null;
   for(let i=0;i<idx.length;i+=3){
@@ -292,6 +389,7 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
   g.setIndex(idx);
   const mesh=new THREE.Mesh(g,brMat);
   mesh.frustumCulled=false;mesh.castShadow=true;mesh.receiveShadow=true;
+  mesh.userData.heads=tnoHeads;
   return mesh;
 };
 
@@ -311,16 +409,17 @@ for(const nm of ['osmPlacements','cityPlacement']){
   };})(window[nm]);
 }
 
-/* when the drawn roads change, rebuild signs and bridges with the new checks (at most every 5 s) */
-let tnoGridKey=null,tnoLastRefresh=0;
+/* when the drawn roads change, rebuild bridges (at most every 15 s) and signs (at most every 60 s) with the new checks.
+   v3: was every 5 s, which kept memory climbing during the drive */
+let tnoGridKey=null,tnoLastRefresh=0,tnoSignT=0;
 setInterval(()=>{
   try{
     if(typeof r3GridKey==='undefined') return;
     const now=performance.now();
-    if(r3GridKey===tnoGridKey||now-tnoLastRefresh<5000) return;
+    if(r3GridKey===tnoGridKey||now-tnoLastRefresh<15000) return;
     tnoGridKey=r3GridKey;tnoLastRefresh=now;
-    if(typeof sDirtyAll!=='undefined'&&typeof updateSigns==='function'){sDirtyAll=true;updateSigns(true);}
     if(typeof brMeshes!=='undefined'&&brMeshes.size&&typeof updateBridges==='function'){brChanged=true;updateBridges(true);}
+    if(now-tnoSignT>60000&&typeof sDirtyAll!=='undefined'&&typeof updateSigns==='function'){tnoSignT=now;sDirtyAll=true;updateSigns(true);}
   }catch(e){}
 },1000);
 
@@ -346,4 +445,117 @@ if(typeof camSpec==='function'){
    Now they use the same road color. (Bridges built before this loads get it on their next rebuild.) */
 if(typeof BR_COL!=='undefined'&&BR_COL.asphalt&&BR_COL.asphalt.set){
   BR_COL.asphalt.set(typeof ROAD_COLORS!=='undefined'?ROAD_COLORS.road:'#c9cad1');
+  /* v4: REM / train track beds were dark brown strips; now concrete grey */
+  if(BR_COL.ballast) BR_COL.ballast.set('#9a958d');
 }
+
+/* ===== v4: night glow of bridge lights and REM lights (one shared object, rebuilt with the bridges) ===== */
+let tnoGlow=null,tnoGlowSig='',tnoGlowTex=null;
+function tnoGlowTexture(){
+  if(tnoGlowTex) return tnoGlowTex;
+  const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(0.35,'rgba(255,255,255,0.55)');g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g;x.fillRect(0,0,64,64);tnoGlowTex=new THREE.CanvasTexture(c);return tnoGlowTex;
+}
+function tnoDisposeGlow(){
+  if(!tnoGlow) return;
+  for(const o of tnoGlow){treeScene.remove(o);o.geometry.dispose();o.material.dispose();}
+  tnoGlow=null;
+}
+function tnoRebuildGlow(){
+  if(typeof treeScene==='undefined'||!treeScene) return;
+  const keys=[...brMeshes.keys()].sort().join('|');
+  if(keys===tnoGlowSig&&tnoGlow) return;
+  tnoGlowSig=keys;tnoDisposeGlow();
+  const heads=[];for(const m of brMeshes.values()) if(m.userData&&m.userData.heads) for(const h of m.userData.heads) heads.push(h);
+  if(!heads.length) return;
+  const tex=tnoGlowTexture();
+  const pp=new Float32Array(heads.length*3);heads.forEach((h,i)=>{pp[i*3]=h[0];pp[i*3+1]=h[1];pp[i*3+2]=h[2];});
+  const pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.BufferAttribute(pp,3));
+  const pts=new THREE.Points(pg,new THREE.PointsMaterial({color:0xffe6a8,size:2.4,sizeAttenuation:true,map:tex,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
+  pts.frustumCulled=false;
+  const pos=[],uv=[],idx=[];let n=0;const r=5.5;
+  for(const h of heads){
+    const y=h[3]+0.12;
+    pos.push(h[0]-r,y,h[2]-r, h[0]+r,y,h[2]-r, h[0]+r,y,h[2]+r, h[0]-r,y,h[2]+r);
+    uv.push(0,0,1,0,1,1,0,1);idx.push(n,n+2,n+1,n,n+3,n+2);n+=4;
+  }
+  const qg=new THREE.BufferGeometry();qg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));qg.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));qg.setIndex(idx);
+  const pools=new THREE.Mesh(qg,new THREE.MeshBasicMaterial({color:0xffd690,map:tex,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide}));
+  pools.frustumCulled=false;
+  treeScene.add(pools);treeScene.add(pts);tnoGlow=[pts,pools];tnoGlowNight();
+}
+function tnoGlowNight(){
+  if(!tnoGlow) return;
+  const nt=typeof nightNow==='number'?nightNow:0;
+  tnoGlow[0].material.opacity=Math.min(1,nt*1.2);tnoGlow[0].visible=nt>0.1;
+  tnoGlow[1].material.opacity=nt*0.45;tnoGlow[1].visible=nt>0.1;
+}
+if(typeof updateBridges==='function'){
+  updateBridges=(function(base){return function(){
+    const r=base.apply(this,arguments);
+    try{if(typeof brMeshes!=='undefined') tnoRebuildGlow();}catch(e){}
+    return r;
+  };})(updateBridges);
+}
+setInterval(()=>{try{tnoGlowNight();}catch(e){}},1000);
+
+/* ===== v4: Samuel-De Champlain Bridge landmark: the 170 m twin-leg tower and its two planes of harp cables =====
+   Position from the bridge's own map data: 1,020 m from the Brossard end (780 m east approach + 240 m main span
+   over the Seaway), between the two road decks, over the REM corridor. Main span toward Brossard, back span
+   124 m toward Nuns' Island. Built only when you are within 4 km, removed beyond 6 km. */
+const TNO_CHAMPLAIN={lat:45.468267,lng:-73.504888,east:98.4,deckY:15,height:170,legHalf:7.5,main:240,back:124,cables:15};
+let tnoLandmark=null;
+function tnoBuildChamplain(){
+  const C=TNO_CHAMPLAIN,[cx,cz]=toLocal(C.lng,C.lat);
+  const ex=Math.sin(C.east*Math.PI/180),ez=-Math.cos(C.east*Math.PI/180),nx=-ez,nz=ex;
+  const pos=[],nor=[],idx=[];let b=0;
+  const quad=(v,n)=>{for(const p of v){pos.push(p[0],p[1],p[2]);nor.push(n[0],n[1],n[2]);}idx.push(b,b+1,b+2,b,b+2,b+3);b+=4;};
+  const box=(x,z,ux,uz,a,c,y0,y1)=>{const vx=-uz,vz=ux,A=a/2,B=c/2;const P=(sa,sb,y)=>[x+ux*A*sa+vx*B*sb,y,z+uz*A*sa+vz*B*sb];
+    quad([P(1,1,y0),P(1,-1,y0),P(1,-1,y1),P(1,1,y1)],[ux,0,uz]);quad([P(-1,-1,y0),P(-1,1,y0),P(-1,1,y1),P(-1,-1,y1)],[-ux,0,-uz]);
+    quad([P(-1,1,y0),P(1,1,y0),P(1,1,y1),P(-1,1,y1)],[vx,0,vz]);quad([P(1,-1,y0),P(-1,-1,y0),P(-1,-1,y1),P(1,-1,y1)],[-vx,0,-vz]);
+    quad([P(-1,-1,y1),P(-1,1,y1),P(1,1,y1),P(1,-1,y1)],[0,1,0]);};
+  /* two legs, slightly thinner at the top, and cross beams under the deck and near the top */
+  for(const sd of [1,-1]){
+    const lx=cx+nx*C.legHalf*sd,lz=cz+nz*C.legHalf*sd;
+    box(lx,lz,ex,ez,6,4.5,0,C.deckY+40);
+    box(lx,lz,ex,ez,5,3.6,C.deckY+40,C.height-25);
+    box(lx,lz,ex,ez,4,3,C.height-25,C.height);
+  }
+  box(cx,cz,nx,nz,C.legHalf*2+3,3,C.deckY-4,C.deckY-1.2);
+  box(cx,cz,nx,nz,C.legHalf*2+2,2.5,C.height-30,C.height-27);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));g.setIndex(idx);
+  const tower=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:0xd9d6ce}));
+  tower.frustumCulled=false;tower.castShadow=false;
+  /* harp cables: parallel stays from each leg down to the deck edge beside the REM corridor */
+  const lp=[];
+  for(const sd of [1,-1]){
+    const lx=cx+nx*C.legHalf*sd,lz=cz+nz*C.legHalf*sd;
+    for(let i=1;i<=C.cables;i++){
+      const ay=C.deckY+28+(C.height-40-C.deckY-28)*i/C.cables;
+      for(const [dir,span] of [[1,C.main],[-1,C.back]]){
+        const d=span*0.95*i/C.cables;
+        lp.push(lx,ay,lz, lx+ex*d*dir,C.deckY+1.2,lz+ez*d*dir);
+      }
+    }
+  }
+  const cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.Float32BufferAttribute(lp,3));
+  const cables=new THREE.LineSegments(cg,new THREE.LineBasicMaterial({color:0xeeeeee}));
+  cables.frustumCulled=false;
+  /* aircraft warning light on top */
+  const tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.Float32BufferAttribute([cx,C.height+1,cz],3));
+  const top=new THREE.Points(tg,new THREE.PointsMaterial({color:0xff3b30,size:6,sizeAttenuation:true,map:tnoGlowTexture(),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));
+  top.frustumCulled=false;
+  return [tower,cables,top];
+}
+setInterval(()=>{
+  try{
+    if(typeof treeScene==='undefined'||!treeScene||!gPos) return;
+    const C=TNO_CHAMPLAIN,[cx,cz]=toLocal(C.lng,C.lat),[px,pz]=toLocal(gPos[0],gPos[1]);
+    const d=Math.hypot(px-cx,pz-cz);
+    if(d<4000&&!tnoLandmark){tnoLandmark=tnoBuildChamplain();for(const o of tnoLandmark) treeScene.add(o);}
+    else if(d>6000&&tnoLandmark){for(const o of tnoLandmark){treeScene.remove(o);o.geometry.dispose();o.material.dispose();}tnoLandmark=null;}
+    if(tnoLandmark){const nt=typeof nightNow==='number'?nightNow:0;tnoLandmark[2].visible=nt>0.1;}
+  }catch(e){}
+},2000);

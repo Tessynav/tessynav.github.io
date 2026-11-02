@@ -1,15 +1,20 @@
-/* TessyNav motion v5 (v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
+/* TessyNav motion v6 (v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
    This replaces every earlier version of glideFrame (the stacked motion patches in fixes.js). */
-const TNM={p:null,h:0,v:0,hr:0,cv:{x:0,z:0},fix:null,fixT:-1,camHd:null};
+const TNM={p:null,h:0,v:0,hr:0,cv:{x:0,z:0},fix:null,fixT:-1,camHd:null,om:0,ph:null,pt:0};
 const TNM_SPRING_ALONG=2.4,TNM_SPRING_SIDE=2.8,TNM_TURN_SPRING=3.5;
 
 function tnmReset(){TNM.p=null;TNM.hr=0;TNM.cv={x:0,z:0};TNM.fix=null;TNM.fixT=-1;}
 
 function tnmAddFix(f){
   if(TNM.fix&&f.t-TNM.fix.t>5000) tnmReset();
+  /* v6: how fast the road direction is turning, from the last few positions */
+  if(f.h!=null){
+    if(TNM.ph!=null){const dt=(f.t-TNM.pt)/1000;if(dt>0.02&&dt<1){const d=((f.h-TNM.ph+540)%360)-180;TNM.om+=(d/dt-TNM.om)*0.35;}}
+    TNM.ph=f.h;TNM.pt=f.t;
+  }else{TNM.om*=0.5;TNM.ph=null;}
   TNM.fix=f;
   if(!TNM.p){TNM.p={x:f.x,z:f.z};TNM.v=f.v;TNM.h=f.h!=null?f.h:gHd;}
 }
@@ -19,7 +24,8 @@ function tnmStep(now,dt){
   if(!f||!TNM.p) return null;
   const age=Math.min(1,Math.max(0,(now-f.t)/1000));
   const moving=f.v>1.5&&f.h!=null;
-  const fh=moving?f.h:TNM.h;
+  /* v6: in a curve, the direction keeps turning after the last position */
+  const fh=moving?f.h+TNM.om*age:TNM.h;
   /* where the matched position is now: the last fix moved forward by its speed */
   const tx=f.x+Math.sin(fh*R)*f.v*age,tz=f.z-Math.cos(fh*R)*f.v*age;
   /* speed eases toward the measured speed */
@@ -27,7 +33,8 @@ function tnmStep(now,dt){
   /* heading: spring toward the travel direction; held still when slow (no spinning) */
   if(moving){
     const err=((fh-TNM.h+540)%360)-180,w=TNM_TURN_SPRING;
-    TNM.hr+=(w*w*err-2*w*TNM.hr)*dt;
+    /* v6: turn at the road's turn rate, plus a correction (before: it only corrected, so it was always late in curves) */
+    TNM.hr+=((TNM.om+w*err)-TNM.hr)*(1-Math.exp(-dt*8));
     TNM.hr=Math.max(-80,Math.min(80,TNM.hr));
   }else TNM.hr*=Math.exp(-dt*6);
   TNM.h=(TNM.h+TNM.hr*dt+360)%360;

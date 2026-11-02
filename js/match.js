@@ -1,4 +1,4 @@
-/* TessyNav match v3 (v3: keeps following drawn roads through roundabouts and curved ramps; v2: v2: roads pointing another way, like ramps beside the highway, count as farther away)
+/* TessyNav match v4 (v4: in curves it re-matches on every GPS update instead of sliding straight; v3: v3: keeps following drawn roads through roundabouts and curved ramps; v2: v2: roads pointing another way, like ramps beside the highway, count as farther away)
    TessyNav match v1
    The car now follows the SAME roads that are drawn on screen (the OpenStreetMap roads from roads.js),
    instead of the map-tile roads, whose shape is different. That was why the car drove on the grass
@@ -10,7 +10,7 @@
    - Replaces the whole stack of matchRoad versions in perf.js and fixes.js (v7, v18, v25, v26, v30, v32).
    - Recordings: each shown-car row gets the road source at the end ('r3' drawn roads, 't' map tiles). */
 
-const TNR={lastFull:0,hd:[],src:''};
+const TNR={lastFull:0,hd:[],src:'',fullHd:0};
 const TNR_EVERY=400;        /* full matching at most every 0.4 s; in between, slide along the road */
 const TNR_MAXD=14;          /* look for roads up to 14 m from the GPS */
 
@@ -127,11 +127,11 @@ function tnrMatch(x,z,spd,now){
   }
 
   /* between full matches: slide along the current road, same lane */
-  if(curRoad&&now-TNR.lastFull<TNR_EVERY&&tnrLat(curRoad,x,z)<=tnrHalf(curRoad)+0.5){
+  if(curRoad&&now-TNR.lastFull<TNR_EVERY&&tnrLat(curRoad,x,z)<=tnrHalf(curRoad)+0.5&&Math.abs(((lastHd-TNR.fullHd+540)%360)-180)<3){
     const s=onCurRoad(x,z);
     if(Math.hypot(s[0]-x,s[1]-z)<=SNAP_MAX+4){lastMatchInfo={why:'between',src:TNR.src};return {x:s[0],z:s[1],tx:curRoad.tx,tz:curRoad.tz};}
   }
-  TNR.lastFull=now;
+  TNR.lastFull=now;TNR.fullHd=lastHd;
 
   const fx=Math.sin(lastHd*R),fz=-Math.cos(lastHd*R),ll=fromLocal(x,z);
   const prev=curRoad;
