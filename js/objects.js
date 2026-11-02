@@ -1,4 +1,4 @@
-/* TessyNav objects v4 (v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v5 (v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -540,8 +540,23 @@ function tnoBuildChamplain(){
       }
     }
   }
-  const cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.Float32BufferAttribute(lp,3));
-  const cables=new THREE.LineSegments(cg,new THREE.LineBasicMaterial({color:0xeeeeee}));
+  /* v5: real 3D cables (0.5 m thick) instead of 1-pixel lines, so they stay visible from far away */
+  const cp=[],cn=[],ci=[];let cb=0;
+  for(let k=0;k<lp.length;k+=6){
+    const A=[lp[k],lp[k+1],lp[k+2]],B=[lp[k+3],lp[k+4],lp[k+5]];
+    const dx=B[0]-A[0],dy=B[1]-A[1],dz=B[2]-A[2],L=Math.hypot(dx,dy,dz)||1;
+    let ux=-dz,uz=dx;const ul=Math.hypot(ux,uz)||1;ux=ux/ul*0.25;uz=uz/ul*0.25;
+    const v=[[ux,0.25,uz],[ux,-0.25,uz],[-ux,-0.25,-uz],[-ux,0.25,-uz]];
+    for(let f=0;f<4;f++){
+      const a=v[f],c=v[(f+1)%4];
+      const nx2=(a[0]+c[0]),ny2=(a[1]+c[1]),nz2=(a[2]+c[2]),nl=Math.hypot(nx2,ny2,nz2)||1;
+      for(const q of [[A,a],[B,a],[B,c],[A,c]]){cp.push(q[0][0]+q[1][0],q[0][1]+q[1][1],q[0][2]+q[1][2]);cn.push(nx2/nl,ny2/nl,nz2/nl);}
+      ci.push(cb,cb+1,cb+2,cb,cb+2,cb+3,cb,cb+2,cb+1,cb,cb+3,cb+2);cb+=4;
+    }
+  }
+  const cg=new THREE.BufferGeometry();
+  cg.setAttribute('position',new THREE.Float32BufferAttribute(cp,3));cg.setAttribute('normal',new THREE.Float32BufferAttribute(cn,3));cg.setIndex(ci);
+  const cables=new THREE.Mesh(cg,new THREE.MeshLambertMaterial({color:0xf2f2f2}));
   cables.frustumCulled=false;
   /* aircraft warning light on top */
   const tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.Float32BufferAttribute([cx,C.height+1,cz],3));
@@ -553,7 +568,9 @@ setInterval(()=>{
   try{
     if(typeof treeScene==='undefined'||!treeScene||!gPos) return;
     const C=TNO_CHAMPLAIN,[cx,cz]=toLocal(C.lng,C.lat),[px,pz]=toLocal(gPos[0],gPos[1]);
-    const d=Math.hypot(px-cx,pz-cz);
+    /* v5: also when you look at the bridge on the map (map center), not only when the car is near it */
+    const mc=map.getCenter(),[mx,mz]=toLocal(mc.lng,mc.lat);
+    const d=Math.min(Math.hypot(px-cx,pz-cz),Math.hypot(mx-cx,mz-cz));
     if(d<4000&&!tnoLandmark){tnoLandmark=tnoBuildChamplain();for(const o of tnoLandmark) treeScene.add(o);}
     else if(d>6000&&tnoLandmark){for(const o of tnoLandmark){treeScene.remove(o);o.geometry.dispose();o.material.dispose();}tnoLandmark=null;}
     if(tnoLandmark){const nt=typeof nightNow==='number'?nightNow:0;tnoLandmark[2].visible=nt>0.1;}
