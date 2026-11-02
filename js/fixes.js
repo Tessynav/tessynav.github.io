@@ -1179,3 +1179,78 @@ function updateSigns(force){
     for(const g of sMeshes.values()) treeScene.remove(g);
   }
 }
+/* ===== v25: real lanes: same widths and lane counts as the drawn road; the car sits in an actual lane ===== */
+const r3LocalCache=new Map();
+function r3LocalWays(){
+  const out=[];
+  if(typeof r3Tiles==='undefined') return out;
+  for(const [k,t] of r3Tiles){
+    let arr=r3LocalCache.get(k);
+    if(!arr||arr.src!==t){
+      arr=t.w.map(w=>{
+        const pts=r3Local(w[8]);
+        let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+        for(const p of pts){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);z0=Math.min(z0,p[1]);z1=Math.max(z1,p[1]);}
+        return {cls:w[1],ow:w[2],w:w[3],lanes:w[7],pts:pts,bb:[x0-8,x1+8,z0-8,z1+8]};
+      });
+      arr.src=t;r3LocalCache.set(k,arr);
+    }
+    out.push(arr);
+  }
+  return out;
+}
+function r3InfoAt(x,z,tx,tz){
+  let best=null;
+  for(const arr of r3LocalWays()){
+    for(const W of arr){
+      if(x<W.bb[0]||x>W.bb[1]||z<W.bb[2]||z>W.bb[3]) continue;
+      const P=W.pts;
+      for(let i=0;i<P.length-1;i++){
+        const a=P[i],b=P[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz;
+        if(l2<0.01) continue;
+        const l=Math.sqrt(l2);
+        if(Math.abs((dx*tx+dz*tz)/l)<0.85) continue;
+        const t=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/l2));
+        const d=Math.hypot(a[0]+dx*t-x,a[1]+dz*t-z);
+        if(d<8&&(!best||d<best.d)) best={d:d,w:W.w,lanes:W.lanes,ow:W.ow,cls:W.cls};
+      }
+    }
+  }
+  return best;
+}
+let laneState={n:0,idx:0,pend:-1,pendT:0};
+function laneOffset(road,x,z){
+  const info=r3InfoAt(road.qx,road.qz,road.tx,road.tz)||{w:roadWidthM(road.cls,road.oneway,false),lanes:0,ow:road.oneway,cls:road.cls};
+  const w=info.w,L=info.lanes;
+  const lat=(x-road.qx)*(-road.tz)+(z-road.qz)*road.tx;
+  const centers=[];
+  if(info.ow){
+    const n=L>0?L:Math.max(1,Math.round(w/3.5)),lw=w/n;
+    for(let i=0;i<n;i++) centers.push(-w/2+lw*(i+0.5));
+  }else{
+    const nHalf=L>1?Math.max(1,Math.floor(L/2)):(w>=14?2:1);
+    const park=L>0?0.3:(info.cls==='minor'?2.0:0.4);
+    const usable=Math.max(2.8,w/2-park),lw=usable/nHalf;
+    for(let i=0;i<nHalf;i++) centers.push(lw*(i+0.5));
+  }
+  let near=0;
+  for(let i=1;i<centers.length;i++) if(Math.abs(lat-centers[i])<Math.abs(lat-centers[near])) near=i;
+  const now=performance.now();
+  if(laneState.n!==centers.length){laneState={n:centers.length,idx:near,pend:-1,pendT:0};}
+  else if(near!==laneState.idx){
+    if(laneState.pend!==near){laneState.pend=near;laneState.pendT=now;}
+    else if(now-laneState.pendT>1500&&Math.abs(lat-centers[near])+1.0<Math.abs(lat-centers[laneState.idx])){laneState.idx=near;laneState.pend=-1;}
+  }else laneState.pend=-1;
+  return centers[Math.min(laneState.idx,centers.length-1)];
+}
+matchRoad=(function(base){return function(x,z,spd){
+  const m=base(x,z,spd);
+  if(m&&curRoad&&lastMatchInfo&&lastMatchInfo.why!=='between'&&lastMatchInfo.why!=='slow-onroad'){
+    try{
+      curRoad.lane=laneOffset(curRoad,x,z);
+      const s=onCurRoad(x,z);
+      if(Math.hypot(s[0]-x,s[1]-z)<=SNAP_MAX+4) return {x:s[0],z:s[1],tx:curRoad.tx,tz:curRoad.tz};
+    }catch(e){console.warn('lanes',e);}
+  }
+  return m;
+};})(matchRoad);
