@@ -1,4 +1,4 @@
-/* TessyNav motion v2
+/* TessyNav motion v3 (lane position: smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -89,34 +89,30 @@ if(typeof rpSeek==='function'){
 
 /* Lane placement v2: trust where the GPS puts you across the road, kept inside the road.
    Lane centering only nudges you (60%) when the street's real lanes are known. */
+/* Lane position: trust the GPS across the road, smoothed over about 2 s and kept inside the road.
+   v3: no more snapping to lane centers. GPS wobbles 1-2 m sideways, and the snapping made the car
+   jump a whole lane near lane lines. A real lane change (3-5 s) still shows; GPS wobble doesn't.
+   The smoothing follows the shown position across road pieces, so a new piece never causes a jump. */
+const TNL={x:0,z:0,t:-1e9};
+const TNL_TAU=2.0;
 function laneOffset(road,x,z){
-  const info=(typeof r3InfoAt==='function')?r3InfoAt(road.qx,road.qz,road.tx,road.tz):null;
-  const known=!!info;
-  const w=known?info.w:roadWidthM(road.cls,road.oneway,false);
-  const ow=known?info.ow:road.oneway;
-  const L=known?info.lanes:0;
-  const lat=(x-road.qx)*(-road.tz)+(z-road.qz)*road.tx;
-  const lo=ow?-(w/2-1.2):0.8,hi=w/2-1.2;
-  const gpsLat=Math.max(lo,Math.min(Math.max(lo,hi),lat));
-  if(!known) return gpsLat;
-  const centers=[];
-  if(ow){
-    const n=L>0?L:Math.max(1,Math.round(w/3.5)),lw=w/n;
-    for(let i=0;i<n;i++) centers.push(-w/2+lw*(i+0.5));
-  }else{
-    const nHalf=L>1?Math.max(1,Math.floor(L/2)):(w>=14?2:1);
-    const park=L>0?0.3:(info.cls==='minor'?2.0:0.4);
-    const usable=Math.max(2.8,w/2-park),lw=usable/nHalf;
-    for(let i=0;i<nHalf;i++) centers.push(lw*(i+0.5));
+  let w=road.w,ow=road.oneway;
+  if(!w){
+    const info=(typeof r3InfoAt==='function')?r3InfoAt(road.qx,road.qz,road.tx,road.tz):null;
+    w=info?info.w:roadWidthM(road.cls,road.oneway,false);
+    if(info) ow=info.ow;
   }
-  let near=0;
-  for(let i=1;i<centers.length;i++) if(Math.abs(gpsLat-centers[i])<Math.abs(gpsLat-centers[near])) near=i;
-  const now=performance.now();
-  if(laneState.n!==centers.length){laneState={n:centers.length,idx:near,pend:-1,pendT:0};}
-  else if(near!==laneState.idx){
-    if(laneState.pend!==near){laneState.pend=near;laneState.pendT=now;}
-    else if(now-laneState.pendT>1500){laneState.idx=near;laneState.pend=-1;}
-  }else laneState.pend=-1;
-  const c=centers[Math.min(laneState.idx,centers.length-1)];
-  return gpsLat+(c-gpsLat)*0.6;
+  const nx=-road.tz,nz=road.tx;
+  const lo=ow?-(w/2-1.2):0.8,hi=Math.max(lo,w/2-1.2);
+  const clamp=v=>Math.max(lo,Math.min(hi,v));
+  const target=clamp((x-road.qx)*nx+(z-road.qz)*nz);
+  const now=performance.now(),dt=(now-TNL.t)/1000;
+  let lane=target;
+  if(dt>0&&dt<3){
+    /* where the car was last shown, measured across this road */
+    const prev=clamp((TNL.x-road.qx)*nx+(TNL.z-road.qz)*nz);
+    lane=prev+(target-prev)*(1-Math.exp(-dt/TNL_TAU));
+  }
+  TNL.x=road.qx+nx*lane;TNL.z=road.qz+nz*lane;TNL.t=now;
+  return lane;
 }

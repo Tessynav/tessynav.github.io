@@ -1,4 +1,5 @@
-/* TessyNav match v1
+/* TessyNav match v2 (v2: roads pointing another way, like ramps beside the highway, count as farther away)
+   TessyNav match v1
    The car now follows the SAME roads that are drawn on screen (the OpenStreetMap roads from roads.js),
    instead of the map-tile roads, whose shape is different. That was why the car drove on the grass
    beside the A-10 and the Champlain Bridge approach.
@@ -39,11 +40,12 @@ function tnrDrawn(x,z,fx,fz){
         n++;
         const c={d:d,de:Math.max(0,d-(hw-1)),qx:qx,qz:qz,tx:tx,tz:tz,lane:ow?0:hw/2,
           cls:W.cls,oneway:ow,bridge:false,w:hw*2,src:'r3'};
-        if(!best||c.de<best.de||(c.de===best.de&&d<best.d)) best=c;
+        c.sc=c.de+tnrTurnCost(Math.abs(align));
+        if(!best||c.sc<best.sc||(c.sc===best.sc&&d<best.d)) best=c;
         if(curRoad){
           const ang=curRoad.tx*tx+curRoad.tz*tz;
           const off=Math.abs((qx-curRoad.qx)*curRoad.tz-(qz-curRoad.qz)*curRoad.tx);
-          if(ang>0.9&&off<3&&(!cont||d<cont.d)) cont=c;
+          if(ang>0.9&&off<3&&(!cont||c.sc<cont.sc||(c.sc===cont.sc&&d<cont.d))) cont=c;
         }
       }
     }
@@ -57,7 +59,7 @@ function tnrTiles(ll,x,z,fx,fz){
   if(!c.best) c=findCandidates(sourceRoads(),ll[0],ll[1],x,z,fx,fz);
   for(const k of ['best','cont']){
     const r=c[k];
-    if(r&&!r.src){r.src='t';r.w=roadWidthM(r.cls,r.oneway,false);}
+    if(r&&!r.src){r.src='t';r.w=roadWidthM(r.cls,r.oneway,false);r.sc=r.de+tnrTurnCost(Math.abs(r.tx*fx+r.tz*fz));}
   }
   return c;
 }
@@ -66,8 +68,8 @@ function tnrTiles(ll,x,z,fx,fz){
 function tnrPick(c){
   const best=c.best,cont=c.cont;
   if(cont&&best&&best!==cont){
-    if(cont.de>1.5&&best.de<cont.de-2){
-      if(cont.de>4){switchVotes=0;return {pick:best,why:'switch-now'};}
+    if(cont.sc>1.5&&best.sc<cont.sc-2){
+      if(cont.sc>4){switchVotes=0;return {pick:best,why:'switch-now'};}
       switchVotes++;
       if(switchVotes>=2){switchVotes=0;return {pick:best,why:'switch-voted'};}
       return {pick:cont,why:'stay-voting'};
@@ -77,6 +79,13 @@ function tnrPick(c){
   if(cont){switchVotes=0;return {pick:cont,why:'stay'};}
   if(best) return {pick:best,why:'new'};
   return {pick:null,why:'none'};
+}
+
+/* roads pointing a different way than you are driving count as farther away:
+   4 degrees free, then 0.25 m per degree (a ramp splitting off at 12 degrees counts 2 m farther) */
+function tnrTurnCost(cosA){
+  const ang=Math.acos(Math.min(1,cosA))/R;
+  return Math.max(0,ang-4)*0.25;
 }
 
 /* how far the GPS is from a road's center line, and the road's half width */
@@ -143,7 +152,7 @@ function tnrMatch(x,z,spd,now){
     const hdiff=Math.abs(((kh-lastHd+540)%360)-180);
     const onIt=tnrLat(k,x,z)<=tnrHalf(k)+0.5;
     if(pick!==k&&hdiff<6&&onIt){pick=k;why='stay-highway';switchVotes=0;}
-    else if(pick===k&&!onIt&&c.best&&c.best!==k&&c.best.de<0.5){pick=c.best;why='exit';switchVotes=0;}
+    else if(pick===k&&!onIt&&c.best&&c.best!==k&&c.best.sc<0.5){pick=c.best;why='exit';switchVotes=0;}
   }
 
   if(!pick){info.why='none';lostCount++;if(lostCount>=2){curRoad=null;TNR.src='';}return null;}
