@@ -946,3 +946,25 @@ if(typeof updateSun==='function'){
   updateSun=(function(base){return function(){const r=base.apply(this,arguments);applySkyColors();return r;};})(updateSun);
 }
 map.on('load',()=>{applySkyColors();setInterval(applySkyColors,5000);});
+/* One heavy builder at a time, so their pauses never stack into a freeze */
+const jobOrig={},jobArgs={},jobQ=[],jobLast={};
+const JOB_GAP={updateBuildings:3000,updateBridges:4000,updateLights:2500,updateSigns:2500,updateTrees:1500,parkTrees:5000,r3Rebuild:0};
+for(const name in JOB_GAP){
+  const f=window[name];
+  if(typeof f!=='function') continue;
+  jobOrig[name]=f;
+  window[name]=function(){
+    jobArgs[name]=arguments;
+    if(jobQ.indexOf(name)<0) jobQ.push(name);
+  };
+}
+setInterval(()=>{
+  const now=performance.now();
+  for(let i=0;i<jobQ.length;i++){
+    const n=jobQ[i];
+    if(now-(jobLast[n]||0)<JOB_GAP[n]) continue;
+    jobQ.splice(i,1);jobLast[n]=now;
+    try{jobOrig[n].apply(null,jobArgs[n]||[]);}catch(e){console.warn('job',n,e);}
+    break;
+  }
+},180);
