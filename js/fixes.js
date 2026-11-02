@@ -659,3 +659,108 @@ updateCar3D=(function(base){return function(cx,cz,hd,steer){
     }
   });
 };})(updateCar3D);
+
+/* ===== Real 3D model of Tessy (model3.glb in the website's main folder), with reflective paint ===== */
+let m3Env=null,m3EnvPending=false,m3Mats=[],m3Tail=null;
+function m3EnvScene(){
+  const sc=new THREE.Scene();
+  const geo=new THREE.SphereGeometry(50,32,16),p=geo.attributes.position,cols=[];
+  const top=new THREE.Color('#8fb4e6'),hor=new THREE.Color('#e6ebf0'),gnd=new THREE.Color('#5c5e60');
+  for(let i=0;i<p.count;i++){
+    const y=p.getY(i)/50;
+    const c=y>0?hor.clone().lerp(top,Math.pow(y,0.6)):hor.clone().lerp(gnd,Math.min(1,-y*3));
+    cols.push(c.r,c.g,c.b);
+  }
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+  sc.add(new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide})));
+  const sun=new THREE.Mesh(new THREE.SphereGeometry(6,12,8),new THREE.MeshBasicMaterial({color:0xffffff}));
+  sun.position.set(20,30,10);sc.add(sun);
+  return sc;
+}
+const m3BaseRender=treeLayer.render;
+treeLayer.render=function(gl,matrix){
+  if(m3EnvPending&&this.renderer){
+    m3EnvPending=false;
+    try{
+      const pm=new THREE.PMREMGenerator(this.renderer);
+      m3Env=pm.fromScene(m3EnvScene(),0.02).texture;pm.dispose();
+      for(const m of m3Mats){m.envMap=m3Env;m.needsUpdate=true;}
+    }catch(e){console.warn('car reflections',e);}
+  }
+  return m3BaseRender.call(this,gl,matrix);
+};
+function m3Material(md){
+  const pbr=md.pbrMetallicRoughness||{},c=pbr.baseColorFactor||[0.5,0.5,0.5,1],name=md.name||'';
+  let m;
+  if(name==='paint') m=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#3a3d42'),metalness:0.6,roughness:0.3,clearcoat:1,clearcoatRoughness:0.05,side:THREE.DoubleSide});
+  else if(name==='glass') m=new THREE.MeshPhysicalMaterial({color:0x0b0d10,metalness:0.1,roughness:0.04,side:THREE.DoubleSide});
+  else if(name==='tail'){m=new THREE.MeshStandardMaterial({color:0x7a0d10,emissive:0x5a0000,roughness:0.3});m3Tail=m;}
+  else m=new THREE.MeshStandardMaterial({color:new THREE.Color(c[0],c[1],c[2]),metalness:pbr.metallicFactor!=null?pbr.metallicFactor:0.2,
+    roughness:pbr.roughnessFactor!=null?pbr.roughnessFactor:0.6,side:THREE.DoubleSide});
+  if(m3Env) m.envMap=m3Env;
+  m3Mats.push(m);
+  return m;
+}
+async function m3Load(){
+  const r=await fetch('model3.glb');
+  if(!r.ok) throw new Error('model3.glb not found');
+  const buf=await r.arrayBuffer(),dv=new DataView(buf);
+  if(dv.getUint32(0,true)!==0x46546C67) throw new Error('not a GLB file');
+  let off=12,j=null,bin=null;
+  while(off+8<=buf.byteLength){
+    const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true),st=off+8;
+    if(type===0x4E4F534A) j=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,st,len)));
+    else if(type===0x004E4942) bin=buf.slice(st,st+len);
+    off=st+len;
+  }
+  const acc=i=>{
+    const a=j.accessors[i],bv=j.bufferViews[a.bufferView];
+    const n={SCALAR:1,VEC2:2,VEC3:3,VEC4:4}[a.type];
+    const T={5126:Float32Array,5125:Uint32Array,5123:Uint16Array,5121:Uint8Array}[a.componentType];
+    const o=(bv.byteOffset||0)+(a.byteOffset||0);
+    return new T(bin.slice(o,o+a.count*n*T.BYTES_PER_ELEMENT));
+  };
+  const root=new THREE.Group(),wheels={};
+  for(const ni of j.scenes[j.scene||0].nodes){
+    const nd=j.nodes[ni];
+    if(nd.mesh==null) continue;
+    const M=new THREE.Matrix4();
+    if(nd.matrix) M.fromArray(nd.matrix);
+    else if(nd.translation) M.makeTranslation(nd.translation[0],nd.translation[1],nd.translation[2]);
+    for(const pr of j.meshes[nd.mesh].primitives){
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.BufferAttribute(acc(pr.attributes.POSITION),3));
+      if(pr.attributes.NORMAL!=null) g.setAttribute('normal',new THREE.BufferAttribute(acc(pr.attributes.NORMAL),3));
+      if(pr.indices!=null) g.setIndex(new THREE.BufferAttribute(acc(pr.indices),1));
+      if(pr.attributes.NORMAL==null) g.computeVertexNormals();
+      const md=(j.materials&&pr.material!=null)?j.materials[pr.material]:{};
+      const mesh=new THREE.Mesh(g,m3Material(md));
+      mesh.castShadow=true;mesh.frustumCulled=false;mesh.userData.noCull=true;
+      const wk=(nd.name||'').match(/^(Wheel[FR][LR])_/);
+      if(wk){
+        let w=wheels[wk[1]];
+        if(!w){w=new THREE.Group();w.position.setFromMatrixPosition(M);wheels[wk[1]]=w;root.add(w);}
+        w.add(mesh);
+      }else{mesh.applyMatrix4(M);root.add(mesh);}
+    }
+  }
+  return {root:root,front:Object.keys(wheels).filter(k=>k[5]==='F').map(k=>wheels[k])};
+}
+makeCar3D=(function(base){return function(){
+  const g=base();
+  if(!m3Env) m3EnvPending=true;
+  m3Load().then(res=>{
+    const body=g.children.find(c=>c.isGroup);
+    if(body) g.remove(body);
+    g.add(res.root);
+    if(res.front.length) carFrontWheels=res.front;
+    if(m3Tail) carTail=m3Tail;
+  }).catch(e=>console.warn('Real car model not loaded, using the built-in car:',e.message));
+  return g;
+};})(makeCar3D);
+updateCar3D=(function(base){return function(cx,cz,hd,steer){
+  base(cx,cz,hd,steer);
+  const nt=typeof nightNow==='number'?nightNow:0;
+  for(const m of m3Mats) m.envMapIntensity=1-0.75*nt;
+};})(updateCar3D);
+if(typeof car3d!=='undefined'&&car3d&&treeScene){treeScene.remove(car3d);car3d=null;}
