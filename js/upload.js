@@ -219,3 +219,27 @@ uploadTrip=(function(base){return async function(trip){
   }
   return base(trip);
 };})(uploadTrip);
+/* Bridges are collected during the drive, so uploading after Stop starts right away */
+let upBrSeen=new Set(),upBrRec=null;
+setInterval(()=>{
+  if(typeof rec==='undefined'||!rec||typeof brCells==='undefined'||!gPos) return;
+  if(upBrRec!==rec){upBrRec=rec;upBrSeen=new Set();rec.brg=rec.brg||[];}
+  const cosL=Math.cos(gPos[1]*Math.PI/180);
+  for(const cell of brCells.values()){
+    for(const [key,b] of cell){
+      if(upBrSeen.has(key)) continue;
+      let near=false;
+      for(const p of b.pts){
+        const dx=(p[0]-gPos[0])*111320*cosL,dy=(p[1]-gPos[1])*110540;
+        if(dx*dx+dy*dy<400*400){near=true;break;}
+      }
+      if(!near) continue;
+      upBrSeen.add(key);
+      rec.brg.push([0,b.cls,'',b.layer,b.pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)])]);
+    }
+  }
+},5000);
+uploadTrip=(function(base){return function(trip){
+  if(trip&&!trip.osm&&trip.brg) trip.osm={bridges:trip.brg,src:'drive'};
+  return base(trip);
+};})(uploadTrip);
