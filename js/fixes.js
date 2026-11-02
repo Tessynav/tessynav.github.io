@@ -1628,3 +1628,145 @@ function buildLightCell(ck){
   return group;
 }
 if(typeof lDirtyAll!=='undefined') lDirtyAll=true;
+/* ===== v34: lamps on the right edge of one-way roadways (never the median); trees moved off the road ===== */
+function buildLightCell(ck){
+  const [gx,gy]=ck.split(',').map(Number);
+  const cell=lCells.get(ck)||new Map();
+  const poles=lightAcc(true),heads=lightAcc(false),pools=lightAcc(false),lenses=lightAcc(true);
+  const glow=[],sigGlow=[],sigGlowCol=[];
+  const occ=new Set();
+  const near=[];
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const c2=lCells.get((gx+dx)+','+(gy+dy));
+    if(c2) for(const r0 of c2.values()){const r=localRoad(r0);if(r) near.push(r);}
+  }
+  for(const r0 of cell.values()){
+    const r=localRoad(r0); if(!r) continue;
+    let [spacing,W,both,ph]=r.spec;
+    spacing*=LAMP_SPACING_MUL;
+    const pts2=r.pts,cum=r.cum,n=pts2.length;
+    if(n<2) continue;
+    const mi=Math.floor((n-1)/2),ma=pts2[mi],mb=pts2[Math.min(n-1,mi+1)];
+    const ml=Math.hypot(mb[0]-ma[0],mb[1]-ma[1])||1;
+    try{const info=r3InfoAt(ma[0],ma[1],(mb[0]-ma[0])/ml,(mb[1]-ma[1])/ml);if(info&&info.w) W=info.w;}catch(e){}
+    const ow=r.oneway?(r.oneway===-1?-1:1):0;
+    let k=0;
+    for(let s=spacing/2;s<r.L;s+=spacing,k++){
+      let i=0;while(i<n-2&&cum[i+1]<s) i++;
+      const seg=cum[i+1]-cum[i]||1,t=(s-cum[i])/seg;
+      const x=pts2[i][0]+(pts2[i+1][0]-pts2[i][0])*t,z=pts2[i][1]+(pts2[i+1][1]-pts2[i][1])*t;
+      const tx=(pts2[i+1][0]-pts2[i][0])/seg,tz=(pts2[i+1][1]-pts2[i][1])/seg;
+      const nx=-tz,nz=tx;
+      const sides=ow?[ow]:(both?[1,-1]:[k%2?1:-1]);
+      for(const sd of sides){
+        const off=W/2+1.6,px=x+nx*off*sd,pz=z+nz*off*sd;
+        const ok=Math.round(px/8)+','+Math.round(pz/8);
+        if(occ.has(ok)) continue; occ.add(ok);
+        poles.box(px,pz,tx,tz,0.22,0.22,0,ph,LCOL.pole);
+        const ax=-nx*sd,az=-nz*sd;
+        poles.box(px+ax*1.0,pz+az*1.0,ax,az,2.0,0.12,ph-0.12,ph,LCOL.pole);
+        const hx=px+ax*1.9,hz=pz+az*1.9;
+        heads.box(hx,hz,ax,az,0.7,0.3,ph-0.35,ph-0.1);
+        glow.push(hx,ph-0.4,hz);
+        const cxp=px+ax*3.2,czp=pz+az*3.2,r1=9;
+        pools.quad([[cxp-r1,0.25,czp-r1],[cxp+r1,0.25,czp-r1],[cxp+r1,0.25,czp+r1],[cxp-r1,0.25,czp+r1]],[0,1,0],null,[[0,0],[1,0],[1,1],[0,1]]);
+      }
+    }
+  }
+  const sigs=sigCells.get(ck)||[];
+  for(const sg of sigs){
+    const [sx,sz]=toLocal(sg[0],sg[1]);
+    const sigOcc=new Set();
+    for(const r of near){
+      const best=closestOn(r,sx,sz,28);
+      if(!best) continue;
+      for(const dsg of travelDirs(r,best,near)){
+        if(dsg===1&&best.s<9) continue;
+        if(dsg===-1&&best.s>r.L-9) continue;
+        const fx=best.tx*dsg,fz=best.tz*dsg;
+        const rx=-fz,rz=fx;
+        const stx=best.px-fx*9,stz=best.pz-fz*9,o=r.W/2+1.5;
+        const px=stx+rx*o,pz=stz+rz*o;
+        const ok=Math.round(px/5)+','+Math.round(pz/5);
+        if(sigOcc.has(ok)) continue; sigOcc.add(ok);
+        poles.box(px,pz,fx,fz,0.28,0.28,0,6.2,LCOL.pole);
+        const ax=-rx,az=-rz,reach=Math.min(r.W*0.75,7);
+        poles.box(px+ax*reach/2,pz+az*reach/2,ax,az,reach,0.16,6.0,6.2,LCOL.pole);
+        const hx=px+ax*(reach-0.3),hz=pz+az*(reach-0.3);
+        poles.box(hx,hz,fx,fz,0.42,0.5,4.75,6.0,LCOL.sigBox);
+        const lx=hx-fx*0.24,lz=hz-fz*0.24;
+        const lens=[[LCOL.red,5.62,5.92],[LCOL.amber,5.23,5.53],[LCOL.green,4.84,5.14]];
+        for(const [colr,y0,y1] of lens){
+          lenses.box(lx,lz,fx,fz,0.06,0.32,y0,y1,colr);
+          sigGlow.push(lx-fx*0.1,(y0+y1)/2,lz-fz*0.1);
+          sigGlowCol.push(colr.r,colr.g,colr.b);
+        }
+      }
+    }
+  }
+  const group=new THREE.Group();
+  const pg=lightGeom(poles);
+  if(pg){const m=new THREE.Mesh(pg,lMatPole);m.castShadow=true;m.frustumCulled=false;group.add(m);}
+  const hg=lightGeom(heads);
+  if(hg){const m=new THREE.Mesh(hg,lMatHead);m.frustumCulled=false;group.add(m);}
+  const lg=lightGeom(lenses);
+  if(lg){const m=new THREE.Mesh(lg,lMatLens);m.frustumCulled=false;group.add(m);}
+  const qg=lightGeom(pools);
+  if(qg){const m=new THREE.Mesh(qg,lMatPool);m.frustumCulled=false;m.renderOrder=2;group.add(m);}
+  if(glow.length){
+    const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(glow,3));
+    const p=new THREE.Points(gg,lMatGlow);p.frustumCulled=false;group.add(p);
+  }
+  if(sigGlow.length){
+    const sg=new THREE.BufferGeometry();
+    sg.setAttribute('position',new THREE.Float32BufferAttribute(sigGlow,3));
+    sg.setAttribute('color',new THREE.Float32BufferAttribute(sigGlowCol,3));
+    const p=new THREE.Points(sg,lMatSigGlow);p.frustumCulled=false;group.add(p);
+  }
+  return group;
+}
+if(typeof lDirtyAll!=='undefined') lDirtyAll=true;
+
+/* Trees: anything on the road (or within 1 m of its edge) is moved just past the edge */
+let r3Grid=null,r3GridKey='';
+function r3GetGrid(){
+  if(typeof r3Tiles==='undefined') return null;
+  const key=[...r3Tiles.keys()].sort().join('|');
+  if(r3Grid&&key===r3GridKey) return r3Grid;
+  r3GridKey=key;
+  const G=new Map(),CS=25;
+  for(const arr of r3LocalWays()) for(const W of arr){
+    const P=W.pts,pad=W.w/2+1.5;
+    for(let i=0;i<P.length-1;i++){
+      const a=P[i],b=P[i+1],s={ax:a[0],az:a[1],bx:b[0],bz:b[1],w:W.w};
+      const x0=Math.floor((Math.min(a[0],b[0])-pad)/CS),x1=Math.floor((Math.max(a[0],b[0])+pad)/CS);
+      const z0=Math.floor((Math.min(a[1],b[1])-pad)/CS),z1=Math.floor((Math.max(a[1],b[1])+pad)/CS);
+      for(let gx=x0;gx<=x1;gx++)for(let gz=z0;gz<=z1;gz++){
+        const k=gx+','+gz;let l=G.get(k);if(!l){l=[];G.set(k,l);}l.push(s);
+      }
+    }
+  }
+  r3Grid=G;
+  if(typeof buckets!=='undefined'){for(const ck of buckets.keys()) dirty.add(ck);tnContinue('updateTrees');}
+  return G;
+}
+function treeOffRoad(t,G){
+  const l=G.get(Math.floor(t.x/25)+','+Math.floor(t.z/25));
+  if(!l) return;
+  for(const s of l){
+    const dx=s.bx-s.ax,dz=s.bz-s.az,l2=dx*dx+dz*dz;
+    if(l2<0.01) continue;
+    const u=Math.max(0,Math.min(1,((t.x-s.ax)*dx+(t.z-s.az)*dz)/l2));
+    const px=s.ax+dx*u,pz=s.az+dz*u;
+    let ox=t.x-px,oz=t.z-pz,d=Math.hypot(ox,oz);
+    const lim=s.w/2+1.0;
+    if(d>=lim) continue;
+    if(d<0.01){const L=Math.sqrt(l2);ox=-dz/L;oz=dx/L;d=1;}
+    t.x=px+ox/d*(lim+0.3);t.z=pz+oz/d*(lim+0.3);
+  }
+}
+buildMesh=(function(base){return function(list){
+  const G=r3GetGrid();
+  if(G&&G.size) for(const t of list) treeOffRoad(t,G);
+  return base(list);
+};})(buildMesh);
