@@ -832,3 +832,16 @@ updateCar3D=(function(base){return function(cx,cz,hd,steer){
   for(const m of m3Mats2) m.envMapIntensity=0.55*(1-0.7*nt);
 };})(updateCar3D);
 if(typeof car3d!=='undefined'&&car3d&&treeScene){treeScene.remove(car3d);car3d=null;}
+
+/* Night: keep the paint solid and even (fade reflections, soft even glow in the car's own color) */
+updateCar3D=(function(base){return function(cx,cz,hd,steer){
+  base(cx,cz,hd,steer);
+  const nt=typeof nightNow==='number'?nightNow:0;
+  for(const m of m3Mats2){
+    m.envMapIntensity=0.55*(1-0.9*nt);
+    if(m.isMeshPhysicalMaterial&&m.clearcoat>0){
+      m.emissive.copy(m.color).multiplyScalar(0.35*nt);
+      m.clearcoatRoughness=0.15+0.35*nt;
+    }
+  }
+};})(updateCar3D);
