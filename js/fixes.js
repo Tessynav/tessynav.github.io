@@ -1455,3 +1455,66 @@ function r3Want(){
   r3SetNarrow(r3Tiles.has(tx+','+ty));
   if(tx+','+ty!==r3LastCenter&&now-r3LastBuildT>(kmh>45?3000:4000)){r3LastCenter=tx+','+ty;r3LastBuildT=now;r3Schedule();}
 }
+/* ===== v32: smooth like Waze/Google: placement changes glide, the map rotates calmly behind the car ===== */
+let tnOff=[0,0],tnOffT=0;
+matchRoad=(function(base){return function(x,z,spd){
+  const m=base(x,z,spd);
+  const now=performance.now(),dt=Math.min(0.5,tnOffT?(now-tnOffT)/1000:0.1);
+  tnOffT=now;
+  const tx=m?m.x-x:0,tz=m?m.z-z:0;
+  const a=1-Math.exp(-dt/0.7);
+  tnOff[0]+=(tx-tnOff[0])*a;tnOff[1]+=(tz-tnOff[1])*a;
+  if(m) return {x:x+tnOff[0],z:z+tnOff[1],tx:m.tx,tz:m.tz};
+  if(Math.hypot(tnOff[0],tnOff[1])>0.05&&lastHd!==null){
+    return {x:x+tnOff[0],z:z+tnOff[1],tx:Math.sin(lastHd*R),tz:-Math.cos(lastHd*R)};
+  }
+  return null;
+};})(matchRoad);
+
+let camHd=null;
+glideFrame=function(){
+  requestAnimationFrame(glideFrame);
+  const now=performance.now(),fdt=Math.min(0.1,lastFrameT?(now-lastFrameT)/1000:0.016);
+  lastFrameT=now;
+  if(watchId===null||!pts.length) return;
+  if(pts.length>3){
+    const iv=[];
+    for(let i=Math.max(1,pts.length-8);i<pts.length;i++) iv.push(pts[i].t-pts[i-1].t);
+    iv.sort((a,b)=>a-b);
+    const want=Math.max(250,Math.min(1050,iv[Math.floor(iv.length/2)]*2.2));
+    drawDelay+=(want-drawDelay)*Math.min(1,fdt*0.5);
+  }
+  const p=pathAt(now-drawDelay);
+  if(!p) return;
+  const k=Math.exp(-fdt/0.35);corr[0]*=k;corr[1]*=k;
+  const rx=p.x+corr[0],rz=p.z+corr[1];
+  const v=Math.hypot(p.dx,p.dz);
+  let hd=lastPathHd!==null?lastPathHd:(lastHd!==null?lastHd:gHd);
+  if(v>2){hd=(Math.atan2(p.dx,-p.dz)/R+360)%360;lastPathHd=hd;}
+  else if(curRoad&&snapOk){
+    const rh=(Math.atan2(curRoad.tx,-curRoad.tz)/R+360)%360;
+    if(Math.abs(((rh-gHd+540)%360)-180)<60) hd=rh;
+  }
+  const dh=((hd-gHd+540)%360)-180;
+  let step;
+  if(v>2){step=dh*Math.min(1,fdt*5);const cap=120*fdt;step=Math.max(-cap,Math.min(cap,step));}
+  else{const cap=35*fdt;step=Math.max(-cap,Math.min(cap,dh*Math.min(1,fdt*4)));}
+  gHd=(gHd+step+360)%360;
+  let wantSteer=0;
+  if(v>1){const curv=(step*R)/(v*fdt);wantSteer=Math.max(-0.5,Math.min(0.5,Math.atan(WHEELBASE*curv)));}
+  steerNow+=(wantSteer-steerNow)*Math.min(1,fdt*5);
+  gPos=fromLocal(rx,rz);
+  car.setLngLat(gPos).setRotation(gHd);
+  updateCar3D(rx,rz,gHd,steerNow);
+  map.triggerRepaint();
+  if(camHd===null) camHd=gHd;
+  const cd=((gHd-camHd+540)%360)-180;
+  camHd=(camHd+cd*Math.min(1,fdt*1.6)+360)%360;
+  if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
+  const cs=camSpec();
+  gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
+  gPitch+=(cs.pitch-gPitch)*0.06;
+  const H=map.getContainer().clientHeight||800;
+  map.jumpTo({center:gPos,bearing:camHd,zoom:gZoom,pitch:gPitch,
+    padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
+};
