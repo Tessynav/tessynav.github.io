@@ -194,3 +194,28 @@ recStop=function(){
   setTimeout(check,5000);
   setInterval(check,10*60*1000);
 })();
+
+/* Before uploading: add every bridge along the route (from OpenStreetMap) into the trip */
+uploadTrip=(function(base){return async function(trip){
+  if(trip&&trip.g&&trip.g.length&&!trip.osm){
+    try{
+      showPanel('Adding bridge data from OpenStreetMap…',[]);
+      let s=90,w=180,n=-90,e=-180;
+      for(const r of trip.g){s=Math.min(s,r[1]);n=Math.max(n,r[1]);w=Math.min(w,r[2]);e=Math.max(e,r[2]);}
+      s-=0.003;n+=0.003;w-=0.004;e+=0.004;
+      const bb=s.toFixed(5)+','+w.toFixed(5)+','+n.toFixed(5)+','+e.toFixed(5);
+      const q='[out:json][timeout:90];way["highway"]["bridge"]["bridge"!="no"]('+bb+');out tags geom;';
+      for(const url of SERVERS){
+        try{
+          const r=await fetch(url+'?data='+encodeURIComponent(q));
+          if(!r.ok) throw new Error('busy');
+          const j=await r.json();
+          trip.osm={bridges:j.elements.filter(x=>x.geometry).map(x=>[x.id,x.tags.highway,x.tags.name||'',+(x.tags.layer||1),
+            x.geometry.map(p=>[+p.lon.toFixed(6),+p.lat.toFixed(6)])])};
+          break;
+        }catch(err){}
+      }
+    }catch(e){}
+  }
+  return base(trip);
+};})(uploadTrip);
