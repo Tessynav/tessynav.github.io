@@ -1,4 +1,4 @@
-/* TessyNav motion v1
+/* TessyNav motion v2
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -85,4 +85,38 @@ glideFrame=function(){
 /* replay jumps (+/- 30 s) start the motion fresh */
 if(typeof rpSeek==='function'){
   rpSeek=(function(base){return function(t){tnmReset();TNM.camHd=null;return base(t);};})(rpSeek);
+}
+
+/* Lane placement v2: trust where the GPS puts you across the road, kept inside the road.
+   Lane centering only nudges you (60%) when the street's real lanes are known. */
+function laneOffset(road,x,z){
+  const info=(typeof r3InfoAt==='function')?r3InfoAt(road.qx,road.qz,road.tx,road.tz):null;
+  const known=!!info;
+  const w=known?info.w:roadWidthM(road.cls,road.oneway,false);
+  const ow=known?info.ow:road.oneway;
+  const L=known?info.lanes:0;
+  const lat=(x-road.qx)*(-road.tz)+(z-road.qz)*road.tx;
+  const lo=ow?-(w/2-1.2):0.8,hi=w/2-1.2;
+  const gpsLat=Math.max(lo,Math.min(Math.max(lo,hi),lat));
+  if(!known) return gpsLat;
+  const centers=[];
+  if(ow){
+    const n=L>0?L:Math.max(1,Math.round(w/3.5)),lw=w/n;
+    for(let i=0;i<n;i++) centers.push(-w/2+lw*(i+0.5));
+  }else{
+    const nHalf=L>1?Math.max(1,Math.floor(L/2)):(w>=14?2:1);
+    const park=L>0?0.3:(info.cls==='minor'?2.0:0.4);
+    const usable=Math.max(2.8,w/2-park),lw=usable/nHalf;
+    for(let i=0;i<nHalf;i++) centers.push(lw*(i+0.5));
+  }
+  let near=0;
+  for(let i=1;i<centers.length;i++) if(Math.abs(gpsLat-centers[i])<Math.abs(gpsLat-centers[near])) near=i;
+  const now=performance.now();
+  if(laneState.n!==centers.length){laneState={n:centers.length,idx:near,pend:-1,pendT:0};}
+  else if(near!==laneState.idx){
+    if(laneState.pend!==near){laneState.pend=near;laneState.pendT=now;}
+    else if(now-laneState.pendT>1500){laneState.idx=near;laneState.pend=-1;}
+  }else laneState.pend=-1;
+  const c=centers[Math.min(laneState.idx,centers.length-1)];
+  return gpsLat+(c-gpsLat)*0.6;
 }
