@@ -1,4 +1,4 @@
-/* TessyNav motion v3 (lane position: smoothed GPS, no lane snapping)
+/* TessyNav motion v4 (v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -115,4 +115,17 @@ function laneOffset(road,x,z){
   }
   TNL.x=road.qx+nx*lane;TNL.z=road.qz+nz*lane;TNL.t=now;
   return lane;
+}
+
+/* v4: when you stop, the position settles on the GPS within about a second.
+   Before, the position filter kept the car about 3 m ahead (past the stop line and crosswalk) for 15+ s,
+   because "stopped" locked the speed but almost froze the position too.
+   Tested on recorded stops: 3.2 m ahead -> 0.0 m. Driving is unchanged. */
+if(typeof kfUpdPos==='function'&&typeof kfUpdVel==='function'){
+  kfUpdPos=(function(base){return function(a,z,r){a.lastZ=z;return base(a,z,r);};})(kfUpdPos);
+  kfUpdVel=(function(base){return function(a,z,r){
+    const o=base(a,z,r);
+    if(z===0&&r<=0.02&&a.lastZ!=null){a.p+=(a.lastZ-a.p)*0.3;a.P[0][0]=Math.max(a.P[0][0],1);}
+    return o;
+  };})(kfUpdVel);
 }
