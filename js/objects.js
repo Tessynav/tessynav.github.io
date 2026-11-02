@@ -1,4 +1,4 @@
-/* TessyNav objects v5 (v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v6 (v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -69,7 +69,7 @@ function tnoSlopeOnRoad(L0,L1,R0,R1,nx,nz,k){
    looked broken into sections with steps between them. Now connected pieces are joined into one bridge,
    and every piece gets the height of the whole bridge. */
 let tnoChains=null,tnoChainsT=0;
-function tnoBuildChains(cross){
+function tnoBuildChains(cross,roadIdx){
   const all=[];
   for(const cell of brCells.values()) for(const b of cell.values()) all.push(b);
   const parent=new Map();all.forEach(b=>parent.set(b,b));
@@ -87,7 +87,12 @@ function tnoBuildChains(cross){
   }
   const groups=new Map();
   for(const b of all){
-    const r=find(b);let g=groups.get(r);if(!g){g={L:0,overH:0};groups.set(r,g);}
+    const r=find(b);let g=groups.get(r);if(!g){g={L:0,overH:0,ends:[]};groups.set(r,g);}
+    /* v6: where the bridge really starts or ends: an end with no other bridge piece, where a ground road continues */
+    for(const p of [b.pts[0],b.pts[b.pts.length-1]]){
+      let others=0;for(const k of nearKeys(p)){const l=ends.get(k);if(l) for(const o of l) if(o!==b&&rail(o)===rail(b)) others++;}
+      if(!others&&roadIdx&&lookupNear(roadIdx,p).length) g.ends.push(toLocal(p[0],p[1]));
+    }
     const pts=b.pts.map(p=>toLocal(p[0],p[1]));
     const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
     const L=cum[cum.length-1];g.L+=L;
@@ -101,13 +106,14 @@ function tnoBuildChains(cross){
     else if(g.L>120){H=Math.max(5,g.overH);rampMul=0.8;}
     else if(g.overH){H=g.overH;}
     else{H=1.2;low=true;}
-    out.set(b,{H:H,low:low,rampMul:rampMul});
+    const long=H>=5&&g.L>120;
+    out.set(b,{H:H,low:low,rampMul:rampMul,long:long,ends:g.ends,ramp:Math.max(60,Math.min(350,H*20))});
   }
   return out;
 }
-function tnoChainH(b,cross){
+function tnoChainH(b,cross,roadIdx){
   const now=performance.now();
-  if(!tnoChains||now-tnoChainsT>200||!tnoChains.has(b)){tnoChains=tnoBuildChains(cross);tnoChainsT=now;}
+  if(!tnoChains||now-tnoChainsT>200||!tnoChains.has(b)){tnoChains=tnoBuildChains(cross,roadIdx);tnoChainsT=now;}
   return tnoChains.get(b)||{H:1.2,low:true,rampMul:1};
 }
 
@@ -343,7 +349,7 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
     const W=BR_W[b.cls]||7,isRail=b.cls==='rail'||b.cls==='transit';
     /* Height depends on what the bridge crosses */
     let H,low=false,rampMul=1;
-    {const ch=tnoChainH(b,cross);H=ch.H;low=ch.low;rampMul=ch.rampMul;}
+    const tch=tnoChainH(b,cross,roadIdx);H=tch.H;low=tch.low;rampMul=tch.rampMul;
     const lineCol=(isRail||b.cls==='path'||b.cls==='track')?null:(b.oneway?BR_COL.white:BR_COL.yellow);
     const railCol=low?BR_COL.railLow:BR_COL.rail;
     const ends=[
@@ -352,6 +358,7 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
     ];
     const ramp=[false,false];
     ends.forEach((e,ei)=>{
+      if(tch.long) return; /* v6: long bridges slope down to the ground themselves, no separate grass ramp */
       const others=lookupNear(endInfo,e.p);
       if(others.some(a=>angDiff(a,e.into)>90)) return;
       const cands=lookupNear(roadIdx,e.p).filter(a=>a.pts.length>1&&angDiff(angOf(a.pts[0],a.pts[1]),e.into)>90);
@@ -371,7 +378,18 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
       }
     });
     const RLin=Math.min(low?12:45,L*0.45);
-    const hAt=s=>H*(ramp[0]?sm(s/RLin):1)*(ramp[1]?sm((L-s)/RLin):1);
+    let hAt=s=>H*(ramp[0]?sm(s/RLin):1)*(ramp[1]?sm((L-s)/RLin):1);
+    if(tch.long&&tch.ends.length){
+      /* v6: the deck rises smoothly from the ground where the bridge starts (about 5% slope, up to 350 m),
+         like the real approach, instead of a grass ramp on one lane while the other lanes stay flat */
+      hAt=s=>{
+        let i=0;while(i<n-2&&cum[i+1]<s) i++;
+        const seg=cum[i+1]-cum[i]||1,t=Math.max(0,Math.min(1,(s-cum[i])/seg));
+        const x=pts[i][0]+(pts[i+1][0]-pts[i][0])*t,z=pts[i][1]+(pts[i+1][1]-pts[i][1])*t;
+        let d=1e9;for(const e of tch.ends) d=Math.min(d,Math.hypot(x-e[0],z-e[1]));
+        return Math.max(0.15,H*sm(d/tch.ramp));
+      };
+    }
     ribbon(pts,hAt,W,{deck:isRail?BR_COL.ballast:BR_COL.asphalt,embank:false,line:lineCol,pillars:!low,railings:true,railMin:low?0.3:1.5,railCol:railCol,lamps:!isRail&&!low&&b.cls!=='path'&&b.cls!=='track',rem:isRail});
   }
   if(!pos.length) return null;
