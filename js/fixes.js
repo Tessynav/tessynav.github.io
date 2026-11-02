@@ -1349,3 +1349,71 @@ updateCar3D=(function(base){return function(cx,cz,hd,steer){
   base(cx,cz,hd,steer);
   if(onBridge&&brTarget>carY) carY+=(brTarget-carY)*0.12;
 };})(updateCar3D);
+/* ===== v29: see-through (anything between the camera and Tessy fades), and trust Tessy's position when it reports a huge accuracy ===== */
+const TN_SEE={uCam:{value:new THREE.Vector3()},uCar:{value:new THREE.Vector3()},uOn:{value:0}};
+function tnSeeThrough(mat){
+  if(!mat||mat.userData.tnSee) return;
+  mat.userData.tnSee=true;
+  const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=function(sh,r){
+    if(prev) prev.call(this,sh,r);
+    sh.uniforms.uCam=TN_SEE.uCam;sh.uniforms.uCar=TN_SEE.uCar;sh.uniforms.uOn=TN_SEE.uOn;
+    sh.vertexShader=sh.vertexShader
+      .replace('#include <common>','#include <common>\nvarying vec3 vTnW;')
+      .replace('#include <project_vertex>','#include <project_vertex>\n{vec4 tw=vec4(transformed,1.0);\n#ifdef USE_INSTANCING\ntw=instanceMatrix*tw;\n#endif\nvTnW=(modelMatrix*tw).xyz;}');
+    sh.fragmentShader=sh.fragmentShader
+      .replace('#include <common>','#include <common>\nvarying vec3 vTnW;uniform vec3 uCam;uniform vec3 uCar;uniform float uOn;')
+      .replace('void main() {','void main() {\nif(uOn>0.5){vec3 ab=uCar-uCam;float L2=max(dot(ab,ab),1.0);float t=clamp(dot(vTnW-uCam,ab)/L2,0.0,1.0);vec3 pl=uCam+ab*t;float d=length(vTnW-pl);float rad=mix(2.0,5.5,t);if(t<0.97&&d<rad&&(vTnW.y-pl.y)>-1.2){float dith=fract(sin(dot(floor(gl_FragCoord.xy),vec2(12.9898,78.233)))*43758.5453);float fade=1.0-smoothstep(rad*0.55,rad,d);if(dith<fade*0.85) discard;}}');
+  };
+  const pk=mat.customProgramCacheKey?mat.customProgramCacheKey.bind(mat):null;
+  mat.customProgramCacheKey=()=>(pk?pk():'')+'|tnsee';
+  mat.needsUpdate=true;
+}
+setInterval(()=>{
+  for(const m of [typeof brMat!=='undefined'?brMat:null,typeof bMat!=='undefined'?bMat:null,
+    typeof treeInstMat!=='undefined'?treeInstMat:null,typeof treeMat!=='undefined'?treeMat:null]) if(m) tnSeeThrough(m);
+},1000);
+updateCar3D=(function(base){return function(cx,cz,hd,steer){
+  base(cx,cz,hd,steer);
+  try{
+    const cam=map.getFreeCameraOptions().position;
+    if(cam){
+      const ll=cam.toLngLat(),[x,z]=toLocal(ll.lng,ll.lat);
+      TN_SEE.uCam.value.set(x,cam.toAltitude(),z);
+      TN_SEE.uCar.value.set(cx,(typeof carY==='number'?carY:0)+1.2,cz);
+      TN_SEE.uOn.value=1;
+    }
+  }catch(e){TN_SEE.uOn.value=0;}
+};})(updateCar3D);
+
+onPos=(function(base){return function(pos){
+  const c=pos&&pos.coords;
+  if(c&&c.accuracy>50){
+    pos={timestamp:pos.timestamp,coords:{latitude:c.latitude,longitude:c.longitude,accuracy:12,
+      speed:c.speed,heading:c.heading,altitude:c.altitude,altitudeAccuracy:c.altitudeAccuracy}};
+  }
+  return base(pos);
+};})(onPos);
+/* ===== v30: stay on the highway when passing exits; gentler zoom-out at high speed ===== */
+matchRoad=(function(base){return function(x,z,spd){
+  const prev=curRoad;
+  const m=base(x,z,spd);
+  if(prev&&prev.cls==='motorway'&&curRoad&&curRoad!==prev&&lastHd!==null){
+    const ph=(Math.atan2(prev.tx,-prev.tz)/R+360)%360;
+    const hdiff=Math.abs(((ph-lastHd+540)%360)-180);
+    const lat=Math.abs((x-prev.qx)*(-prev.tz)+(z-prev.qz)*prev.tx);
+    if(hdiff<6&&lat<9){
+      curRoad=prev;
+      const s=onCurRoad(x,z);
+      if(lastMatchInfo) lastMatchInfo.why='stay-highway';
+      return {x:s[0],z:s[1],tx:prev.tx,tz:prev.tz};
+    }
+  }
+  return m;
+};})(matchRoad);
+
+function camSpec(){
+  const kmh=gT?gT.spd*3.6:0,drop=Math.min(0.5,kmh/200);
+  if(viewMode==='street') return {zoom:21.6-drop,pitch:72,pad:0.48};
+  return {zoom:19.8-drop-(skyOn?0.4:0),pitch:skyOn?78:60,pad:0.32};
+}
