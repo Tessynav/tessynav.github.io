@@ -764,3 +764,17 @@ updateCar3D=(function(base){return function(cx,cz,hd,steer){
   for(const m of m3Mats) m.envMapIntensity=1-0.75*nt;
 };})(updateCar3D);
 if(typeof car3d!=='undefined'&&car3d&&treeScene){treeScene.remove(car3d);car3d=null;}
+
+/* Car look: crisp faceted shading (like Codriver) and a color choice: ?carcolor=white|grey|silver|black|blue|red */
+const M3_COLORS={grey:'#3a3d42',white:'#e9eaec',silver:'#8d9196',black:'#0d0e10',blue:'#1d3d78',red:'#8c0f14'};
+(function(){
+  const q=new URLSearchParams(location.search).get('carcolor');
+  if(q&&M3_COLORS[q]) cacheSet('carColor',q);
+})();
+setInterval(()=>{
+  const want=M3_COLORS[cacheGet('carColor')||'grey'];
+  for(const m of m3Mats){
+    if(!m.flatShading){m.flatShading=true;m.needsUpdate=true;}
+    if(m.isMeshPhysicalMaterial&&m.clearcoat>0&&m.userData.col!==want){m.color.set(want);m.userData.col=want;}
+  }
+},1000);
