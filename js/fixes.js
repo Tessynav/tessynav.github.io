@@ -997,3 +997,185 @@ applySkyColors=(function(base){return function(){
   }catch(e){}
 };})(applySkyColors);
 applySkyColors();
+/* ===== v24: build in small pieces (no freezes): instanced trees, one block at a time for buildings, lamps and signs ===== */
+const TN_ORDER=[[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]];
+const tnCont={};
+function tnContinue(name){
+  if(tnCont[name]) return;
+  tnCont[name]=setTimeout(()=>{
+    tnCont[name]=0;
+    const f=(typeof jobOrig!=='undefined'&&jobOrig[name])||window[name];
+    try{f('cont');}catch(e){console.warn('continue',name,e);}
+  },160);
+}
+
+/* Trees: instanced drawing (same look, a tiny fraction of the work) */
+let treeInstMat=null;
+function buildMesh(list){
+  if(typeof quality!=='undefined'&&quality==='low') list=list.filter((t,i)=>i%2===0);
+  if(!treeInstMat) treeInstMat=new THREE.MeshLambertMaterial({color:0xffffff});
+  const n=list.length,g=new THREE.Group();
+  const trunks=new THREE.InstancedMesh(trunkGeo,treeInstMat,Math.max(1,n));
+  const balls=new THREE.InstancedMesh(ballGeo,treeInstMat,Math.max(1,n*2));
+  const m=new THREE.Matrix4(),q=new THREE.Quaternion(),p=new THREE.Vector3(),sc=new THREE.Vector3();
+  for(let i=0;i<n;i++){
+    const t=list[i],s=t.s;
+    p.set(t.x,1.6*s,t.z);sc.set(s,s,s);m.compose(p,q,sc);trunks.setMatrixAt(i,m);trunks.setColorAt(i,trunkCol);
+    p.set(t.x,4.6*s,t.z);sc.set(2.6*s,2.3*s,2.6*s);m.compose(p,q,sc);balls.setMatrixAt(2*i,m);balls.setColorAt(2*i,t.col);
+    p.set(t.x+t.jx*s,6.3*s,t.z+t.jz*s);sc.set(1.7*s,1.6*s,1.7*s);m.compose(p,q,sc);balls.setMatrixAt(2*i+1,m);balls.setColorAt(2*i+1,t.col);
+  }
+  trunks.count=n;balls.count=n*2;
+  for(const im of [trunks,balls]){
+    im.instanceMatrix.needsUpdate=true;
+    if(im.instanceColor) im.instanceColor.needsUpdate=true;
+    im.castShadow=true;im.frustumCulled=false;im.userData.noCull=true;
+    g.add(im);
+  }
+  g.userData.treeGroup=true;
+  return g;
+}
+function tnDisposeTree(mesh){
+  if(mesh.userData&&mesh.userData.treeGroup){for(const ch of mesh.children){if(ch.dispose) ch.dispose();}}
+  else if(mesh.geometry) mesh.geometry.dispose();
+}
+function updateTrees(){
+  treesEl.textContent='Trees: '+treeCount;
+  if(treesFailed||!treeScene) return;
+  const c=map.getCenter(),cx=Math.floor(c.lng/C),cy=Math.floor(c.lat/C);
+  for(const [ck,mesh] of cellMeshes){
+    const [x,y]=ck.split(',').map(Number);
+    if(Math.abs(x-cx)>2||Math.abs(y-cy)>2){treeScene.remove(mesh);tnDisposeTree(mesh);cellMeshes.delete(ck);}
+  }
+  let built=0,pending=false;
+  for(const [dx,dy] of TN_ORDER){
+    const ck=(cx+dx)+','+(cy+dy),b=buckets.get(ck);
+    if(!b) continue;
+    if(cellMeshes.has(ck)&&!dirty.has(ck)) continue;
+    if(built>=2){pending=true;continue;}
+    const old=cellMeshes.get(ck);
+    if(old){treeScene.remove(old);tnDisposeTree(old);}
+    const mesh=buildMesh(b);treeScene.add(mesh);cellMeshes.set(ck,mesh);dirty.delete(ck);built++;
+  }
+  if(pending) tnContinue('updateTrees');
+  map.triggerRepaint();
+}
+
+/* Buildings: re-read the map only when new data arrived or the area changed; build one block at a time */
+let bTilesChanged=true,bLastCell='';
+map.on('sourcedata',e=>{if(e.sourceId==='openmaptiles'&&e.tile) bTilesChanged=true;});
+function updateBuildings(force){
+  if(bFailed||!treeScene) return;
+  bLast=performance.now();
+  try{
+    if(!bMat) bMat=makeBuildingMaterial();
+    if(!bAmb){bAmb=new THREE.AmbientLight(0x8a9ac0,0);treeScene.add(bAmb);}
+    const c=map.getCenter(),cx=Math.floor(c.lng/BC),cy=Math.floor(c.lat/BC);
+    const s=sunPos(nowForSun(),c.lat,c.lng);
+    bNight.value=Math.min(1,Math.max(0,(6-s.alt/R)/12));
+    bAmb.intensity=0.6*bNight.value;
+    if(map.getZoom()<15.5){setThreeMode(false);return;}
+    const cell=cx+','+cy;
+    if(force!=='cont'&&(bTilesChanged||cell!==bLastCell)){bTilesChanged=false;bLastCell=cell;collectBuildings(cx,cy);}
+    for(const [ck,mesh] of bMeshes){
+      const [x,y]=ck.split(',').map(Number);
+      if(Math.abs(x-cx)>2||Math.abs(y-cy)>2){treeScene.remove(mesh);mesh.geometry.dispose();bMeshes.delete(ck);}
+    }
+    for(const ck of [...bCells.keys()]){
+      const [x,y]=ck.split(',').map(Number);
+      if(Math.abs(x-cx)>3||Math.abs(y-cy)>3){bCells.delete(ck);bDirty.delete(ck);}
+    }
+    let built=0,pending=false;
+    for(const [dx,dy] of TN_ORDER){
+      const ck=(cx+dx)+','+(cy+dy),cl=bCells.get(ck);
+      if(!cl) continue;
+      if(bMeshes.has(ck)&&!bDirty.has(ck)) continue;
+      if(built>=1){pending=true;continue;}
+      const old=bMeshes.get(ck);
+      if(old){treeScene.remove(old);old.geometry.dispose();bMeshes.delete(ck);}
+      const mesh=buildBuildingMesh(cl);
+      if(mesh){mesh.visible=bThreeOn||!bReady;treeScene.add(mesh);bMeshes.set(ck,mesh);}
+      bDirty.delete(ck);built++;
+    }
+    if(built&&!bReady) bReady=true;
+    if(bReady) setThreeMode(true);
+    if(pending) tnContinue('updateBuildings');
+    map.triggerRepaint();
+  }catch(e){
+    bFailed=true;console.warn('3D buildings failed',e);
+    for(const m of bMeshes.values()) treeScene.remove(m);
+    for(const id of ['building-3d','roofs']) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility','visible');
+  }
+}
+
+/* Street lamps and traffic lights: one block at a time, nearest first */
+function updateLights(force){
+  if(lFailed||!treeScene) return;
+  lLast=performance.now();
+  try{
+    if(!lMatPole) makeLightMaterials();
+    updateLightNight();
+    const zoomOk=map.getZoom()>=15.5;
+    for(const v of lMeshes.values()) v.group.visible=zoomOk;
+    if(!zoomOk){map.triggerRepaint();return;}
+    const c=map.getCenter(),cx=Math.floor(c.lng/LC),cy=Math.floor(c.lat/LC);
+    if(force!=='cont') collectLightRoads(cx,cy);
+    for(const ck of [...lCells.keys()]){
+      const [x,y]=ck.split(',').map(Number);
+      if(Math.abs(x-cx)>2||Math.abs(y-cy)>2) lCells.delete(ck);
+    }
+    for(const [ck,v] of lMeshes){
+      const [x,y]=ck.split(',').map(Number);
+      if(lDirtyAll||v.dirty||Math.abs(x-cx)>1||Math.abs(y-cy)>1){treeScene.remove(v.group);disposeGroup(v.group);lMeshes.delete(ck);}
+    }
+    lDirtyAll=false;
+    let built=0,pending=false;
+    for(const [dx,dy] of TN_ORDER){
+      const ck=(cx+dx)+','+(cy+dy);
+      if(lMeshes.has(ck)||(!lCells.has(ck)&&!sigCells.has(ck))) continue;
+      if(built>=1){pending=true;continue;}
+      const group=buildLightCell(ck);
+      treeScene.add(group);lMeshes.set(ck,{group:group,dirty:false});built++;
+    }
+    if(pending) tnContinue('updateLights');
+    map.triggerRepaint();
+  }catch(e){
+    lFailed=true;console.warn('Street lights failed',e);
+    for(const v of lMeshes.values()) treeScene.remove(v.group);
+  }
+}
+
+/* Road signs: one block at a time, nearest first */
+function updateSigns(force){
+  if(sFailed||!treeScene||typeof lightAcc!=='function') return;
+  sLast=performance.now();
+  try{
+    if(!sMat) makeSignMaterials();
+    if(!lMatPole) return;
+    const zoomOk=map.getZoom()>=15.5;
+    for(const g of sMeshes.values()) g.visible=zoomOk;
+    if(!zoomOk){map.triggerRepaint();return;}
+    const c=map.getCenter(),cx=Math.floor(c.lng/SC),cy=Math.floor(c.lat/SC);
+    if(force!=='cont') signsLoadAround(c.lng,c.lat);
+    for(const [ck,g] of sMeshes){
+      const [x,y]=ck.split(',').map(Number);
+      if(sDirtyAll||Math.abs(x-cx)>1||Math.abs(y-cy)>1||g.userData.roads!==roadsAround(ck)){
+        treeScene.remove(g);disposeSignGroup(g);sMeshes.delete(ck);
+      }
+    }
+    sDirtyAll=false;
+    let built=0,pending=false;
+    for(const [dx,dy] of TN_ORDER){
+      const ck=(cx+dx)+','+(cy+dy);
+      if(sMeshes.has(ck)||!sCells.has(ck)) continue;
+      if(built>=1){pending=true;continue;}
+      const g=buildSignCell(ck);g.userData.roads=roadsAround(ck);
+      treeScene.add(g);sMeshes.set(ck,g);built++;
+    }
+    if(pending) tnContinue('updateSigns');
+    signNight();
+    map.triggerRepaint();
+  }catch(e){
+    sFailed=true;console.warn('Signs failed',e);
+    for(const g of sMeshes.values()) treeScene.remove(g);
+  }
+}
