@@ -1417,3 +1417,41 @@ function camSpec(){
   if(viewMode==='street') return {zoom:21.6-drop,pitch:72,pad:0.48};
   return {zoom:19.8-drop-(skyOn?0.4:0),pitch:skyOn?78:60,pad:0.32};
 }
+/* ===== v31: real lanes at every speed (detailed roads stay on), and load the road ahead at highway speed ===== */
+function r3Want(){
+  if(!r3Ready) return;
+  const now=performance.now();
+  if(now-r3LastWant<1000) return;
+  r3LastWant=now;
+  if(map.getZoom()<15){r3SetNarrow(false);r3Visible(false);return;}
+  r3Visible(true);
+  const c=map.getCenter(),tx=Math.floor(c.lng/R3T),ty=Math.floor(c.lat/R3T);
+  const want=[];
+  for(const [dx,dy] of [[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]]) want.push([tx+dx,ty+dy]);
+  const kmh=(typeof gT!=='undefined'&&gT)?gT.spd*3.6:0;
+  if(kmh>45&&lastHd!==null){
+    const fx=Math.sin(lastHd*R),fy=Math.cos(lastHd*R);
+    for(const s of [1,2,3]){
+      const ax=tx+Math.round(fx*s),ay=ty+Math.round(fy*s);
+      want.push([ax,ay]);
+      if(s<=2){
+        if(Math.abs(fy)>=Math.abs(fx)){want.push([ax-1,ay]);want.push([ax+1,ay]);}
+        else{want.push([ax,ay-1]);want.push([ax,ay+1]);}
+      }
+    }
+  }
+  for(const [x,y] of want){
+    const k=x+','+y;
+    if(r3Tiles.has(k)||r3Wanted.has(k)) continue;
+    const cached=r3CacheGet(k);
+    if(cached){r3Tiles.set(k,cached);r3Schedule();}
+    else{r3Wanted.add(k);r3Queue.push([x,y]);}
+  }
+  for(const k of [...r3Tiles.keys()]){
+    const [x,y]=k.split(',').map(Number);
+    if(Math.abs(x-tx)>4||Math.abs(y-ty)>4) r3Tiles.delete(k);
+  }
+  r3Pump();
+  r3SetNarrow(r3Tiles.has(tx+','+ty));
+  if(tx+','+ty!==r3LastCenter&&now-r3LastBuildT>(kmh>45?3000:4000)){r3LastCenter=tx+','+ty;r3LastBuildT=now;r3Schedule();}
+}
