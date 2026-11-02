@@ -968,3 +968,20 @@ setInterval(()=>{
     break;
   }
 },180);
+/* The far background follows the horizon color, so there's no white band at any time of day */
+function applySkyColors(){
+  const nt=typeof nightNow==='number'?nightNow:0;
+  const warm='#f2b27a';
+  const sky=mixHex('#6fa8e8','#0b1633',nt);
+  const hor=nt<0.5?mixHex('#d6e6f5',warm,nt*2):mixHex(warm,'#13214a',(nt-0.5)*2);
+  const fog=nt<0.5?mixHex('#dfe8f1','#c99a7a',nt*2):mixHex('#c99a7a','#101a36',(nt-0.5)*2);
+  try{
+    map.setSky({'sky-color':sky,'horizon-color':hor,'fog-color':fog,
+      'sky-horizon-blend':0.5,'horizon-fog-blend':0.8,'fog-ground-blend':0.85,'atmosphere-blend':0.6});
+  }catch(e){}
+  try{
+    const bg=(map.getStyle().layers.find(l=>l.type==='background')||{}).id;
+    if(bg) map.setPaintProperty(bg,'background-color',fog);
+  }catch(e){}
+}
+applySkyColors();
