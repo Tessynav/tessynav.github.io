@@ -845,3 +845,75 @@ updateCar3D=(function(base){return function(cx,cz,hd,steer){
     }
   }
 };})(updateCar3D);
+/* ===== v18: no spinning (direction held at low speed, real-car turning limit), lighter road matching, bridge info in recordings ===== */
+function renderedRoads(pos){
+  try{
+    const pt=map.project(pos);
+    return map.queryRenderedFeatures([[pt.x-150,pt.y-150],[pt.x+150,pt.y+150]],{layers:getRoadLayers()});
+  }catch(e){return [];}
+}
+let mr2LastT=0;
+matchRoad=(function(full){return function(x,z,spd){
+  const now=performance.now();
+  if(now-mr2LastT<700&&curRoad&&!turning&&spd>=1){
+    const s=onCurRoad(x,z);
+    if(Math.hypot(s[0]-x,s[1]-z)<=SNAP_MAX+4){lastMatchInfo={why:'between'};return {x:s[0],z:s[1],tx:curRoad.tx,tz:curRoad.tz};}
+  }
+  mr2LastT=now;
+  return full(x,z,spd);
+};})(matchRoad);
+
+glideFrame=function(){
+  requestAnimationFrame(glideFrame);
+  const now=performance.now(),fdt=Math.min(0.1,lastFrameT?(now-lastFrameT)/1000:0.016);
+  lastFrameT=now;
+  if(watchId===null||!pts.length) return;
+  if(pts.length>3){
+    const iv=[];
+    for(let i=Math.max(1,pts.length-8);i<pts.length;i++) iv.push(pts[i].t-pts[i-1].t);
+    iv.sort((a,b)=>a-b);
+    const want=Math.max(250,Math.min(1050,iv[Math.floor(iv.length/2)]*2.2));
+    drawDelay+=(want-drawDelay)*Math.min(1,fdt*0.5);
+  }
+  const p=pathAt(now-drawDelay);
+  if(!p) return;
+  const k=Math.exp(-fdt/0.35);corr[0]*=k;corr[1]*=k;
+  const rx=p.x+corr[0],rz=p.z+corr[1];
+  const v=Math.hypot(p.dx,p.dz);
+  let hd=lastPathHd!==null?lastPathHd:(lastHd!==null?lastHd:gHd);
+  if(v>2){hd=(Math.atan2(p.dx,-p.dz)/R+360)%360;lastPathHd=hd;}
+  else if(curRoad&&snapOk){
+    const rh=(Math.atan2(curRoad.tx,-curRoad.tz)/R+360)%360;
+    if(Math.abs(((rh-gHd+540)%360)-180)<60) hd=rh;
+  }
+  const dh=((hd-gHd+540)%360)-180;
+  const maxStep=70*fdt*(v>2?1:0.5);
+  const step=Math.max(-maxStep,Math.min(maxStep,dh*Math.min(1,fdt*8)));
+  const newHd=(gHd+step+360)%360;
+  gHd=newHd;
+  let wantSteer=0;
+  if(v>1){const curv=(step*R)/(v*fdt);wantSteer=Math.max(-0.5,Math.min(0.5,Math.atan(WHEELBASE*curv)));}
+  steerNow+=(wantSteer-steerNow)*Math.min(1,fdt*6);
+  const fx=Math.sin(gHd*R),fz=-Math.cos(gHd*R);
+  const cx=rx+fx*REAR_AXLE,cz=rz+fz*REAR_AXLE;
+  gPos=fromLocal(cx,cz);
+  car.setLngLat(gPos).setRotation(gHd);
+  updateCar3D(cx,cz,gHd,steerNow);
+  map.triggerRepaint();
+  if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
+  const cs=camSpec();
+  gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
+  gPitch+=(cs.pitch-gPitch)*0.06;
+  const H=map.getContainer().clientHeight||800;
+  map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
+    padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
+};
+
+recTick=(function(base){return function(){
+  const before=rec?rec.f.length:0;
+  base();
+  if(rec&&rec.f.length>before){
+    const row=rec.f[rec.f.length-1];
+    row.push(snapBridge?1:0,typeof carY==='number'?Math.round(carY*10)/10:0);
+  }
+};})(recTick);
