@@ -243,3 +243,24 @@ uploadTrip=(function(base){return function(trip){
   if(trip&&!trip.osm&&trip.brg) trip.osm={bridges:trip.brg,src:'drive'};
   return base(trip);
 };})(uploadTrip);
+/* Footage: a small snapshot of the map every 10 s (every 3 s on bridges), uploaded with the trip */
+let shotList=[],shotRec=null,shotLast=0;
+const shotCv=document.createElement('canvas'),shotCtx=shotCv.getContext('2d');
+map.on('render',()=>{
+  if(typeof rec==='undefined'||!rec) return;
+  if(shotRec!==rec){shotRec=rec;shotList=[];shotLast=0;}
+  const now=performance.now();
+  const gap=(typeof snapBridge!=='undefined'&&snapBridge)?3000:10000;
+  if(now-shotLast<gap||shotList.length>=500) return;
+  shotLast=now;
+  try{
+    const src=map.getCanvas(),w=320,h=Math.round(320*src.height/src.width);
+    if(shotCv.width!==w){shotCv.width=w;shotCv.height=h;}
+    shotCtx.drawImage(src,0,0,w,h);
+    shotList.push([recT(),shotCv.toDataURL('image/jpeg',0.6)]);
+  }catch(e){}
+});
+uploadTrip=(function(base){return function(trip){
+  if(trip&&trip===shotRec&&shotList.length&&!trip.shots) trip.shots=shotList;
+  return base(trip);
+};})(uploadTrip);
