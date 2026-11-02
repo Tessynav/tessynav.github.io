@@ -434,3 +434,121 @@ recTick=function(){
   }
   if(recTicks%120===0){rec.dur=recT();try{localStorage.setItem('rec:current',JSON.stringify(rec));}catch(e){}}
 };
+
+/* ===== Realistic 2024 Model 3 (Highland) in Stealth Grey, sculpted from smooth cross-sections ===== */
+const M3_PAINT='#5a5e64';
+function m3Interp(keys,z){
+  if(z<=keys[0][0]) return keys[0][1];
+  for(let i=1;i<keys.length;i++){
+    if(z<=keys[i][0]){const a=keys[i-1],b=keys[i],t=(z-a[0])/(b[0]-a[0]),s=t*t*(3-2*t);return a[1]+(b[1]-a[1])*s;}
+  }
+  return keys[keys.length-1][1];
+}
+function m3Loft(zs,ring,closed){
+  const pos=[],idx=[];let M=0;
+  zs.forEach(z=>{const r=ring(z);M=r.length;for(const p of r) pos.push(p[0],p[1],z);});
+  const segs=closed?M:M-1;
+  for(let i=0;i<zs.length-1;i++)for(let j=0;j<segs;j++){
+    const a=i*M+j,b=i*M+(j+1)%M,c=(i+1)*M+(j+1)%M,d=(i+1)*M+j;
+    idx.push(a,b,d,b,c,d);
+  }
+  const cap=(zi,front)=>{
+    const r=ring(zs[zi]),base=pos.length/3;
+    let cx=0,cy=0;for(const p of r){cx+=p[0];cy+=p[1];}cx/=r.length;cy/=r.length;
+    pos.push(cx,cy,zs[zi]);
+    for(const p of r) pos.push(p[0],p[1],zs[zi]);
+    for(let j=0;j<segs;j++){
+      const p1=base+1+j,p2=base+1+(j+1)%r.length;
+      if(front) idx.push(base,p2,p1); else idx.push(base,p1,p2);
+    }
+  };
+  cap(0,true);cap(zs.length-1,false);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setIndex(idx);g.computeVertexNormals();
+  return g;
+}
+const M3_TOP=[[-2.36,0.58],[-2.26,0.68],[-1.9,0.79],[-0.9,0.92],[1.5,0.99],[2.05,0.98],[2.3,0.87],[2.36,0.76]];
+const M3_BOT=[[-2.36,0.34],[-2.15,0.20],[2.15,0.20],[2.36,0.36]];
+const M3_HW=[[-2.36,0.6],[-2.2,0.82],[-1.7,0.91],[0,0.925],[1.7,0.91],[2.2,0.84],[2.36,0.7]];
+const M3_ROOF=[[-0.95,0.92],[-0.25,1.38],[0.3,1.44],[0.9,1.40],[1.5,1.17],[1.95,0.99]];
+function m3BodyRing(z){
+  const w=m3Interp(M3_HW,z),y1=m3Interp(M3_TOP,z),y0=m3Interp(M3_BOT,z),cy=(y0+y1)/2,h=(y1-y0)/2,N=28,e=0.62,out=[];
+  for(let k=0;k<N;k++){
+    const t=k/N*Math.PI*2,c=Math.cos(t),s=Math.sin(t);
+    let x=w*Math.sign(c)*Math.pow(Math.abs(c),e);
+    const y=cy+h*Math.sign(s)*Math.pow(Math.abs(s),e);
+    if(y>cy) x*=1-0.1*((y-cy)/h);
+    out.push([x,y]);
+  }
+  return out;
+}
+function m3CabinRing(z){
+  const belt=m3Interp(M3_TOP,z)-0.03,roof=Math.max(belt+0.002,m3Interp(M3_ROOF,z)),hgt=roof-belt;
+  const wb=m3Interp(M3_HW,z)*0.86,wr=wb*0.72,N=16,out=[];
+  for(let k=0;k<=N;k++){
+    const t=k/N*Math.PI,c=Math.cos(t),s=Math.sin(t);
+    out.push([Math.sign(c)*Math.pow(Math.abs(c),0.7)*(wb*(1-s)+wr*s),belt+hgt*Math.pow(s,0.6)]);
+  }
+  return out;
+}
+function makeCar3D(){
+  const g=new THREE.Group();
+  const paint=new THREE.MeshPhongMaterial({color:M3_PAINT,shininess:90,specular:0x9a9a9a,emissive:0x111316,side:THREE.DoubleSide});
+  const glass=new THREE.MeshPhongMaterial({color:0x0b0d10,shininess:120,specular:0xb8b8b8,emissive:0x050608,side:THREE.DoubleSide});
+  const trim=new THREE.MeshLambertMaterial({color:0x101214});
+  const tire=new THREE.MeshLambertMaterial({color:0x0d0d0d});
+  const rim=new THREE.MeshPhongMaterial({color:0x2e3135,shininess:50});
+  const head=new THREE.MeshBasicMaterial({color:0xf4f8ff});
+  carTail=new THREE.MeshBasicMaterial({color:0xb0141c});
+  const add=(geo,mat,x,y,z,shadow)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=shadow!==false;m.userData.noCull=true;g.add(m);return m;};
+  /* soft contact shadow */
+  const bc=document.createElement('canvas');bc.width=bc.height=64;
+  const bx=bc.getContext('2d'),bg=bx.createRadialGradient(32,32,4,32,32,32);
+  bg.addColorStop(0,'rgba(0,0,0,0.75)');bg.addColorStop(0.6,'rgba(0,0,0,0.4)');bg.addColorStop(1,'rgba(0,0,0,0)');
+  bx.fillStyle=bg;bx.fillRect(0,0,64,64);
+  const blob=new THREE.Mesh(new THREE.PlaneGeometry(2.6,5.5),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(bc),transparent:true,depthWrite:false}));
+  blob.rotation.x=-Math.PI/2;blob.position.y=0.04;blob.userData.noCull=true;g.add(blob);
+  /* headlight beam on the road at night */
+  const hc=document.createElement('canvas');hc.width=64;hc.height=128;
+  const hx=hc.getContext('2d'),hg=hx.createLinearGradient(0,128,0,0);
+  hg.addColorStop(0,'rgba(255,245,215,0.9)');hg.addColorStop(1,'rgba(255,245,215,0)');
+  hx.fillStyle=hg;hx.beginPath();hx.moveTo(22,128);hx.lineTo(42,128);hx.lineTo(64,0);hx.lineTo(0,0);hx.closePath();hx.fill();
+  carBeam=new THREE.Mesh(new THREE.PlaneGeometry(4.2,12),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(hc),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
+  carBeam.rotation.x=-Math.PI/2;carBeam.position.set(0,0.05,-8.3);carBeam.userData.noCull=true;g.add(carBeam);
+  /* body and glass cabin */
+  const zs=[];for(let i=0;i<=30;i++) zs.push(-2.36*Math.cos(Math.PI*i/30));
+  add(m3Loft(zs,m3BodyRing,true),paint,0,0,0);
+  const cz=[];for(let i=0;i<=18;i++) cz.push(-0.95+2.9*i/18);
+  add(m3Loft(cz,m3CabinRing,false),glass,0,0,0);
+  /* front: slim headlights wrapping the corners, black lower intake */
+  for(const s of [-1,1]){
+    const hl=add(new THREE.BoxGeometry(0.4,0.045,0.05),head,s*0.56,0.665,-2.24,false);hl.rotation.y=s*0.42;
+  }
+  add(new THREE.BoxGeometry(0.95,0.06,0.05),trim,0,0.36,-2.32,false);
+  /* rear: C-shaped taillights and dark diffuser */
+  for(const s of [-1,1]){
+    add(new THREE.BoxGeometry(0.3,0.05,0.05),carTail,s*0.55,0.9,2.31,false);
+    add(new THREE.BoxGeometry(0.05,0.13,0.05),carTail,s*0.72,0.845,2.29,false);
+    add(new THREE.BoxGeometry(0.14,0.045,0.05),carTail,s*0.64,0.79,2.3,false);
+  }
+  add(new THREE.BoxGeometry(1.2,0.12,0.06),trim,0,0.32,2.33,false);
+  /* side mirrors */
+  const mg=new THREE.SphereGeometry(0.1,12,8);
+  for(const s of [-1,1]){const m=add(mg,paint,s*0.98,0.99,-0.6);m.scale.set(1,0.6,1.5);}
+  /* wheels in dark arches, front wheels steer */
+  const wg=new THREE.CylinderGeometry(0.335,0.335,0.22,22);wg.rotateZ(Math.PI/2);
+  const rg=new THREE.CylinderGeometry(0.24,0.24,0.23,22);rg.rotateZ(Math.PI/2);
+  const archG=new THREE.CircleGeometry(0.42,24);
+  carFrontWheels=[];
+  for(const x of [-0.83,0.83])for(const z of [-REAR_AXLE,REAR_AXLE]){
+    const arch=new THREE.Mesh(archG,trim);arch.position.set(x>0?0.925:-0.925,0.36,z);arch.rotation.y=x>0?Math.PI/2:-Math.PI/2;arch.userData.noCull=true;g.add(arch);
+    const w=new THREE.Group();w.position.set(x,0.335,z);
+    const t=new THREE.Mesh(wg,tire);t.castShadow=true;t.userData.noCull=true;w.add(t);
+    const r=new THREE.Mesh(rg,rim);r.position.x=x>0?0.005:-0.005;r.userData.noCull=true;w.add(r);
+    g.add(w);
+    if(z<0) carFrontWheels.push(w);
+  }
+  return g;
+}
+if(typeof car3d!=='undefined'&&car3d&&treeScene){treeScene.remove(car3d);car3d=null;}
