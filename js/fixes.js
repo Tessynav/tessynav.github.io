@@ -810,3 +810,25 @@ updateCar3D=(function(base){return function(cx,cz,hd,steer){
   for(const m of m3Mats2) m.envMapIntensity=0.8*(1-0.75*nt);
 };})(updateCar3D);
 if(typeof car3d!=='undefined'&&car3d&&treeScene){treeScene.remove(car3d);car3d=null;}
+
+/* Car rendering v3: no see-through (both sides drawn), solid Stealth Grey paint, calmer reflections */
+function m3Material(md){
+  const pbr=md.pbrMetallicRoughness||{},c=pbr.baseColorFactor||[0.5,0.5,0.5,1],name=md.name||'';
+  const col=M3_COLORS[cacheGet('carColor')||'grey'];
+  let m;
+  if(name==='paint') m=new THREE.MeshPhysicalMaterial({color:new THREE.Color(col),metalness:0.25,roughness:0.4,clearcoat:0.6,clearcoatRoughness:0.15,side:THREE.DoubleSide});
+  else if(name==='glass') m=new THREE.MeshPhysicalMaterial({color:0x101317,metalness:0,roughness:0.08,side:THREE.DoubleSide});
+  else if(name==='tail'){m=new THREE.MeshStandardMaterial({color:0x7a0d10,emissive:0x5a0000,roughness:0.3,side:THREE.DoubleSide});m3Tail=m;}
+  else m=new THREE.MeshStandardMaterial({color:new THREE.Color(c[0],c[1],c[2]),
+    metalness:Math.min(0.5,pbr.metallicFactor!=null?pbr.metallicFactor:0.2),
+    roughness:Math.max(0.4,pbr.roughnessFactor!=null?pbr.roughnessFactor:0.6),side:THREE.DoubleSide});
+  m.envMap=m3Env||null;m.envMapIntensity=0.55;
+  m3Mats2.push(m);
+  return m;
+}
+updateCar3D=(function(base){return function(cx,cz,hd,steer){
+  base(cx,cz,hd,steer);
+  const nt=typeof nightNow==='number'?nightNow:0;
+  for(const m of m3Mats2) m.envMapIntensity=0.55*(1-0.7*nt);
+};})(updateCar3D);
+if(typeof car3d!=='undefined'&&car3d&&treeScene){treeScene.remove(car3d);car3d=null;}
