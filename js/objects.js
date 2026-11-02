@@ -1,4 +1,4 @@
-/* TessyNav objects v1
+/* TessyNav objects v2 (v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -340,4 +340,10 @@ if(typeof camSpec==='function'){
     }
     return cs;
   };})(camSpec);
+}
+
+/* v2: bridge decks were dark grey (#4b4f56) and looked like black patches next to the light drawn roads.
+   Now they use the same road color. (Bridges built before this loads get it on their next rebuild.) */
+if(typeof BR_COL!=='undefined'&&BR_COL.asphalt&&BR_COL.asphalt.set){
+  BR_COL.asphalt.set(typeof ROAD_COLORS!=='undefined'?ROAD_COLORS.road:'#c9cad1');
 }
