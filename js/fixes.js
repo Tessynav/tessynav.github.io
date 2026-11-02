@@ -985,3 +985,15 @@ function applySkyColors(){
   }catch(e){}
 }
 applySkyColors();
+/* Behind the map: same color as the horizon, so the gap above the horizon never shows white */
+applySkyColors=(function(base){return function(){
+  base();
+  const nt=typeof nightNow==='number'?nightNow:0;
+  const fog=nt<0.5?mixHex('#dfe8f1','#c99a7a',nt*2):mixHex('#c99a7a','#101a36',(nt-0.5)*2);
+  try{
+    document.body.style.background=fog;
+    const el=document.getElementById('map');
+    if(el) el.style.background=fog;
+  }catch(e){}
+};})(applySkyColors);
+applySkyColors();
