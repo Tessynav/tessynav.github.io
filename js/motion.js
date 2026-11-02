@@ -1,4 +1,4 @@
-/* TessyNav motion v4 (v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
+/* TessyNav motion v5 (v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -128,4 +128,11 @@ if(typeof kfUpdPos==='function'&&typeof kfUpdVel==='function'){
     if(z===0&&r<=0.02&&a.lastZ!=null){a.p+=(a.lastZ-a.p)*0.3;a.P[0][0]=Math.max(a.P[0][0],1);}
     return o;
   };})(kfUpdVel);
+}
+
+/* v5: the position filter no longer runs ahead of the GPS. It trusted the GPS speed so much that the
+   car was shown about 3 m ahead of the GPS while driving, which made it cut corners and overshoot in
+   roundabouts and on the Ile-des-Soeurs ramps. Tested on recorded drives: 2.7-3.0 m ahead -> about 0.6 m. */
+if(typeof kfUpdVel==='function'){
+  kfUpdVel=(function(base){return function(a,z,r){return base(a,z,r===0.36?4:r);};})(kfUpdVel);
 }

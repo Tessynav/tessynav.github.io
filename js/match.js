@@ -1,4 +1,4 @@
-/* TessyNav match v2 (v2: roads pointing another way, like ramps beside the highway, count as farther away)
+/* TessyNav match v3 (v3: keeps following drawn roads through roundabouts and curved ramps; v2: v2: roads pointing another way, like ramps beside the highway, count as farther away)
    TessyNav match v1
    The car now follows the SAME roads that are drawn on screen (the OpenStreetMap roads from roads.js),
    instead of the map-tile roads, whose shape is different. That was why the car drove on the grass
@@ -39,7 +39,7 @@ function tnrDrawn(x,z,fx,fz){
         if(align<0){tx=-tx;tz=-tz;}
         n++;
         const c={d:d,de:Math.max(0,d-(hw-1)),qx:qx,qz:qz,tx:tx,tz:tz,lane:ow?0:hw/2,
-          cls:W.cls,oneway:ow,bridge:false,w:hw*2,src:'r3'};
+          cls:W.cls,oneway:ow,bridge:false,w:hw*2,lanes:W.lanes||0,src:'r3'};
         c.sc=c.de+tnrTurnCost(Math.abs(align));
         if(!best||c.sc<best.sc||(c.sc===best.sc&&d<best.d)) best=c;
         if(curRoad){
@@ -111,7 +111,20 @@ function tnrMatch(x,z,spd,now){
     return null;
   }
   if(lastHd===null){lastMatchInfo={why:'no-heading',src:''};return null;}
-  if(turning){curRoad=null;switchVotes=0;TNR.src='';lastMatchInfo={why:'turning',src:''};return null;}
+  if(turning){
+    /* v3: in roundabouts and curved ramps the drawn road follows the turn, so keep following it
+       when a drawn road close to the GPS points the way you are going (before: the car let go) */
+    const tfx=Math.sin(lastHd*R),tfz=-Math.cos(lastHd*R);
+    const r=tnrDrawn(x,z,tfx,tfz),b=r.best;
+    if(b&&b.d<=4.5&&b.sc<=1.5){
+      curRoad=b;switchVotes=0;lostCount=0;TNR.src='r3';TNR.lastFull=now;
+      try{curRoad.lane=laneOffset(curRoad,x,z);}catch(e){}
+      const s=onCurRoad(x,z);
+      lastMatchInfo={why:'turn-follow',src:'r3'};
+      return {x:s[0],z:s[1],tx:b.tx,tz:b.tz};
+    }
+    curRoad=null;switchVotes=0;TNR.src='';lastMatchInfo={why:'turning',src:''};return null;
+  }
 
   /* between full matches: slide along the current road, same lane */
   if(curRoad&&now-TNR.lastFull<TNR_EVERY&&tnrLat(curRoad,x,z)<=tnrHalf(curRoad)+0.5){
