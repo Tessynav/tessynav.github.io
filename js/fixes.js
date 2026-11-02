@@ -1330,3 +1330,22 @@ glideFrame=function(){
   map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
     padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
 };
+/* ===== v28: on a bridge road the car rides on the deck; bridges are built sooner ===== */
+if(typeof JOB_GAP!=='undefined') JOB_GAP.updateBridges=1500;
+let brHoldT=0;
+updateCar3D=(function(base){return function(cx,cz,hd,steer){
+  const onBridge=typeof snapBridge!=='undefined'&&snapBridge;
+  if(onBridge){
+    const now=performance.now();
+    if(now-brHoldT>150){
+      brHoldT=now;
+      const ys=bridgeSurfaces(cx,cz);
+      let top=null;
+      for(const y of ys) if(y>0.5&&(top===null||y>top)) top=y;
+      if(top!==null) brTarget=top;
+      else if(carY>0.5) brTarget=carY;
+    }
+  }
+  base(cx,cz,hd,steer);
+  if(onBridge&&brTarget>carY) carY+=(brTarget-carY)*0.12;
+};})(updateCar3D);
