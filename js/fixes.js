@@ -1254,3 +1254,79 @@ matchRoad=(function(base){return function(x,z,spd){
   }
   return m;
 };})(matchRoad);
+/* ===== v26: bridges re-read the map only when needed; let go of a road in gentle curves ===== */
+let brTilesChanged=true,brLastKey='';
+map.on('sourcedata',e=>{if(e.sourceId==='openmaptiles'&&e.tile) brTilesChanged=true;});
+if(typeof jobOrig!=='undefined'&&jobOrig.updateBridges){
+  jobOrig.updateBridges=(function(base){return function(force){
+    const c=map.getCenter(),key=Math.floor(c.lng/BRC)+','+Math.floor(c.lat/BRC)+'|'+(map.getZoom()>=15.5?1:0);
+    if(!brTilesChanged&&key===brLastKey) return;
+    brTilesChanged=false;brLastKey=key;
+    return base(force);
+  };})(jobOrig.updateBridges);
+}
+matchRoad=(function(base){return function(x,z,spd){
+  const m=base(x,z,spd);
+  if(m&&lastHd!==null){
+    const d=Math.hypot(m.x-x,m.z-z);
+    const rh=(Math.atan2(m.tx,-m.tz)/R+360)%360;
+    const diff=Math.abs(((rh-lastHd+540)%360)-180);
+    if((d>5&&diff>15)||d>8){
+      curRoad=null;switchVotes=0;
+      if(lastMatchInfo) lastMatchInfo.why='let-go';
+      return null;
+    }
+  }
+  return m;
+};})(matchRoad);
+/* ===== v27: natural turns (smooth, not block-like) and the car centered on the GPS position ===== */
+glideFrame=function(){
+  requestAnimationFrame(glideFrame);
+  const now=performance.now(),fdt=Math.min(0.1,lastFrameT?(now-lastFrameT)/1000:0.016);
+  lastFrameT=now;
+  if(watchId===null||!pts.length) return;
+  if(pts.length>3){
+    const iv=[];
+    for(let i=Math.max(1,pts.length-8);i<pts.length;i++) iv.push(pts[i].t-pts[i-1].t);
+    iv.sort((a,b)=>a-b);
+    const want=Math.max(250,Math.min(1050,iv[Math.floor(iv.length/2)]*2.2));
+    drawDelay+=(want-drawDelay)*Math.min(1,fdt*0.5);
+  }
+  const p=pathAt(now-drawDelay);
+  if(!p) return;
+  const k=Math.exp(-fdt/0.35);corr[0]*=k;corr[1]*=k;
+  const rx=p.x+corr[0],rz=p.z+corr[1];
+  const v=Math.hypot(p.dx,p.dz);
+  let hd=lastPathHd!==null?lastPathHd:(lastHd!==null?lastHd:gHd);
+  if(v>2){hd=(Math.atan2(p.dx,-p.dz)/R+360)%360;lastPathHd=hd;}
+  else if(curRoad&&snapOk){
+    const rh=(Math.atan2(curRoad.tx,-curRoad.tz)/R+360)%360;
+    if(Math.abs(((rh-gHd+540)%360)-180)<60) hd=rh;
+  }
+  const dh=((hd-gHd+540)%360)-180;
+  let step;
+  if(v>2){
+    step=dh*Math.min(1,fdt*7);
+    const cap=150*fdt;
+    step=Math.max(-cap,Math.min(cap,step));
+  }else{
+    const cap=35*fdt;
+    step=Math.max(-cap,Math.min(cap,dh*Math.min(1,fdt*4)));
+  }
+  gHd=(gHd+step+360)%360;
+  let wantSteer=0;
+  if(v>1){const curv=(step*R)/(v*fdt);wantSteer=Math.max(-0.5,Math.min(0.5,Math.atan(WHEELBASE*curv)));}
+  steerNow+=(wantSteer-steerNow)*Math.min(1,fdt*5);
+  const cx=rx,cz=rz;
+  gPos=fromLocal(cx,cz);
+  car.setLngLat(gPos).setRotation(gHd);
+  updateCar3D(cx,cz,gHd,steerNow);
+  map.triggerRepaint();
+  if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
+  const cs=camSpec();
+  gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
+  gPitch+=(cs.pitch-gPitch)*0.06;
+  const H=map.getContainer().clientHeight||800;
+  map.jumpTo({center:gPos,bearing:gHd,zoom:gZoom,pitch:gPitch,
+    padding:{top:Math.round(H*cs.pad),bottom:0,left:0,right:0}});
+};
