@@ -1,4 +1,4 @@
-/* TessyNav objects v6 (v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v7 (v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -87,7 +87,12 @@ function tnoBuildChains(cross,roadIdx){
   }
   const groups=new Map();
   for(const b of all){
-    const r=find(b);let g=groups.get(r);if(!g){g={L:0,overH:0,ends:[]};groups.set(r,g);}
+    const r=find(b);let g=groups.get(r);if(!g){g={L:0,overH:0,ends:[],W:0};groups.set(r,g);}
+    /* v7: the bridge is as wide as the road that leads onto it (same lanes), not a fixed width */
+    if(!rail(b)) for(const p of [b.pts[0],b.pts[b.pts.length-1]]){
+      const q=toLocal(p[0],p[1]),h=tnoRoadHit(q[0],q[1],2.5);
+      if(h&&h.w>g.W) g.W=Math.min(24,h.w);
+    }
     /* v6: where the bridge really starts or ends: an end with no other bridge piece, where a ground road continues */
     for(const p of [b.pts[0],b.pts[b.pts.length-1]]){
       let others=0;for(const k of nearKeys(p)){const l=ends.get(k);if(l) for(const o of l) if(o!==b&&rail(o)===rail(b)) others++;}
@@ -107,7 +112,7 @@ function tnoBuildChains(cross,roadIdx){
     else if(g.overH){H=g.overH;}
     else{H=1.2;low=true;}
     const long=H>=5&&g.L>120;
-    out.set(b,{H:H,low:low,rampMul:rampMul,long:long,ends:g.ends,ramp:Math.max(60,Math.min(350,H*20))});
+    out.set(b,{H:H,low:low,rampMul:rampMul,long:long,ends:g.ends,ramp:Math.max(60,Math.min(350,H*20)),W:g.W});
   }
   return out;
 }
@@ -346,10 +351,11 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
     const cum=[0];for(let i=1;i<n;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
     const L=cum[n-1];
     if(L<2) continue;
-    const W=BR_W[b.cls]||7,isRail=b.cls==='rail'||b.cls==='transit';
+    let W=BR_W[b.cls]||7;const isRail=b.cls==='rail'||b.cls==='transit';
     /* Height depends on what the bridge crosses */
     let H,low=false,rampMul=1;
     const tch=tnoChainH(b,cross,roadIdx);H=tch.H;low=tch.low;rampMul=tch.rampMul;
+    if(!isRail&&tch.W>=5) W=tch.W;
     const lineCol=(isRail||b.cls==='path'||b.cls==='track')?null:(b.oneway?BR_COL.white:BR_COL.yellow);
     const railCol=low?BR_COL.railLow:BR_COL.rail;
     const ends=[
