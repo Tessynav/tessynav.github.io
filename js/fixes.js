@@ -917,3 +917,16 @@ recTick=(function(base){return function(){
     row.push(snapBridge?1:0,typeof carY==='number'?Math.round(carY*10)/10:0);
   }
 };})(recTick);
+/* Map credits: fold into a small (i) button after a few seconds (tap it to see the full credits) */
+map.on('load',()=>{
+  try{
+    const old=(map._controls||[]).find(c=>c instanceof maplibregl.AttributionControl);
+    if(old) map.removeControl(old);
+    const ctl=new maplibregl.AttributionControl({compact:true,customAttribution:'Arbres : Ville de Montréal (CC BY 4.0)'});
+    map.addControl(ctl,'bottom-right');
+    setTimeout(()=>{
+      const el=document.querySelector('.maplibregl-ctrl-attrib');
+      if(el){el.classList.remove('maplibregl-compact-show');el.removeAttribute('open');}
+    },6000);
+  }catch(e){console.warn('credits',e);}
+});
