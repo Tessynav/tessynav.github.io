@@ -1,4 +1,4 @@
-/* TessyNav motion v7 (v7: stops at the line without backing up; v6: v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
+/* TessyNav motion v8 (v8: no shaking in city streets, stays in its lane on two-way streets; v7: v7: stops at the line without backing up; v6: v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -12,9 +12,12 @@ function tnmAddFix(f){
   /* v7: a long pause in GPS updates while stopped no longer makes the car jump */
   if(TNM.fix&&f.t-TNM.fix.t>5000&&!(TNM.p&&Math.hypot(f.x-TNM.p.x,f.z-TNM.p.z)<6)) tnmReset();
   /* v6: how fast the road direction is turning, from the last few positions */
-  if(f.h!=null){
-    if(TNM.ph!=null){const dt=(f.t-TNM.pt)/1000;if(dt>0.02&&dt<1){const d=((f.h-TNM.ph+540)%360)-180;TNM.om+=(d/dt-TNM.om)*0.35;}}
-    TNM.ph=f.h;TNM.pt=f.t;
+  /* v8: the turn rate comes from your smoothed driving direction (not from the short straight road pieces,
+     whose direction jumps at every corner of the drawn road and made the car shake), limited to 25 deg/s */
+  const hh=(f.h!=null&&typeof lastHd==='number')?lastHd:f.h;
+  if(hh!=null){
+    if(TNM.ph!=null){const dt=(f.t-TNM.pt)/1000;if(dt>0.02&&dt<1){const d=((hh-TNM.ph+540)%360)-180;const w=Math.max(-25,Math.min(25,d/dt));TNM.om+=(w-TNM.om)*0.2;}}
+    TNM.ph=hh;TNM.pt=f.t;
   }else{TNM.om*=0.5;TNM.ph=null;}
   TNM.fix=f;
   if(!TNM.p){TNM.p={x:f.x,z:f.z};TNM.v=f.v;TNM.h=f.h!=null?f.h:gHd;}
@@ -114,7 +117,13 @@ function laneOffset(road,x,z){
     if(info) ow=info.ow;
   }
   const nx=-road.tz,nz=road.tx;
-  const lo=ow?-(w/2-1.2):0.8,hi=Math.max(lo,w/2-1.2);
+  let lo=ow?-(w/2-1.2):0.8,hi=Math.max(lo,w/2-1.2);
+  /* v8: on two-way streets the car stays inside the right-hand lane instead of near the center line */
+  if(!ow){
+    const L=road.lanes||0,nh=L>=2?Math.floor(L/2):(w>=14?2:1),lw=(w/2)/nh;
+    if(nh===1){lo=hi=Math.max(0.8,w/4);}
+    else{lo=Math.max(0.8,lw/2);hi=Math.max(lo,w/2-lw/2);}
+  }
   const clamp=v=>Math.max(lo,Math.min(hi,v));
   const target=clamp((x-road.qx)*nx+(z-road.qz)*nz);
   const now=performance.now(),dt=(now-TNL.t)/1000;
