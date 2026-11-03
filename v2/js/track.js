@@ -280,7 +280,8 @@ TN.Track.prototype.frame=function(now,dt){
     }else this.lane.t=0;
     target=lanes[this.lane.idx];
   }else{
-    const lo=w.ow?-(W/2-1.2):0.8,hi=Math.max(lo,W/2-1.2);
+    /* two-way streets: stay in the right half, near the middle of it (not on the centre line) */
+    const lo=w.ow?-(W/2-1.2):Math.max(1.2,W/4-0.5),hi=Math.max(lo,W/2-1.0);
     target=Math.max(lo,Math.min(hi,car.gl));
   }
   car.lat+=(target-car.lat)*(1-Math.exp(-dt/(Math.abs(target-car.lat)>3?0.35:0.9)));
