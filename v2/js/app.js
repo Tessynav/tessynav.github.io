@@ -6,7 +6,7 @@ TN.VERSION='v2 step 1';
   const $=id=>document.getElementById(id);
   const start=(()=>{try{return JSON.parse(localStorage.getItem('lastPos'))||TN.ORIGIN;}catch(e){return TN.ORIGIN;}})();
   const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:start,zoom:17,pitch:60,maxPitch:85,
-    centerClampedToGround:false,maxTileCacheSize:60,fadeDuration:0,
+    fadeDuration:0,
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
@@ -115,7 +115,7 @@ TN.VERSION='v2 step 1';
     try{frameBody();}catch(e){if(loopErr++<5) console.warn('frame',e);}
   }
   function frameBody(){
-    const pnow=performance.now(),dt=Math.min(0.1,(pnow-last)/1000);worst=Math.max(worst,pnow-last);last=pnow;
+    const pnow=performance.now(),dt=Math.min(0.25,(pnow-last)/1000);worst=Math.max(worst,pnow-last);last=pnow;
     fpsN++;if(pnow-fpsT>=1000){rec.second(fpsN,worst);fpsN=0;worst=0;fpsT=pnow;}
     if(!ready) return;
     /* a few milliseconds per frame for the road network rebuild, so it never freezes the view */
