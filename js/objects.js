@@ -1,4 +1,4 @@
-/* TessyNav objects v12 (v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v13 (v13: small flat bridges become normal road, no more cross-shaped patches; v12: v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -368,7 +368,13 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
     const tch=tnoChainH(b,cross,roadIdx);H=tch.H;low=tch.low;rampMul=tch.rampMul;
     /* v10: small bridges that cross nothing (over a ditch, a path, inside the REM station area) used to be
        1.2 m high slabs sitting on the road like dark boxes. Track ones are left out, road ones lie flat like the road. */
-    if(low){if(b.cls==='rail'||b.cls==='transit'||b.cls==='path'||b.cls==='track') continue;H=0.06;}
+    if(low){
+      if(b.cls==='rail'||b.cls==='transit'||b.cls==='path'||b.cls==='track') continue;
+      /* v13: a small road bridge that crosses nothing is drawn as normal flat road (same color, lane lines),
+         not as a 3D piece, so it can't show as a lighter or darker patch / cross on the road */
+      if(b.own){tnoFlatRoad(b);continue;}
+      H=0.06;
+    }
     if(!isRail&&tch.W>=5) W=tch.W;
     if(b.w) W=b.w; /* v8: real width from the bridge's own lanes (our road tiles) */
     const lineCol=(isRail||b.cls==='path'||b.cls==='track')?null:(b.oneway?BR_COL.white:BR_COL.yellow);
@@ -709,3 +715,20 @@ setInterval(()=>{
     if(removed) updateTrees();
   }catch(e){}
 },4000);
+
+/* ===== v13: small flat bridges drawn as part of the normal roads ===== */
+const tnoFlatDone=new Set();
+function tnoFlatRoad(b){
+  if(typeof r3Tiles==='undefined') return;
+  const id=b.key||(b.pts[0][0].toFixed(6)+','+b.pts[0][1].toFixed(6)+'|'+b.pts.length);
+  const mid=b.pts[Math.floor(b.pts.length/2)],k=Math.floor(mid[0]/R3T)+','+Math.floor(mid[1]/R3T);
+  const t=r3Tiles.get(k);if(!t) return;
+  if(!t._flat) t._flat=new Set();
+  if(t._flat.has(id)) return;
+  t._flat.add(id);
+  const flat=[];for(const p of b.pts) flat.push(p[0],p[1]);
+  const n=-1-t.w.length*2-Math.floor(Math.random()*1e6)*10;
+  t.w.push([n,b.cls,b.oneway?1:0,b.w||7,'',n,n-1,b.lanes||0,flat,0]);
+  if(typeof r3LocalCache!=='undefined') r3LocalCache.delete(k);
+  if(typeof r3Schedule==='function') r3Schedule();
+}
