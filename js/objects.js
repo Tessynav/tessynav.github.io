@@ -1,4 +1,4 @@
-/* TessyNav objects v11 (v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v12 (v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -526,8 +526,8 @@ function tnoRebuildGlow(){
   treeScene.add(pools);treeScene.add(pts);tnoGlow=[pts,pools];tnoGlowNight();
 }
 function tnoGlowNight(){
-  /* v10: at night the 3D bridges got much darker than the flat roads around them; lift them to match */
-  if(typeof brMat!=='undefined'&&brMat&&brMat.emissive){const k=(typeof nightNow==='number'?nightNow:0)*0.28;brMat.emissive.setRGB(k,k,k*1.05);}
+  /* v10/v12: at night the 3D bridges got darker than the flat roads; lift them a little to match (v10 lifted too much) */
+  if(typeof brMat!=='undefined'&&brMat&&brMat.emissive){const k=(typeof nightNow==='number'?nightNow:0)*0.11;brMat.emissive.setRGB(k,k,k*1.05);}
   if(!tnoGlow) return;
   const nt=typeof nightNow==='number'?nightNow:0;
   tnoGlow[0].material.opacity=Math.min(1,nt*1.2);tnoGlow[0].visible=nt>0.1;
