@@ -1,4 +1,4 @@
-/* TessyNav objects v7 (v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v8 (v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -69,6 +69,17 @@ function tnoSlopeOnRoad(L0,L1,R0,R1,nx,nz,k){
    looked broken into sections with steps between them. Now connected pieces are joined into one bridge,
    and every piece gets the height of the whole bridge. */
 let tnoChains=null,tnoChainsT=0;
+/* v8: is this bridge end where the bridge really starts (ground level), or just where our loaded data stops? */
+function tnoIsRealEnd(b,p,roadIdx){
+  if(b.cls==='rail'||b.cls==='transit'){
+    /* tracks: trust ends well inside the loaded area */
+    const c=map.getCenter(),cx=Math.floor(c.lng/BRC),cy=Math.floor(c.lat/BRC);
+    return Math.abs(Math.floor(p[0]/BRC)-cx)<=2&&Math.abs(Math.floor(p[1]/BRC)-cy)<=2;
+  }
+  if(roadIdx&&lookupNear(roadIdx,p).length) return true;
+  const q=toLocal(p[0],p[1]);
+  return !!tnoRoadHit(q[0],q[1],1.5);
+}
 function tnoBuildChains(cross,roadIdx){
   const all=[];
   for(const cell of brCells.values()) for(const b of cell.values()) all.push(b);
@@ -96,7 +107,7 @@ function tnoBuildChains(cross,roadIdx){
     /* v6: where the bridge really starts or ends: an end with no other bridge piece, where a ground road continues */
     for(const p of [b.pts[0],b.pts[b.pts.length-1]]){
       let others=0;for(const k of nearKeys(p)){const l=ends.get(k);if(l) for(const o of l) if(o!==b&&rail(o)===rail(b)) others++;}
-      if(!others&&roadIdx&&lookupNear(roadIdx,p).length) g.ends.push(toLocal(p[0],p[1]));
+      if(!others&&tnoIsRealEnd(b,p,roadIdx)) g.ends.push(toLocal(p[0],p[1]));
     }
     const pts=b.pts.map(p=>toLocal(p[0],p[1]));
     const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
@@ -356,6 +367,7 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
     let H,low=false,rampMul=1;
     const tch=tnoChainH(b,cross,roadIdx);H=tch.H;low=tch.low;rampMul=tch.rampMul;
     if(!isRail&&tch.W>=5) W=tch.W;
+    if(b.w) W=b.w; /* v8: real width from the bridge's own lanes (our road tiles) */
     const lineCol=(isRail||b.cls==='path'||b.cls==='track')?null:(b.oneway?BR_COL.white:BR_COL.yellow);
     const railCol=low?BR_COL.railLow:BR_COL.rail;
     const ends=[
@@ -600,3 +612,43 @@ setInterval(()=>{
     if(tnoLandmark){const nt=typeof nightNow==='number'?nightNow:0;tnoLandmark[2].visible=nt>0.1;}
   }catch(e){}
 },2000);
+
+/* ===== v8: bridges from our own road tiles =====
+   Inside the covered area, the bridges are built from the full OpenStreetMap data in our road tiles
+   (real lanes and width, whole bridge pieces, REM / train bridges), the same data as the drawn roads,
+   so they line up exactly. Outside the covered area, or with older tiles, the map-tile bridges are used as before.
+   All the bridge design (barriers, piers, lights, REM lights, Champlain tower) is applied the same way. */
+let tnoBrSrc='';
+if(typeof collectBridges==='function'){
+  collectBridges=(function(base){return function(cx,cy){
+    const own=typeof TNT!=='undefined'&&TNT.idx&&TNT.idx.rail&&tntCovers(TNT.idx,cx,cy);
+    if(!own){
+      if(tnoBrSrc==='own'){brCells.clear();brChanged=true;}
+      tnoBrSrc='tiles';
+      return base(cx,cy);
+    }
+    if(tnoBrSrc!=='own'){brCells.clear();brChanged=true;tnoBrSrc='own';}
+    const pk=TNT.idx.pack;let missing=false;
+    for(let dx=-3;dx<=3;dx++)for(let dy=-3;dy<=3;dy++){
+      const k=Math.floor((cx+dx)/pk)+'_'+Math.floor((cy+dy)/pk);
+      if(!TNT.packs.has(k)){missing=true;const [px,py]=k.split('_').map(Number);tntPack(px,py).then(P=>{if(P) brChanged=true;});}
+    }
+    const seen=new Set();
+    for(let dx=-3;dx<=3;dx++)for(let dy=-3;dy<=3;dy++){
+      const tx=cx+dx,ty=cy+dy,P=TNT.packs.get(Math.floor(tx/pk)+'_'+Math.floor(ty/pk));
+      if(!P||!P.cb||!P.b) continue;
+      const ids=P.cb[tx+','+ty];if(!ids) continue;
+      for(const i of ids){
+        const r=P.b[i];if(!r||r[12]==='t'||seen.has(r[0])) continue;seen.add(r[0]);
+        const f=r[8],pts=[];for(let j=0;j<f.length;j+=2) pts.push([f[j],f[j+1]]);
+        if(pts.length<2) continue;
+        const mid=pts[Math.floor(pts.length/2)],gx=Math.floor(mid[0]/BRC),gy=Math.floor(mid[1]/BRC);
+        if(Math.abs(gx-cx)>3||Math.abs(gy-cy)>3) continue;
+        const ck=gx+','+gy;let cell=brCells.get(ck);if(!cell){cell=new Map();brCells.set(ck,cell);}
+        const key='o'+r[0];if(cell.has(key)) continue;
+        cell.set(key,{pts:pts,cls:r[1],layer:Math.max(1,Math.min(4,r[9]||1)),oneway:!!r[2],w:r[3],lanes:r[7],name:r[4],type:r[11]||'',own:1});
+        brChanged=true;
+      }
+    }
+  };})(collectBridges);
+}
