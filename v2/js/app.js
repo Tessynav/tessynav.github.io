@@ -148,7 +148,15 @@ TN.VERSION='v2 step 1';
         gZoom+=(zoom-gZoom)*Math.min(1,dt*2.5);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
         camY+=(y-camY)*Math.min(1,dt*4);
         const H=map.getContainer().clientHeight||800;
-        const view={center:ll,bearing:camHd,zoom:gZoom,pitch:gPitch,padding:{top:Math.round(H*0.48),bottom:0,left:0,right:0}};
+        /* the map can only aim at the ground. On a raised road the car is above the ground point, so it showed up
+           too high on the screen (looking like it flies, or even off the top of the screen on the Champlain bridge).
+           Aim at the ground point that lines up with the car instead: a little ahead, by height x tan(pitch). */
+        let aim=ll;
+        if(camY>0.3){
+          const d=camY*Math.tan(gPitch*TN.R),hr=camHd*TN.R;
+          aim=TN.fromLocal(car.x+Math.sin(hr)*d,car.z-Math.cos(hr)*d);
+        }
+        const view={center:aim,bearing:camHd,zoom:gZoom,pitch:gPitch,padding:{top:Math.round(H*0.48),bottom:0,left:0,right:0}};
         if(lift) view.elevation=camY;
         map.jumpTo(view);
       }
