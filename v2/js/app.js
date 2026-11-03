@@ -136,12 +136,14 @@ TN.VERSION='v2 step 1';
         const y=car.y||0;
         /* the camera rises with the car on bridges and ramps (it looks at the car at its real height), so the car
            keeps its normal size and the camera is always above the deck. Older map versions: pull back instead. */
-        const lift=typeof map.setCenterClampedToGround==='function';
+        const lift=false; /* MapLibre 5 (camera that rises) made Tessy's screen very slow: back to MapLibre 4 */
         if(!lift&&y>0.5){
-          pitch-=Math.min(4,y*0.25);
+          /* on raised roads the camera first tilts up a little (that raises it a lot), and only zooms out if still
+             needed, and never more than about half size */
+          pitch-=Math.min(12,y*1.2);
           const Hc=map.getContainer().clientHeight||600,mpp=40075016.7*Math.cos(ll[1]*TN.R)/(512*Math.pow(2,zoom));
-          const camH=1.5*Hc*mpp*Math.cos(pitch*TN.R),need=y+3.5;
-          if(camH<need) zoom-=Math.log2(need/camH);
+          const camH=1.5*Hc*mpp*Math.cos(pitch*TN.R),need=y+1.2;
+          if(camH<need) zoom-=Math.min(1.2,Math.log2(need/camH));
         }
         gZoom+=(zoom-gZoom)*Math.min(1,dt*2.5);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
         camY+=(y-camY)*Math.min(1,dt*4);
