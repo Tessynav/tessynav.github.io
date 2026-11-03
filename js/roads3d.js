@@ -1,4 +1,4 @@
-/* TessyNav roads3d v5 — (v5: lanes side by side rise together, no steps between them; v4: v4: the car no longer sinks at the start of a bridge; v3: v3: camera rises with the car on bridges; v2: v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
+/* TessyNav roads3d v6 — (v6: test mode survives automatic reloads; v5: v5: lanes side by side rise together, no steps between them; v4: v4: the car no longer sinks at the start of a bridge; v3: v3: camera rises with the car on bridges; v2: v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
    TessyNav roads3d v1 — step 1 of the 3D road rebuild (test mode: add &test3d=1 to the address)
 
    Roads are drawn as real 3D surfaces with their own height, the way codriver does it:
@@ -10,7 +10,15 @@
    - the old flat 2D roads are switched off in test mode; REM / train bridges still come from objects.js
    The car rides on these surfaces (its height comes from them). */
 
-const R3D_ON=/[?&]test3d=1\b/.test(location.search);
+/* v6: test mode is remembered on this car, so the app's automatic reloads (which change the address) keep it.
+   Turn it on with &test3d=1, turn it off with &test3d=0. */
+const R3D_ON=(function(){
+  try{
+    if(/[?&]test3d=1\b/.test(location.search)) localStorage.setItem('tn_test3d','1');
+    else if(/[?&]test3d=0\b/.test(location.search)) localStorage.removeItem('tn_test3d');
+    return localStorage.getItem('tn_test3d')==='1';
+  }catch(e){return /[?&]test3d=1\b/.test(location.search);}
+})();
 const R3D={cells:new Map(),wc:new Map(),ver:0,sig:'',H:null,building:false,lastTick:0,
   KEEP:3,BUILD:2,PER_TICK:1,
   COL:{road:'#c9cad1',curb:'#eeeef0',white:'#ffffff',yellow:'#e2b93b',side:'#b9b5ac',barrier:'#d4d1ca',pier:'#aaa69d'}};
