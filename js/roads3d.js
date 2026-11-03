@@ -1,4 +1,4 @@
-/* TessyNav roads3d v2 — (v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
+/* TessyNav roads3d v4 — (v4: the car no longer sinks at the start of a bridge; v3: v3: camera rises with the car on bridges; v2: v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
    TessyNav roads3d v1 — step 1 of the 3D road rebuild (test mode: add &test3d=1 to the address)
 
    Roads are drawn as real 3D surfaces with their own height, the way codriver does it:
@@ -171,13 +171,17 @@ function r3dHeightAt(x,z){
   const hd=typeof lastHd==='number'?lastHd:null,fx=hd!=null?Math.sin(hd*Math.PI/180):0,fz=hd!=null?-Math.cos(hd*Math.PI/180):0;
   const cy=typeof carY==='number'?carY:0;
   let best=null;
+  const up=cy>0.5;
   r3dNear(D,x,z,(w,i)=>{
-    const r=r3dSegHit(w,i,x,z);if(!r||r.d>r.W/2+1.2) return;
+    const r=r3dSegHit(w,i,x,z);if(!r||r.d>r.W/2+(up?2.5:1.2)) return;
     if(hd!=null&&Math.abs(r.tx*fx+r.tz*fz)<0.55) return;
     const sc=r.d+Math.abs(r.h-cy)*1.5;
     if(!best||sc<best.sc) best={sc:sc,h:r.h};
   });
-  return best?best.h:0;
+  /* v4: up on a bridge with no road found right under the car (the GPS and the bridge outline can differ by a
+     few meters), hold the current height instead of letting the car sink toward the ground */
+  if(!best) return up?cy:0;
+  return best.h;
 }
 
 /* ---------- geometry ---------- */
@@ -425,6 +429,25 @@ if(R3D_ON){
     };})(buildBridgeMesh);
   }
   if(typeof bridgeSurfaces==='function') bridgeSurfaces=r3dSurfaces;
+  /* v3: on bridges the camera rises with the car (the map's center point is lifted to the car's height),
+     so the car stays the same size on screen instead of the view zooming out */
+  try{
+    const d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(map.transform),'elevation');
+    let works=false;
+    if(d&&d.set){try{const was=map.transform.elevation;map.transform.elevation=1.5;works=Math.abs(map.transform.elevation-1.5)<0.01;map.transform.elevation=was||0;}catch(e){}}
+    if(works){
+      R3D.camOK=true;R3D.camElev=0;
+      map.jumpTo=(function(base){return function(o){
+        const r=base.call(this,o);
+        try{
+          const t=typeof carY==='number'?carY:0;
+          R3D.camElev+=(t-R3D.camElev)*0.15;if(Math.abs(t-R3D.camElev)<0.02) R3D.camElev=t;
+          if(Math.abs(map.transform.elevation-R3D.camElev)>0.005) map.transform.elevation=R3D.camElev;
+        }catch(e){}
+        return r;
+      };})(map.jumpTo);
+    }
+  }catch(e){}
   setInterval(()=>{try{r3dHideFlat();r3dTick();}catch(e){console.warn('roads3d',e);}},700);
 }
 
