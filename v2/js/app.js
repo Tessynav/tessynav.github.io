@@ -84,19 +84,68 @@ TN.VERSION='v2 step 1';
   if(saved&&saved.g&&saved.g.length>50) setTimeout(()=>panel('A recording was saved before the app closed ('+Math.round((saved.dur||0)/60000)+' min).',
     [['Upload it',()=>{try{localStorage.removeItem('tn2_rec');}catch(e){}uploadTrip(saved);}],['Delete',()=>{try{localStorage.removeItem('tn2_rec');}catch(e){}hide();}]]),1500);
 
-  /* ---------- version ---------- */
+  /* ---------- version and updates ----------
+     The check asks GitHub itself (not the website copy, which can be up to 10 minutes behind), so it sees an
+     upload within about a minute. "Update now" reloads; if the website copy is still behind, it waits and retries
+     on its own until the new files are there. */
+  const mine=[...document.querySelectorAll('script[src]')].map(s=>s.getAttribute('src')).filter(s=>/^js\//.test(s));
+  const label=s=>{const m=s.match(/js\/([\w-]+)\.js\?v=(\d+)/);return m?m[1]+' v'+m[2]:s;};
+  async function latest(){
+    const parse=html=>[...html.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
+    const api='https://api.github.com/repos/Tessynav/tessynav.github.io/contents/v2/index.html?t='+Date.now();
+    const token=TN.up.get('token');
+    /* 1. GitHub itself (with the saved token if it works, otherwise without) */
+    for(const useTok of token?[true,false]:[false]){
+      try{
+        const h={'Accept':'application/vnd.github+json'};if(useTok) h['Authorization']='Bearer '+token;
+        const r=await fetch(api,{headers:h,cache:'no-store'});
+        if(r.ok){const j=await r.json();const l=parse(atob(j.content.replace(/\n/g,'')));if(l.length) return l;}
+      }catch(e){}
+    }
+    /* 2. GitHub's raw copy (a few minutes behind at most), 3. the website copy */
+    for(const u of ['https://raw.githubusercontent.com/Tessynav/tessynav.github.io/main/v2/index.html?t='+Date.now(),location.pathname+'?check='+Date.now()]){
+      try{const r=await fetch(u,{cache:'no-store'});if(r.ok){const l=parse(await r.text());if(l.length) return l;}}catch(e){}
+    }
+    throw new Error('no connection');
+  }
+  function update(target){
+    if(rec.rec){panel('Stop the recording first, then update.',[['Close',hide]]);return;}
+    try{sessionStorage.setItem('tn2_target',JSON.stringify(target));sessionStorage.setItem('tn2_tries','0');sessionStorage.setItem('tn2_prev',JSON.stringify(mine));}catch(e){}
+    location.replace(location.pathname+'?r='+Date.now());
+  }
   $('ver').onclick=async()=>{
-    const mine=[...document.querySelectorAll('script[src]')].map(s=>s.getAttribute('src')).filter(s=>/^js\//.test(s));
-    const label=s=>{const m=s.match(/js\/([\w-]+)\.js\?v=(\d+)/);return m?m[1]+' v'+m[2]:s;};
-    panel('Checking…',[]);
+    panel('Checking GitHub…',[]);
     try{
-      const html=await (await fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'})).text();
-      const now=[...html.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
-      const newer=now.join('|')!==mine.join('|');
-      panel('TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+(newer?'<br><br><b>An update is available.</b>':'<br><br>You have the latest version.'),
-        newer?[['Update now',()=>{if(rec.rec){panel('Stop the recording first.',[['Close',hide]]);return;}location.replace(location.pathname+'?r='+Date.now());}],['Later',hide]]:[['Close',hide]]);
-    }catch(e){panel('Could not check.',[['Close',hide]]);}
+      const now=await latest();
+      if(now.join('|')!==mine.join('|')){
+        const changed=now.filter(x=>mine.indexOf(x)<0).map(label).join(', ');
+        panel('Update available: <b>'+changed+'</b><br><br>Running now: '+mine.map(label).join(', '),[['Update now',()=>update(now)],['Later',hide]]);
+      }else panel('TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><br>You have the latest version.',[['Close',hide]]);
+    }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
+  /* after "Update now": did the new files arrive? */
+  (function(){
+    let target=null,tries=0,prev=null;
+    try{target=JSON.parse(sessionStorage.getItem('tn2_target')||'null');tries=+sessionStorage.getItem('tn2_tries')||0;prev=JSON.parse(sessionStorage.getItem('tn2_prev')||'null');}catch(e){}
+    if(!target) return;
+    if(target.join('|')===mine.join('|')){
+      try{sessionStorage.removeItem('tn2_target');}catch(e){}
+      const changed=mine.filter(x=>!prev||prev.indexOf(x)<0).map(label).join(', ');
+      setTimeout(()=>panel('Updated: <b>'+(changed||mine.map(label).join(', '))+'</b>',[['Close',hide]]),800);
+      return;
+    }
+    if(tries>=8){try{sessionStorage.removeItem('tn2_target');}catch(e){}
+      setTimeout(()=>panel('GitHub is taking longer than usual to publish. Try Version again in a few minutes.',[['Close',hide]]),800);return;}
+    try{sessionStorage.setItem('tn2_tries',String(tries+1));}catch(e){}
+    let left=20;
+    const tick=()=>{panel('Finishing the update… GitHub is still publishing the new files.<br><small>Trying again in '+left+' s (try '+(tries+1)+' of 8)</small>',[['Cancel',()=>{try{sessionStorage.removeItem('tn2_target');}catch(e){}hide();clearInterval(iv2);}]]);
+      if(left--<=0){clearInterval(iv2);location.replace(location.pathname+'?r='+Date.now());}};
+    const iv2=setInterval(tick,1000);setTimeout(tick,500);
+  })();
+  /* every 2 minutes, a quiet check: the Version button turns into "Update ready" (it never reloads by itself) */
+  setInterval(async()=>{
+    try{const now=await latest();const newer=now.join('|')!==mine.join('|');$('ver').textContent=newer?'↻ Update ready':'Version';$('ver').style.color=newer?'#7fe3d4':'';}catch(e){}
+  },120000);
 
   /* ---------- night ---------- */
   function night(){
