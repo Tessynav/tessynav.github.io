@@ -325,56 +325,62 @@ TN.Net.prototype.buildCell=function(tx,ty){
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
   const H=j=>w.br?w.H:(w.hs?w.hs[j]:0);
+  /* where this road piece joins the next one and their widths differ (lanes added/dropped), both pieces meet
+     at the same width and taper over up to 60 m, so the edges and lane lines flow without a step */
+  const WJ=this.widthsAlong(w);
+  const hwJ=j=>WJ[j]/2;
   const strip=(G,a,b,o1,o2,dy,col)=>{for(let i=a;i<b;i++){
     const p=(j,o)=>[P[j][0]+N[j][0]*o,H(j)+dy,P[j][1]+N[j][1]*o];
-    TN.quad(G,p(i,o1),p(i+1,o1),p(i+1,o2),p(i,o2),col);}};
+    TN.quad(G,p(i,o1(i)),p(i+1,o1(i+1)),p(i+1,o2(i+1)),p(i,o2(i)),col);}};
   const wall=(G,a,b,o,top,bot,col)=>{for(let i=a;i<b;i++){
     const t0=H(i)+top,t1=H(i+1)+top,b0=bot(i),b1=bot(i+1);if(t0-b0<0.05&&t1-b1<0.05) continue;
-    const p=(j,h)=>[P[j][0]+N[j][0]*o,h,P[j][1]+N[j][1]*o];
+    const p=(j,h)=>[P[j][0]+N[j][0]*o(j),h,P[j][1]+N[j][1]*o(j)];
     TN.quad(G,p(i,b0),p(i+1,b1),p(i+1,t1),p(i,t0),col);}};
-  const line=(G,a,b,o,dash,gap,col,half,edgeOut)=>{
+  const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
     for(let i=a;i<b;i++){
       const s0=w.cum[i],s1=w.cum[i+1],len=s1-s0;if(len<0.05) continue;
       const nx=N[i][0],nz=N[i][1],nl=Math.hypot(nx,nz)||1,ux=nx/nl,uz=nz/nl;
+      const oa=of(i),ob=of(i+1),oo=u=>oa+(ob-oa)*u;
       let s=Math.floor(s0/(dash+gap))*(dash+gap);
       for(;s<s1;s+=dash+gap){
         const d0=Math.max(s,s0),d1=Math.min(s+dash,s1);if(d1-d0<0.1) continue;
         const u0=(d0-s0)/len,u1=(d1-s0)/len;
         const pt=u=>[P[i][0]+(P[i+1][0]-P[i][0])*u,P[i][1]+(P[i+1][1]-P[i][1])*u];
         const hh=u=>H(i)+(H(i+1)-H(i))*u+0.06;
-        const A=pt(u0),B=pt(u1),um=(u0+u1)/2,mx=(A[0]+B[0])/2+ux*o,mz=(A[1]+B[1])/2+uz*o;
+        const A=pt(u0),B=pt(u1),um=(u0+u1)/2,o=oo(um),mx=(A[0]+B[0])/2+ux*o,mz=(A[1]+B[1])/2+uz*o;
         if(net.onOther(w,mx,mz,hh(um)-0.06)) continue;
         if(edgeOut&&net.onOther(w,mx+ux*edgeOut,mz+uz*edgeOut,hh(um)-0.06)) continue;
-        TN.quad(G,[A[0]+ux*(o+half),hh(u0),A[1]+uz*(o+half)],[B[0]+ux*(o+half),hh(u1),B[1]+uz*(o+half)],
-                  [B[0]+ux*(o-half),hh(u1),B[1]+uz*(o-half)],[A[0]+ux*(o-half),hh(u0),A[1]+uz*(o-half)],col);
+        const o0=oo(u0),o1=oo(u1);
+        TN.quad(G,[A[0]+ux*(o0+half),hh(u0),A[1]+uz*(o0+half)],[B[0]+ux*(o1+half),hh(u1),B[1]+uz*(o1+half)],
+                  [B[0]+ux*(o1-half),hh(u1),B[1]+uz*(o1-half)],[A[0]+ux*(o0-half),hh(u0),A[1]+uz*(o0-half)],col);
       }
     }
   };
   const major=['motorway','trunk','primary','secondary'].indexOf(w.cls)>=0;
   for(const [a,b] of runs){
-    if(!w.br) strip(L.curb,a,b,hw+0.3,-hw-0.3,0.02,TN.C.curb);
-    strip(L.road,a,b,hw,-hw,0.04,TN.C.road);
+    if(!w.br) strip(L.curb,a,b,j=>hwJ(j)+0.3,j=>-hwJ(j)-0.3,0.02,TN.C.curb);
+    strip(L.road,a,b,j=>hwJ(j),j=>-hwJ(j),0.04,TN.C.road);
     if(w.ow){
       const n=w.lanes||Math.max(1,Math.round(W/3.4));
       /* drawing direction = driving direction for ow=1; ow=-1 roads are drawn the other way */
-      for(let k=1;k<n;k++) line(L.mark,a,b,-hw+k*W/n,3,6,TN.C.white,0.07);
+      for(let k=1;k<n;k++) line(L.mark,a,b,j=>-hwJ(j)+k*WJ[j]/n,3,6,TN.C.white,0.07);
       if(major){
         const lft=w.ow===-1?-1:1;
-        line(L.mark,a,b,-lft*(hw-0.35),1e6,0.001,TN.C.white,0.08,-lft*1.5);
-        line(L.mark,a,b,lft*(hw-0.35),1e6,0.001,TN.C.yellow,0.08,lft*1.5);
+        line(L.mark,a,b,j=>-lft*(hwJ(j)-0.35),1e6,0.001,TN.C.white,0.08,-lft*1.5);
+        line(L.mark,a,b,j=>lft*(hwJ(j)-0.35),1e6,0.001,TN.C.yellow,0.08,lft*1.5);
       }
     }else if(w.cls!=='service'){
-      line(L.mark,a,b,0,1e6,0.001,TN.C.yellow,0.08);
+      line(L.mark,a,b,()=>0,1e6,0.001,TN.C.yellow,0.08);
       const nh=w.lanes>=4?Math.floor(w.lanes/2):0;
-      for(let k=1;k<nh;k++){const lw=hw/nh;line(L.mark,a,b,k*lw,3,6,TN.C.white,0.07);line(L.mark,a,b,-k*lw,3,6,TN.C.white,0.07);}
+      for(let k=1;k<nh;k++){line(L.mark,a,b,j=>k*hwJ(j)/nh,3,6,TN.C.white,0.07);line(L.mark,a,b,j=>-k*hwJ(j)/nh,3,6,TN.C.white,0.07);}
     }
     const raised=w.br?w.H>0:(w.hs&&w.hs.some((h,j)=>j>=a&&j<=b&&h>0.3));
     if(raised){
       /* low ramps: solid embankment wall to the ground; higher up: a 1.2 m deck with open space below (so roads
          passing underneath stay visible) */
       const bot=j=>w.br?Math.max(0,H(j)-1.2):Math.min(Math.max(0,H(j)-1.2),Math.max(0,(H(j)-3)*2));
-      wall(L.road,a,b,hw,0.04,bot,TN.C.side);wall(L.road,a,b,-hw,0.04,bot,TN.C.side);
-      wall(L.road,a,b,hw,1.0,j=>H(j)+0.04,TN.C.barrier);wall(L.road,a,b,-hw,1.0,j=>H(j)+0.04,TN.C.barrier);
+      wall(L.road,a,b,j=>hwJ(j),0.04,bot,TN.C.side);wall(L.road,a,b,j=>-hwJ(j),0.04,bot,TN.C.side);
+      wall(L.road,a,b,j=>hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);wall(L.road,a,b,j=>-hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);
     }
     if(!w.br&&w.hs) this.rampPiers(L,w,a,b);
     if(w.br&&w.H>=3){
@@ -392,6 +398,33 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       }
     }
   }
+};
+/* width at every point of a road piece: equal to its neighbour's at a join, tapering over up to 60 m */
+TN.Net.prototype.widthsAlong=function(w){
+  const W=TN.width(w),P=w.pts,n=P.length,out=new Array(n).fill(W);
+  const tan=(v,i,dir)=>{const a=v.pts[i],b=v.pts[Math.max(0,Math.min(v.pts.length-1,i+dir))];const l=Math.hypot(b[0]-a[0],b[1]-a[1])||1;return [(b[0]-a[0])/l,(b[1]-a[1])/l];};
+  const joinW=(j,dir)=>{
+    /* dir: +1 = the piece leaves this point forward (start), -1 = it arrives (end) */
+    const l=this.keys.get(w.keys[j]);if(!l||l.length<2) return W;
+    const t=tan(w,j,dir);let best=null,bd=0.85;
+    for(const [v,vi] of l){
+      if(v===w||v.tun) continue;
+      /* the continuation: a piece that ends where this one starts (or the other way), pointing the same way */
+      const vd=vi===0?1:(vi===v.pts.length-1?-1:0);if(!vd) continue;
+      const tv=tan(v,vi,vd),dot=-(t[0]*tv[0]+t[1]*tv[1]);
+      if(dot>bd){bd=dot;best=v;}
+    }
+    return best?(W+TN.width(best))/2:W;
+  };
+  const w0=joinW(0,1),w1=joinW(n-1,-1),T=Math.min(60,w.L/2);
+  for(let j=0;j<n;j++){
+    const s=w.cum[j],e=w.L-s;
+    let v=W;
+    if(s<T) v+=(w0-W)*(1-s/T);
+    if(e<T) v+=(w1-W)*(1-e/T);
+    out[j]=v;
+  }
+  return out;
 };
 /* piers under the high part of ramps */
 TN.Net.prototype.rampPiers=function(L,w,a,b){
