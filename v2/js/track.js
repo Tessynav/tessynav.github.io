@@ -266,24 +266,9 @@ TN.Track.prototype.frame=function(now,dt){
   /* lane: smoothed GPS across the road, centred in its lane, with hysteresis */
   const W=TN.width(w),gl=TN.latOf(h,L.x,L.z);
   car.gl=car.gl==null?gl:car.gl+(gl-car.gl)*(1-Math.exp(-dt/1.5));
-  const lanes=this.lanesOf(w);
-  let target;
-  if(lanes){
-    const nearest=v=>{let b=0;for(let k=1;k<lanes.length;k++) if(Math.abs(v-lanes[k])<Math.abs(v-lanes[b])) b=k;return b;};
-    const want=nearest(car.gl);
-    if(this.lane.idx==null||this.lane.idx>=lanes.length) this.lane.idx=nearest(car.lat);
-    if(want!==this.lane.idx){
-      const lw=lanes.length>1?Math.abs(lanes[1]-lanes[0]):3.4;
-      /* change lane only when clearly inside the other lane, for over a second */
-      if(Math.abs(car.gl-lanes[want])<lw*0.35){if(!this.lane.t) this.lane.t=now;if(now-this.lane.t>1200){this.lane.idx=want;this.lane.t=0;}}
-      else this.lane.t=0;
-    }else this.lane.t=0;
-    target=lanes[this.lane.idx];
-  }else{
-    /* two-way streets: stay in the right half, near the middle of it (not on the centre line) */
-    const lo=w.ow?-(W/2-1.2):Math.max(1.2,W/4-0.5),hi=Math.max(lo,W/2-1.0);
-    target=Math.max(lo,Math.min(hi,car.gl));
-  }
+  /* like Codriver: no lane guessing (the GPS can't tell lanes apart). One-way roads and highways: the car rides in
+     the middle of its carriageway. Two-way streets: in the middle of the right half. Steady, no lane jumps. */
+  const target=w.ow?0:Math.max(1.2,W/4);
   car.lat+=(target-car.lat)*(1-Math.exp(-dt/(Math.abs(target-car.lat)>3?0.35:0.9)));
   const p=this.pointOn(w,car.s,car.lat,dir);
   car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*8)+360)%360;
