@@ -1,4 +1,5 @@
-/* TessyNav roads3d v1 — step 1 of the 3D road rebuild (test mode: add &test3d=1 to the address)
+/* TessyNav roads3d v2 — (v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
+   TessyNav roads3d v1 — step 1 of the 3D road rebuild (test mode: add &test3d=1 to the address)
 
    Roads are drawn as real 3D surfaces with their own height, the way codriver does it:
    - built once per road area (0.005 deg) from our own road tiles, and kept; areas far behind are deleted
@@ -10,7 +11,7 @@
    The car rides on these surfaces (its height comes from them). */
 
 const R3D_ON=/[?&]test3d=1\b/.test(location.search);
-const R3D={cells:new Map(),ver:0,sig:'',H:null,building:false,lastTick:0,
+const R3D={cells:new Map(),wc:new Map(),ver:0,sig:'',H:null,building:false,lastTick:0,
   KEEP:3,BUILD:2,PER_TICK:1,
   COL:{road:'#c9cad1',curb:'#eeeef0',white:'#ffffff',yellow:'#e2b93b',side:'#b9b5ac',barrier:'#d4d1ca',pier:'#aaa69d'}};
 
@@ -26,9 +27,16 @@ function r3dCollect(){
   const ways=new Map(),brs=new Map();
   for(const t of r3Tiles.values()) for(const w of t.w){
     if(ways.has(w[0])) continue;
-    const pts=[];for(let i=0;i<w[8].length;i+=2) pts.push(toLocal(w[8][i],w[8][i+1]));
+    /* v2: converted shapes are cached per road (only new roads are converted) */
+    let cc=R3D.wc.get(w[0]);
+    if(!cc){
+      const pts=[];for(let i=0;i<w[8].length;i+=2) pts.push(toLocal(w[8][i],w[8][i+1]));
+      const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+      cc={pts:pts,cum:cum};R3D.wc.set(w[0],cc);
+    }
+    cc.seen=R3D.ver;
+    const pts=cc.pts,cum=cc.cum;
     if(pts.length<2) continue;
-    const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
     ways.set(w[0],{id:w[0],cls:w[1],ow:w[2],w:w[3],lanes:w[7]||0,n0:w[5],n1:w[6],pts:pts,cum:cum,L:cum[cum.length-1],br:false});
   }
   if(typeof TNT!=='undefined') for(const P of TNT.packs.values()){
@@ -109,11 +117,74 @@ function r3dHeights(D){
     if(w.hs.every(h=>h<0.05)) w.hs=null;
   }
   for(const b of D.brs.values()) b.hs=b.cum.map(()=>b.H);
+  /* v2: coarse index of all roads (100 m cells, by each road's box) for markings and car height */
+  const IDX=new Map(),CS=100;
+  for(const w of [...D.ways.values(),...D.brs.values()]){
+    const W=w.br?(w.W||w.w):w.w,pad=W/2+2;let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+    for(const p of w.pts){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+    w.bb=[x0-pad,x1+pad,z0-pad,z1+pad];
+    for(let gx=Math.floor(w.bb[0]/CS);gx<=Math.floor(w.bb[1]/CS);gx++)
+      for(let gz=Math.floor(w.bb[2]/CS);gz<=Math.floor(w.bb[3]/CS);gz++){
+        const k=gx*1e6+gz;let l=IDX.get(k);if(!l){l=[];IDX.set(k,l);}l.push(w);
+      }
+  }
+  D.idx=IDX;
   return D;
+}
+/* road pieces near a point: calls fn(way, segment index) */
+function r3dNear(D,x,z,fn){
+  const l=D.idx&&D.idx.get(Math.floor(x/100)*1e6+Math.floor(z/100));if(!l) return;
+  for(const w of l){
+    const b=w.bb;if(x<b[0]||x>b[1]||z<b[2]||z>b[3]) continue;
+    const P=w.pts,pad=(w.br?(w.W||w.w):w.w)/2+2;
+    for(let i=0;i<P.length-1;i++){
+      const a=P[i],c=P[i+1];
+      if(x<Math.min(a[0],c[0])-pad||x>Math.max(a[0],c[0])+pad||z<Math.min(a[1],c[1])-pad||z>Math.max(a[1],c[1])+pad) continue;
+      if(fn(w,i)===true) return;
+    }
+  }
+}
+/* the height of road piece i of way w at fraction u, and the closest point */
+function r3dSegHit(w,i,x,z){
+  const a=w.pts[i],b=w.pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz;if(l2<0.01) return null;
+  const u=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/l2));
+  const fx=a[0]+dx*u,fz=a[1]+dz*u,d=Math.hypot(fx-x,fz-z);
+  const h=w.hs&&w.H!==0?w.hs[i]+(w.hs[i+1]-w.hs[i])*u:(w.br&&w.H>0?w.H:0);
+  const l=Math.sqrt(l2);
+  return {d:d,h:h,tx:dx/l,tz:dz/l,W:w.br?(w.W||w.w):w.w};
+}
+/* is this point on another road at about the same height? (then markings are not drawn there) */
+function r3dOnOtherRoad(way,x,z,h){
+  const D=R3D.H;if(!D||!D.idx) return false;
+  let hit=false;
+  r3dNear(D,x,z,(w,i)=>{
+    if(w===way) return;
+    const r=r3dSegHit(w,i,x,z);
+    if(r&&r.d<r.W/2-0.2&&Math.abs(r.h-h)<1){hit=true;return true;}
+  });
+  return hit;
+}
+/* v2: the car's height = the height of the road it is driving on (aligned with its direction, closest,
+   preferring the level it is already at), instead of whatever surface is under it */
+function r3dHeightAt(x,z){
+  const D=R3D.H;if(!D||!D.idx) return null;
+  const hd=typeof lastHd==='number'?lastHd:null,fx=hd!=null?Math.sin(hd*Math.PI/180):0,fz=hd!=null?-Math.cos(hd*Math.PI/180):0;
+  const cy=typeof carY==='number'?carY:0;
+  let best=null;
+  r3dNear(D,x,z,(w,i)=>{
+    const r=r3dSegHit(w,i,x,z);if(!r||r.d>r.W/2+1.2) return;
+    if(hd!=null&&Math.abs(r.tx*fx+r.tz*fz)<0.55) return;
+    const sc=r.d+Math.abs(r.h-cy)*1.5;
+    if(!best||sc<best.sc) best={sc:sc,h:r.h};
+  });
+  return best?best.h:0;
 }
 
 /* ---------- geometry ---------- */
 function r3dGeo(){return {p:[],c:[],i:[],n:0};}
+/* v2: one cell = three layers drawn with depth offsets (curb under road under markings), so overlapping
+   roads and markings no longer flicker */
+function r3dLayers(){return {curb:r3dGeo(),road:r3dGeo(),mark:r3dGeo()};}
 function r3dQuad(G,a,b,c,d,col){
   for(const v of [a,b,c,d]){G.p.push(v[0],v[1],v[2]);G.c.push(col[0],col[1],col[2]);}
   G.i.push(G.n,G.n+1,G.n+2,G.n,G.n+2,G.n+3);G.n+=4;
@@ -161,6 +232,8 @@ function r3dDashes(G,way,N,a,b,o,dash,gap,dy,col,half){
       const nx=N[i][0],nz=N[i][1],nl=Math.hypot(nx,nz)||1,ux=nx/nl,uz=nz/nl;
       const hh=u=>(hs?hs[i]+(hs[i+1]-hs[i])*u:0)+dy;
       const A=pt(u0),B=pt(u1);
+      const mx=(A[0]+B[0])/2+ux*o,mz=(A[1]+B[1])/2+uz*o;
+      if(r3dOnOtherRoad(way,mx,mz,hh((u0+u1)/2))) continue;
       r3dQuad(G,[A[0]+ux*(o+half),hh(u0),A[1]+uz*(o+half)],[B[0]+ux*(o+half),hh(u1),B[1]+uz*(o+half)],
               [B[0]+ux*(o-half),hh(u1),B[1]+uz*(o-half)],[A[0]+ux*(o-half),hh(u0),A[1]+uz*(o-half)],col);
     }
@@ -180,23 +253,25 @@ function r3dRuns(way,tx,ty){
   return runs;
 }
 
-function r3dDrawWay(G,way,tx,ty){
+function r3dDrawWay(LG,way,tx,ty){
+  const G=LG.road;
   const runs=r3dRuns(way,tx,ty);if(!runs.length) return;
   const N=r3dNormals(way.pts),W=way.br?way.W:way.w,hw=W/2,hs=way.hs;
   const major=['motorway','trunk','primary','secondary'].indexOf(way.cls)>=0;
   for(const [a,b] of runs){
     /* surface: curb edge (ground roads), asphalt */
-    if(!way.br) r3dStrip(G,way.pts,N,hs,a,b,hw+0.3,-hw-0.3,0.02,R3DC.curb);
+    if(!way.br) r3dStrip(LG.curb,way.pts,N,hs,a,b,hw+0.3,-hw-0.3,0.02,R3DC.curb);
     r3dStrip(G,way.pts,N,hs,a,b,hw,-hw,0.04,R3DC.road);
+    const M=LG.mark;
     /* markings */
     if(way.ow){
       const L=way.lanes||Math.max(1,Math.round(W/3.4));
-      for(let k=1;k<L;k++) r3dDashes(G,way,N,a,b,-hw+k*W/L,3,6,0.06,R3DC.white,0.07);
-      if(major){r3dDashes(G,way,N,a,b,hw-0.35,1e6,0.001,0.06,R3DC.white,0.08);r3dDashes(G,way,N,a,b,-hw+0.35,1e6,0.001,0.06,R3DC.yellow,0.08);}
+      for(let k=1;k<L;k++) r3dDashes(M,way,N,a,b,-hw+k*W/L,3,6,0.06,R3DC.white,0.07);
+      if(major){r3dDashes(M,way,N,a,b,hw-0.35,1e6,0.001,0.06,R3DC.white,0.08);r3dDashes(M,way,N,a,b,-hw+0.35,1e6,0.001,0.06,R3DC.yellow,0.08);}
     }else if(way.cls!=='service'){
-      r3dDashes(G,way,N,a,b,0,1e6,0.001,0.06,R3DC.yellow,0.08);
+      r3dDashes(M,way,N,a,b,0,1e6,0.001,0.06,R3DC.yellow,0.08);
       const nh=way.lanes>=4?Math.floor(way.lanes/2):0;
-      for(let k=1;k<nh;k++){const lw=hw/nh;r3dDashes(G,way,N,a,b,k*lw,3,6,0.06,R3DC.white,0.07);r3dDashes(G,way,N,a,b,-k*lw,3,6,0.06,R3DC.white,0.07);}
+      for(let k=1;k<nh;k++){const lw=hw/nh;r3dDashes(M,way,N,a,b,k*lw,3,6,0.06,R3DC.white,0.07);r3dDashes(M,way,N,a,b,-k*lw,3,6,0.06,R3DC.white,0.07);}
     }
     /* raised road: retaining walls on approaches; deck sides, barriers and piers on bridges */
     const raised=hs&&hs.some((h,j)=>j>=a&&j<=b&&h>0.3);
@@ -237,25 +312,35 @@ function r3dBox(G,x,z,ux,uz,a,c,y0,y1,col){
   r3dQuad(G,P(1,-1,y0),P(-1,-1,y0),P(-1,-1,y1),P(1,-1,y1),dark);
 }
 
-let r3dMat=null;
+let r3dMat=null;const r3dMats={};
+function r3dMaterial(k){
+  if(r3dMats[k]) return r3dMats[k];
+  const off={curb:1,road:2,mark:4}[k];
+  const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
+  r3dMats[k]=m;if(k==='road') r3dMat=m;return m;
+}
 function r3dBuildCell(key,D){
   const [tx,ty]=key.split(',').map(Number);
-  const G=r3dGeo();
-  for(const w of D.ways.values()) r3dDrawWay(G,w,tx,ty);
-  for(const b of D.brs.values()) if(b.H>0) r3dDrawWay(G,b,tx,ty);
-  for(const b of D.brs.values()) if(b.H===0){b.hs=null;r3dDrawWay(G,b,tx,ty);}
-  if(!G.n) return null;
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
-  g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
-  g.setIndex(G.i);
-  if(!r3dMat) r3dMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide});
-  const m=new THREE.Mesh(g,r3dMat);m.frustumCulled=false;m.userData.r3d=1;
-  return m;
+  const LG=r3dLayers();
+  for(const w of D.ways.values()) r3dDrawWay(LG,w,tx,ty);
+  for(const b of D.brs.values()) if(b.H>0) r3dDrawWay(LG,b,tx,ty);
+  for(const b of D.brs.values()) if(b.H===0){b.hs=null;r3dDrawWay(LG,b,tx,ty);}
+  const grp=new THREE.Group();grp.userData.r3d=1;let any=false;
+  for(const k of ['curb','road','mark']){
+    const G=LG[k];if(!G.n) continue;any=true;
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
+    g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
+    g.setIndex(G.i);
+    const m=new THREE.Mesh(g,r3dMaterial(k));m.frustumCulled=false;m.renderOrder={curb:1,road:2,mark:3}[k];
+    grp.add(m);
+  }
+  return any?grp:null;
 }
+function r3dFree(o){if(!o) return;treeScene.remove(o);o.traverse(c=>{if(c.geometry) c.geometry.dispose();});}
 function r3dDispose(key){
   const m=R3D.cells.get(key);if(!m) return;
-  if(m.mesh){treeScene.remove(m.mesh);m.mesh.geometry.dispose();}
+  r3dFree(m.mesh);
   R3D.cells.delete(key);
 }
 
@@ -266,7 +351,9 @@ function r3dTick(){
   /* height model is redone only when the loaded road areas or bridge packs change */
   const sig=[...r3Tiles.keys()].sort().join('|')+'#'+(typeof TNT!=='undefined'?[...TNT.packs.keys()].sort().join('|'):'');
   if(sig!==R3D.sig||!R3D.H){
-    R3D.sig=sig;R3D.H=r3dHeights(r3dCollect());R3D.ver++;
+    R3D.sig=sig;R3D.H=r3dHeights(r3dCollect());
+    for(const [k,v] of R3D.wc) if(v.seen!==R3D.ver) R3D.wc.delete(k);
+    R3D.ver++;
   }
   for(const k of [...R3D.cells.keys()]){
     const [x,y]=k.split(',').map(Number);
@@ -284,7 +371,7 @@ function r3dTick(){
     const k=want[i][1],t0=performance.now();
     const old=R3D.cells.get(k);
     const mesh=r3dBuildCell(k,R3D.H);
-    if(old&&old.mesh){treeScene.remove(old.mesh);old.mesh.geometry.dispose();}
+    if(old) r3dFree(old.mesh);
     if(mesh) treeScene.add(mesh);
     R3D.cells.set(k,{mesh:mesh,ver:R3D.ver});
     if(typeof PROF!=='undefined') PROF.roads3d=(PROF.roads3d||0)+performance.now()-t0;
@@ -292,9 +379,8 @@ function r3dTick(){
   r3dNight();
 }
 function r3dNight(){
-  if(!r3dMat) return;
-  const nt=typeof nightNow==='number'?nightNow:0;
-  r3dMat.color.set(mixHex('#ffffff','#7a8196',nt));
+  const nt=typeof nightNow==='number'?nightNow:0,c=mixHex('#ffffff','#7a8196',nt);
+  for(const k in r3dMats) r3dMats[k].color.set(c);
 }
 function r3dHideFlat(){
   for(const id of ['r3-curb','r3-road','r3-paint','r3-center','r3-lane','r3-arrow','tno-gore'])
@@ -309,13 +395,15 @@ function r3dHideFlat(){
 /* car height from the 3D road surfaces near the car (plus REM bridges from objects.js) */
 const r3dRay=new THREE.Raycaster(),r3dDown=new THREE.Vector3(0,-1,0),r3dO=new THREE.Vector3();
 function r3dSurfaces(x,z){
+  const h=r3dHeightAt(x,z);
+  if(h!==null) return h>0.05?[0,h+0.04]:[0];
   const ys=[0],objs=[];
   const ll=fromLocal(x,z),tx=Math.floor(ll[0]/R3T),ty=Math.floor(ll[1]/R3T);
   for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const e=R3D.cells.get((tx+dx)+','+(ty+dy));if(e&&e.mesh) objs.push(e.mesh);}
   if(typeof brMeshes!=='undefined') for(const v of brMeshes.values()){const o=v&&v.isObject3D?v:(v&&(v.group||v.mesh));if(o) objs.push(o);}
   if(!objs.length) return ys;
   r3dO.set(x,80,z);r3dRay.set(r3dO,r3dDown);r3dRay.far=100;
-  for(const h of r3dRay.intersectObjects(objs,false)){
+  for(const h of r3dRay.intersectObjects(objs,true)){
     const n=h.face&&h.face.normal;if(!n) continue;
     const ny=Math.abs(n.y);if(ny<0.5) continue;
     if(h.point.y>0.3) ys.push(h.point.y-0.04);
@@ -338,4 +426,24 @@ if(R3D_ON){
   }
   if(typeof bridgeSurfaces==='function') bridgeSurfaces=r3dSurfaces;
   setInterval(()=>{try{r3dHideFlat();r3dTick();}catch(e){console.warn('roads3d',e);}},700);
+}
+
+/* ===== v2 (all modes): buildings standing on a road are lifted =====
+   Some buildings in the map data span over a road (a passage or bridge between two buildings, like the Bell
+   building on Nuns' Island) but are recorded as starting at the ground, so the car drove through them.
+   A building whose middle sits on a drawn road now starts 5 m up, so the road passes underneath. */
+if(typeof buildBuildingMesh==='function'){
+  buildBuildingMesh=(function(base){return function(cell){
+    try{
+      for(const e of cell.values()){
+        if(e.b>0||e._r3dChecked) continue;
+        const Gr=typeof r3GetGrid==='function'?r3GetGrid():null;if(!Gr||!Gr.size) continue;
+        e._r3dChecked=1;
+        const o=e.rings[0];let sx=0,sy=0;for(const p of o){sx+=p[0];sy+=p[1];}
+        const q=toLocal(sx/o.length,sy/o.length);
+        if(typeof tnoRoadHit==='function'&&tnoRoadHit(q[0],q[1],-0.5)&&e.h>7) e.b=5;
+      }
+    }catch(err){}
+    return base(cell);
+  };})(buildBuildingMesh);
 }
