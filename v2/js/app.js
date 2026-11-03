@@ -10,7 +10,7 @@ TN.VERSION='v2 step 1';
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  let follow=false,watchId=null,ready=false,camHd=null,gZoom=19.6,gPitch=55,camY=0;
+  let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0;
 
   /* ---------- panel ---------- */
   function panel(html,buttons){
@@ -185,9 +185,15 @@ TN.VERSION='v2 step 1';
         camHd=(camHd+TN.angDiff2(car.hd,camHd)*Math.min(1,dt*rate)+360)%360;
         /* Codriver-style view: higher and further back (camera about 40 m up), so the car is always well above
            any bridge deck and the road ahead is visible. A little more zoomed out at speed. */
-        const zoom=19.7-Math.min(0.5,kmh/220),pitch=55;
-        const y=car.y||0;
-        gZoom+=(zoom-gZoom)*Math.min(1,dt*2.5);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
+        /* Codriver-style zoom: close to the car when stopped, zooming out smoothly as speed builds up (fully out
+           from about 60 km/h). Never so close that the camera could reach a bridge deck. */
+        const y=car.y||0,pitch=55;
+        sKmh+=(kmh-sKmh)*Math.min(1,dt*0.8);
+        let zoom=20.9-1.3*Math.pow(Math.min(1,sKmh/60),0.7);
+        {const Hc=map.getContainer().clientHeight||600,c=1.5*Hc*Math.cos(pitch*TN.R)*40075016.7*Math.cos(ll[1]*TN.R)/512;
+         /* camera height at a zoom is c/2^zoom: keep it at least 8 m above the car */
+         const zMax=Math.log2(c/(y+8));if(zoom>zMax) zoom=zMax;}
+        gZoom+=(zoom-gZoom)*Math.min(1,dt*1.2);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
         camY+=(y-camY)*Math.min(1,dt*4);
         const H=map.getContainer().clientHeight||800;
         /* the map can only aim at the ground. On a raised road the car is above the ground point, so it showed up
