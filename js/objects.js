@@ -1,4 +1,4 @@
-/* TessyNav objects v10 (v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v11 (v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -658,3 +658,54 @@ if(typeof collectBridges==='function'){
     }
   };})(collectBridges);
 }
+
+/* ===== v11: trees off the roads and off the REM / train tracks =====
+   Trees come from the city tree list and from "fill" trees placed inside green areas of the map. Some green
+   areas include highway medians and the REM corridor, so trees ended up standing on the tracks and roads.
+   Every few seconds, trees near you that stand on a drawn road or within 3.5 m of a track are removed. */
+let tnoRail=null,tnoRailT=0;
+function tnoRailGrid(){
+  const now=performance.now();
+  if(tnoRail&&now-tnoRailT<10000) return tnoRail;
+  tnoRailT=now;const G=new Map(),CS=25;
+  try{
+    const fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'transportation',filter:['in',['get','class'],['literal',['rail','transit']]]});
+    for(const f of fs){
+      const g=f.geometry,lines=g.type==='LineString'?[g.coordinates]:g.type==='MultiLineString'?g.coordinates:[];
+      for(const ln of lines) for(let i=0;i<ln.length-1;i++){
+        const a=toLocal(ln[i][0],ln[i][1]),b=toLocal(ln[i+1][0],ln[i+1][1]),s={ax:a[0],az:a[1],bx:b[0],bz:b[1]};
+        for(let gx=Math.floor((Math.min(a[0],b[0])-4)/CS);gx<=Math.floor((Math.max(a[0],b[0])+4)/CS);gx++)
+          for(let gz=Math.floor((Math.min(a[1],b[1])-4)/CS);gz<=Math.floor((Math.max(a[1],b[1])+4)/CS);gz++){
+            const k=gx+','+gz;let l=G.get(k);if(!l){l=[];G.set(k,l);}l.push(s);
+          }
+      }
+    }
+  }catch(e){}
+  tnoRail=G;return G;
+}
+function tnoNearRail(x,z,r){
+  const l=tnoRailGrid().get(Math.floor(x/25)+','+Math.floor(z/25));
+  if(!l) return false;
+  for(const s of l){
+    const dx=s.bx-s.ax,dz=s.bz-s.az,l2=dx*dx+dz*dz;if(l2<0.01) continue;
+    const u=Math.max(0,Math.min(1,((x-s.ax)*dx+(z-s.az)*dz)/l2));
+    if(Math.hypot(s.ax+dx*u-x,s.az+dz*u-z)<r) return true;
+  }
+  return false;
+}
+setInterval(()=>{
+  try{
+    if(typeof buckets==='undefined'||typeof updateTrees!=='function'||!map||map.getZoom()<15.5) return;
+    const key=(typeof r3GridKey!=='undefined'?r3GridKey:'')+'|'+tnoRailT;
+    const c=map.getCenter(),cx=Math.floor(c.lng/C),cy=Math.floor(c.lat/C);
+    let removed=0;
+    for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){
+      const ck=(cx+dx)+','+(cy+dy),b=buckets.get(ck);
+      if(!b||!b.length||(b._tno===key&&b._tnoN===b.length)) continue;
+      const keep=b.filter(t=>!tnoRoadHit(t.x,t.z,0.8)&&!tnoNearRail(t.x,t.z,3.5));
+      if(keep.length!==b.length){removed+=b.length-keep.length;keep._tno=key;keep._tnoN=keep.length;buckets.set(ck,keep);dirty.add(ck);if(typeof treeCount==='number') treeCount-=b.length-keep.length;}
+      else{b._tno=key;b._tnoN=b.length;}
+    }
+    if(removed) updateTrees();
+  }catch(e){}
+},4000);
