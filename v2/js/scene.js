@@ -146,7 +146,9 @@ TN.Scene.prototype.styleMap=function(){
     const sl=l['source-layer']||'';
     /* our own roads replace the map's roads (and their bridges/tunnels) */
     if(sl==='transportation'&&(l.type==='line'||l.type==='fill')) map.setLayoutProperty(l.id,'visibility','none');
-    if(l.type==='symbol'&&/poi|transit|parking/i.test(l.id)) map.setLayoutProperty(l.id,'visibility','none');
+    /* no text labels: placing them again on every frame (the camera moves every frame) is one of the slowest
+       things the map does, and street names are not needed in the driving view */
+    if(l.type==='symbol') map.setLayoutProperty(l.id,'visibility','none');
   }
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,

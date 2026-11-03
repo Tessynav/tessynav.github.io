@@ -12,6 +12,24 @@ TN.Rec.prototype.start=function(){
   this.timer=setInterval(()=>this.save(),20000);
 };
 TN.Rec.prototype.t=function(){return Math.round(Date.now()-this.t0);};
+/* snapshots: a small picture of the screen every 10 s, and right away when something looks wrong (the car jumps,
+   changes height fast, loses the road, or the screen gets slow). They are uploaded with the trip so I can see
+   what you saw. */
+TN.Rec.prototype.wantShot=function(why){if(this.rec&&!this.shotWhy) this.shotWhy=why;};
+TN.Rec.prototype.shoot=function(canvas){
+  if(!this.rec) return;
+  const now=Date.now(),R=this.rec;R.shots=R.shots||[];
+  const due=now-(this.shotT||0)>10000,ev=this.shotWhy&&now-(this.shotT||0)>2500;
+  if(!(due||ev)||R.shots.length>=300) return;
+  try{
+    if(!this.cv){this.cv=document.createElement('canvas');this.cx=this.cv.getContext('2d');}
+    const w=320,h=Math.round(320*canvas.height/canvas.width);
+    if(this.cv.width!==w){this.cv.width=w;this.cv.height=h;}
+    this.cx.drawImage(canvas,0,0,w,h);
+    R.shots.push([this.t(),this.cv.toDataURL('image/jpeg',0.6),ev?this.shotWhy:'']);
+    this.shotT=now;this.shotWhy=null;
+  }catch(e){}
+};
 TN.Rec.prototype.gps=function(c){
   if(!this.rec) return;
   this.rec.g.push([this.t(),+c.latitude.toFixed(7),+c.longitude.toFixed(7),Math.round((c.accuracy||0)*10)/10,
@@ -33,9 +51,10 @@ TN.Rec.prototype.second=function(fps,worst){
 TN.Rec.prototype.save=function(){
   if(!this.rec) return;
   this.rec.dur=this.t();
-  try{localStorage.setItem('tn2_rec',JSON.stringify(this.rec));}catch(e){
+  /* (snapshots are too big for the browser storage: the crash backup keeps the drive data only) */
+  try{localStorage.setItem('tn2_rec',JSON.stringify(Object.assign({},this.rec,{shots:undefined})));}catch(e){
     /* too big for the browser storage: keep the newest part */
-    try{const r=Object.assign({},this.rec,{g:this.rec.g.slice(-20000),f:this.rec.f.slice(-6000)});localStorage.setItem('tn2_rec',JSON.stringify(r));}catch(e2){}
+    try{const r=Object.assign({},this.rec,{shots:undefined,g:this.rec.g.slice(-20000),f:this.rec.f.slice(-6000)});localStorage.setItem('tn2_rec',JSON.stringify(r));}catch(e2){}
   }
 };
 TN.Rec.prototype.stop=function(){

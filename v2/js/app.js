@@ -6,7 +6,7 @@ TN.VERSION='v2 step 1';
   const $=id=>document.getElementById(id);
   const start=(()=>{try{return JSON.parse(localStorage.getItem('lastPos'))||TN.ORIGIN;}catch(e){return TN.ORIGIN;}})();
   const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:start,zoom:17,pitch:60,maxPitch:85,
-    fadeDuration:0,
+    fadeDuration:0,pixelRatio:1,
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
@@ -108,7 +108,9 @@ TN.VERSION='v2 step 1';
 
   /* ---------- main loop ---------- */
   map.on('load',()=>{scene.styleMap();ready=true;night();});
-  let last=performance.now(),fpsN=0,fpsT=performance.now(),worst=0,lastRec=0;
+  /* snapshots are taken right after the map is drawn (the picture is only complete at that moment) */
+  map.on('render',()=>{if(rec.rec) rec.shoot(map.getCanvas());});
+  let last=performance.now(),fpsN=0,fpsT=performance.now(),worst=0,lastRec=0,prevCar=null,lastFps=0;
   let loopErr=0;
   function loop(){
     requestAnimationFrame(loop);
@@ -116,7 +118,7 @@ TN.VERSION='v2 step 1';
   }
   function frameBody(){
     const pnow=performance.now(),dt=Math.min(0.25,(pnow-last)/1000);worst=Math.max(worst,pnow-last);last=pnow;
-    fpsN++;if(pnow-fpsT>=1000){rec.second(fpsN,worst);fpsN=0;worst=0;fpsT=pnow;}
+    fpsN++;if(pnow-fpsT>=1000){rec.second(fpsN,worst);lastFps=fpsN;fpsN=0;worst=0;fpsT=pnow;}
     if(!ready) return;
     /* a few milliseconds per frame for the road network rebuild, so it never freezes the view */
     if(net.job){const tn=performance.now();net.step(6);TN.prof('network',performance.now()-tn);}
@@ -161,7 +163,18 @@ TN.VERSION='v2 step 1';
         map.jumpTo(view);
       }
       scene.update(ll[0],ll[1]);
-      if(rec.rec&&Date.now()-lastRec>=500){lastRec=Date.now();rec.frame(car,map.getZoom(),follow);}
+      if(rec.rec&&Date.now()-lastRec>=500){
+        lastRec=Date.now();rec.frame(car,map.getZoom(),follow);
+        /* something looks wrong: take a snapshot right away */
+        if(prevCar){
+          const v=track.last?track.last.v:0,mv=Math.hypot(car.x-prevCar.x,car.z-prevCar.z);
+          if(mv>Math.max(6,v*0.5*2)) rec.wantShot('jump');
+          else if(Math.abs((car.y||0)-prevCar.y)>1.5) rec.wantShot('height');
+          else if(!car.snapped&&v>5) rec.wantShot('off road');
+          else if(lastFps&&lastFps<15) rec.wantShot('slow');
+        }
+        prevCar={x:car.x,z:car.z,y:car.y||0};
+      }
     }else{
       const c=map.getCenter();scene.update(c.lng,c.lat);
     }
