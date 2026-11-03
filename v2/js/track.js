@@ -29,6 +29,10 @@ TN.kfVel=function(a,z,r){const P=a.P,S=P[1][1]+r,k0=P[0][1]/S,k1=P[1][1]/S,y=z-a
   const p10=P[1][0],p11=P[1][1];P[0][0]-=k0*p10;P[0][1]-=k0*p11;P[1][0]-=k1*p10;P[1][1]-=k1*p11;};
 TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
   const [x,z]=TN.toLocal(lng,lat);
+  /* a very rough position (the browser's first guesses can be hundreds of metres off) is ignored until the
+     real GPS is precise; otherwise the car would be placed on a random road */
+  if(acc!=null&&acc>60){this.rough={t:t,acc:acc};return this.last;}
+  this.rough=null;
   if(!this.kf||t-this.kfT>5000){
     this.kf={x:{p:x,v:0,P:[[25,0],[0,25]]},z:{p:z,v:0,P:[[25,0],[0,25]]}};
   }else{
@@ -239,7 +243,11 @@ TN.Track.prototype.frame=function(now,dt){
       const over=dir>0?car.s-w.L:-car.s;
       const nc={w:nx.w,dir:nx.dir,s:nx.dir>0?over:nx.w.L-over,lat:car.lat,v:car.v,cv:car.cv,x:car.x,z:car.z,hd:car.hd,y:car.y,gl:car.gl};
       this.cur=nx;car=nc;this.car=car;
-      return this.frame(now,0);
+      /* (at most a few road pieces at once, never an endless loop) */
+      this.depth=(this.depth||0)+1;
+      const res=this.depth<6?this.frame(now,0):car;
+      this.depth=0;
+      return res;
     }
   }
   /* along the road: own speed, softly corrected toward the GPS (no running past, no rolling back) */

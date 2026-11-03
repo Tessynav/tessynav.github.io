@@ -56,7 +56,8 @@ TN.VERSION='v2 step 1';
     track.gps(now,c.longitude,c.latitude,c.accuracy,c.speed,c.heading);
     $('speed').innerHTML=Math.round((c.speed||0)*3.6)+' <small>km/h</small>';
     const car=track.car;
-    $('status').textContent='GPS '+Math.round(c.accuracy)+' m · '+(car&&car.snapped?('on road ('+car.cls+(car.br?', bridge':'')+')'):'finding road')+(covered?'':' · outside road tiles');
+    if(c.accuracy>60) $('status').textContent='Waiting for precise GPS ('+Math.round(c.accuracy)+' m)…';
+    else $('status').textContent='GPS '+Math.round(c.accuracy)+' m · '+(car&&car.snapped?('on road ('+car.cls+(car.br?', bridge':'')+')'):'finding road')+(covered?'':' · outside road tiles');
     if(c.accuracy<100){try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
     wantPacks(c.longitude,c.latitude);
   }
@@ -107,8 +108,12 @@ TN.VERSION='v2 step 1';
   /* ---------- main loop ---------- */
   map.on('load',()=>{scene.styleMap();ready=true;night();});
   let last=performance.now(),fpsN=0,fpsT=performance.now(),worst=0,lastRec=0;
+  let loopErr=0;
   function loop(){
     requestAnimationFrame(loop);
+    try{frameBody();}catch(e){if(loopErr++<5) console.warn('frame',e);}
+  }
+  function frameBody(){
     const pnow=performance.now(),dt=Math.min(0.1,(pnow-last)/1000);worst=Math.max(worst,pnow-last);last=pnow;
     fpsN++;if(pnow-fpsT>=1000){rec.second(fpsN,worst);fpsN=0;worst=0;fpsT=pnow;}
     if(!ready) return;
