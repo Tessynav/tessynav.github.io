@@ -1,4 +1,4 @@
-/* TessyNav motion v8 (v8: no shaking in city streets, stays in its lane on two-way streets; v7: v7: stops at the line without backing up; v6: v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
+/* TessyNav motion v9 (v9: stops closer to the line; v8: v8: no shaking in city streets, stays in its lane on two-way streets; v7: v7: stops at the line without backing up; v6: v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -48,6 +48,9 @@ function tnmStep(now,dt){
   if(Math.hypot(ex,ez)>25){TNM.p={x:tx,z:tz};TNM.cv={x:0,z:0};return {x:tx,z:tz,h:TNM.h};}
   /* spring + shock absorber on the correction, along and across the direction of travel */
   const along=ex*fx+ez*fz,side=ex*(-fz)+ez*fx;
+  /* v9: approaching a stop, if the car is ahead of where it should be, it brakes harder instead of rolling
+     past the line (it never backs up, so the best fix is not to overshoot) */
+  if(along<0&&f.v<6) TNM.v*=Math.exp(-dt*5);
   const ca=TNM.cv.x*fx+TNM.cv.z*fz,cs=TNM.cv.x*(-fz)+TNM.cv.z*fx;
   const wa=TNM_SPRING_ALONG,ws=TNM_SPRING_SIDE;
   const na=ca+(wa*wa*along-2*wa*ca)*dt,ns=cs+(ws*ws*side-2*ws*cs)*dt;
