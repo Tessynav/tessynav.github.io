@@ -1,4 +1,4 @@
-/* TessyNav objects v15 (v15: merge areas between lanes are filled with asphalt; v14: v14: empty ground (no grass or road data) looks like ground, not dark blue; v13: v13: small flat bridges become normal road, no more cross-shaped patches; v12: v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v16 (v16: memory diagnostics in recordings, less reloading of road packs; v15: v15: merge areas between lanes are filled with asphalt; v14: v14: empty ground (no grass or road data) looks like ground, not dark blue; v13: v13: small flat bridges become normal road, no more cross-shaped patches; v12: v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -462,7 +462,7 @@ setInterval(()=>{
   try{
     if(typeof r3GridKey==='undefined') return;
     const now=performance.now();
-    if(r3GridKey===tnoGridKey||now-tnoLastRefresh<15000) return;
+    if(r3GridKey===tnoGridKey||now-tnoLastRefresh<30000) return;
     tnoGridKey=r3GridKey;tnoLastRefresh=now;
     if(typeof brMeshes!=='undefined'&&brMeshes.size&&typeof updateBridges==='function'){brChanged=true;updateBridges(true);}
     if(now-tnoSignT>60000&&typeof sDirtyAll!=='undefined'&&typeof updateSigns==='function'){tnoSignT=now;sDirtyAll=true;updateSigns(true);}
@@ -810,4 +810,23 @@ if(typeof r3Rebuild==='function'){
     try{tnoGoreSetup();tnoGoreBuild();}catch(e){}
     return r;
   };})(r3Rebuild);
+}
+
+/* ===== v16: memory diagnostics + fewer pack reloads =====
+   Memory still climbed during the last drive (150 MB to 430 MB in 15 min). To find exactly what grows, each fps row
+   in recordings now also gets: 3D geometries, 3D textures, bridge cells, road tiles, road packs, trees (thousands). */
+if(typeof TNT!=='undefined') TNT.MAX_PACKS=40;
+if(typeof recTick==='function'){
+  recTick=(function(base){return function(){
+    const before=rec?rec.p.length:0;
+    base();
+    if(rec&&rec.p.length>before){
+      try{
+        const info=treeLayer&&treeLayer.renderer?treeLayer.renderer.info.memory:{geometries:-1,textures:-1};
+        rec.p[rec.p.length-1].push(info.geometries,info.textures,
+          typeof brMeshes!=='undefined'?brMeshes.size:-1,typeof r3Tiles!=='undefined'?r3Tiles.size:-1,
+          typeof TNT!=='undefined'?TNT.packs.size:-1,typeof treeCount==='number'?Math.round(treeCount/1000):-1);
+      }catch(e){}
+    }
+  };})(recTick);
 }
