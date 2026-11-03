@@ -370,10 +370,13 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     }
     const raised=w.br?w.H>0:(w.hs&&w.hs.some((h,j)=>j>=a&&j<=b&&h>0.3));
     if(raised){
-      const bot=j=>w.br?Math.max(0,H(j)-1.2):0;
+      /* low ramps: solid embankment wall to the ground; higher up: a 1.2 m deck with open space below (so roads
+         passing underneath stay visible) */
+      const bot=j=>w.br?Math.max(0,H(j)-1.2):Math.min(Math.max(0,H(j)-1.2),Math.max(0,(H(j)-3)*2));
       wall(L.road,a,b,hw,0.04,bot,TN.C.side);wall(L.road,a,b,-hw,0.04,bot,TN.C.side);
       wall(L.road,a,b,hw,1.0,j=>H(j)+0.04,TN.C.barrier);wall(L.road,a,b,-hw,1.0,j=>H(j)+0.04,TN.C.barrier);
     }
+    if(!w.br&&w.hs) this.rampPiers(L,w,a,b);
     if(w.br&&w.H>=3){
       const step=W>=9?36:28;
       for(let s=Math.ceil(w.cum[a]/step)*step+step/2;s<w.cum[b];s+=step){
@@ -388,6 +391,19 @@ TN.Net.prototype.drawWay=function(L,w,runs){
         for(const o of cols) TN.box(L.road,x+nx*o,z+nz*o,ux,uz,1.3,1.3,0,w.H-1.2,TN.C.pier);
       }
     }
+  }
+};
+/* piers under the high part of ramps */
+TN.Net.prototype.rampPiers=function(L,w,a,b){
+  const P=w.pts,W=w.w,step=32;
+  for(let s=Math.ceil(w.cum[a]/step)*step+step/2;s<w.cum[b];s+=step){
+    let i=0;while(i<P.length-2&&w.cum[i+1]<s) i++;
+    const sg=w.cum[i+1]-w.cum[i]||1,t=(s-w.cum[i])/sg,h=w.hs[i]+(w.hs[i+1]-w.hs[i])*t;
+    if(h<4.5) continue;
+    const x=P[i][0]+(P[i+1][0]-P[i][0])*t,z=P[i][1]+(P[i+1][1]-P[i][1])*t,ux=(P[i+1][0]-P[i][0])/sg,uz=(P[i+1][1]-P[i][1])/sg;
+    let onRoad=false;
+    this.near(x,z,0,(v,k)=>{if(v===w||v.tun) return;const r=TN.seg(v,k,x,z),vh=v.br?v.H:(v.hs?v.hs[k]:0);if(r.d<TN.width(v)/2+1.2&&vh<h-2){onRoad=true;return true;}});
+    if(!onRoad) TN.box(L.road,x,z,ux,uz,1.3,Math.min(W*0.5,6),0,h-1.2,TN.C.pier);
   }
 };
 TN.box=function(G,x,z,ux,uz,a,c,y0,y1,col){

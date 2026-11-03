@@ -25,8 +25,10 @@ TN.Scene.prototype.layer=function(){
       S.three={scene:scene,camera:camera,renderer:renderer,model:model};
       S.loadCar();
     },
-    render(gl,matrix){
+    render(gl,arg){
       const T=S.three;if(!T) return;
+      /* MapLibre 5 passes an object with the matrix, MapLibre 4 the matrix itself */
+      const matrix=arg&&arg.modelViewProjectionMatrix?arg.modelViewProjectionMatrix:arg;
       T.camera.projectionMatrix=new THREE.Matrix4().fromArray(matrix).multiply(T.model);
       T.renderer.resetState();
       T.renderer.render(T.scene,T.camera);

@@ -31,7 +31,12 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
   const [x,z]=TN.toLocal(lng,lat);
   /* a very rough position (the browser's first guesses can be hundreds of metres off) is ignored until the
      real GPS is precise; otherwise the car would be placed on a random road */
-  if(acc!=null&&acc>60){this.rough={t:t,acc:acc};return this.last;}
+  if(acc!=null&&acc>60){
+    /* the car's own estimate while the GPS signal is weak (under overpasses, in tunnels) is still good: use it,
+       with less trust, as long as we had a precise fix recently */
+    if(!this.goodT||t-this.goodT>30000||speed==null){this.rough={t:t,acc:acc};return this.last;}
+    acc=15;
+  }else this.goodT=t;
   this.rough=null;
   if(!this.kf||t-this.kfT>5000){
     this.kf={x:{p:x,v:0,P:[[25,0],[0,25]]},z:{p:z,v:0,P:[[25,0],[0,25]]}};
@@ -278,7 +283,7 @@ TN.Track.prototype.frame=function(now,dt){
     const lo=w.ow?-(W/2-1.2):0.8,hi=Math.max(lo,W/2-1.2);
     target=Math.max(lo,Math.min(hi,car.gl));
   }
-  car.lat+=(target-car.lat)*(1-Math.exp(-dt/0.9));
+  car.lat+=(target-car.lat)*(1-Math.exp(-dt/(Math.abs(target-car.lat)>3?0.35:0.9)));
   const p=this.pointOn(w,car.s,car.lat,dir);
   car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*8)+360)%360;
   /* corners of the road drawing (and turns from one road piece onto another) are rounded: the shown car follows

@@ -6,10 +6,11 @@ TN.VERSION='v2 step 1';
   const $=id=>document.getElementById(id);
   const start=(()=>{try{return JSON.parse(localStorage.getItem('lastPos'))||TN.ORIGIN;}catch(e){return TN.ORIGIN;}})();
   const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:start,zoom:17,pitch:60,maxPitch:85,
+    centerClampedToGround:false,maxTileCacheSize:60,fadeDuration:0,
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  let follow=false,watchId=null,ready=false,camHd=null,gZoom=21.6,gPitch=72;
+  let follow=false,watchId=null,ready=false,camHd=null,gZoom=21.6,gPitch=72,camY=0;
 
   /* ---------- panel ---------- */
   function panel(html,buttons){
@@ -133,16 +134,21 @@ TN.VERSION='v2 step 1';
         camHd=(camHd+TN.angDiff2(car.hd,camHd)*Math.min(1,dt*rate)+360)%360;
         let zoom=21.6-Math.min(0.5,kmh/200),pitch=72;
         const y=car.y||0;
-        if(y>0.5){
-          /* on bridges the camera pulls back a little so it stays above the deck */
+        /* the camera rises with the car on bridges and ramps (it looks at the car at its real height), so the car
+           keeps its normal size and the camera is always above the deck. Older map versions: pull back instead. */
+        const lift=typeof map.setCenterClampedToGround==='function';
+        if(!lift&&y>0.5){
           pitch-=Math.min(4,y*0.25);
-          const H=map.getContainer().clientHeight||600,mpp=40075016.7*Math.cos(ll[1]*TN.R)/(512*Math.pow(2,zoom));
-          const camH=1.5*H*mpp*Math.cos(pitch*TN.R),need=y+3.5;
+          const Hc=map.getContainer().clientHeight||600,mpp=40075016.7*Math.cos(ll[1]*TN.R)/(512*Math.pow(2,zoom));
+          const camH=1.5*Hc*mpp*Math.cos(pitch*TN.R),need=y+3.5;
           if(camH<need) zoom-=Math.log2(need/camH);
         }
         gZoom+=(zoom-gZoom)*Math.min(1,dt*2.5);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
+        camY+=(y-camY)*Math.min(1,dt*4);
         const H=map.getContainer().clientHeight||800;
-        map.jumpTo({center:ll,bearing:camHd,zoom:gZoom,pitch:gPitch,padding:{top:Math.round(H*0.48),bottom:0,left:0,right:0}});
+        const view={center:ll,bearing:camHd,zoom:gZoom,pitch:gPitch,padding:{top:Math.round(H*0.48),bottom:0,left:0,right:0}};
+        if(lift) view.elevation=camY;
+        map.jumpTo(view);
       }
       scene.update(ll[0],ll[1]);
       if(rec.rec&&Date.now()-lastRec>=500){lastRec=Date.now();rec.frame(car,map.getZoom(),follow);}
