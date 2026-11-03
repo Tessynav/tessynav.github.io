@@ -1,4 +1,4 @@
-/* TessyNav roads3d v6 — (v6: test mode survives automatic reloads; v5: v5: lanes side by side rise together, no steps between them; v4: v4: the car no longer sinks at the start of a bridge; v3: v3: camera rises with the car on bridges; v2: v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
+/* TessyNav roads3d v8 — (v8: building check no longer slows the app; v7: v7: bridge camera back to the safe pull-back, fewer doubled lines; v6: v6: test mode survives automatic reloads; v5: v5: lanes side by side rise together, no steps between them; v4: v4: the car no longer sinks at the start of a bridge; v3: v3: camera rises with the car on bridges; v2: v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
    TessyNav roads3d v1 — step 1 of the 3D road rebuild (test mode: add &test3d=1 to the address)
 
    Roads are drawn as real 3D surfaces with their own height, the way codriver does it:
@@ -282,7 +282,7 @@ function r3dWall(G,pts,N,hs,a,b,o,top,bottomFn,col){
     r3dQuad(G,P(i,b0),P(i+1,b1),P(i+1,t1),P(i,t0),col);
   }
 }
-function r3dDashes(G,way,N,a,b,o,dash,gap,dy,col,half){
+function r3dDashes(G,way,N,a,b,o,dash,gap,dy,col,half,edgeOut){
   const P=way.pts,hs=way.hs;
   for(let i=a;i<b;i++){
     const s0=way.cum[i],s1=way.cum[i+1],L=s1-s0;if(L<0.05) continue;
@@ -296,6 +296,8 @@ function r3dDashes(G,way,N,a,b,o,dash,gap,dy,col,half){
       const A=pt(u0),B=pt(u1);
       const mx=(A[0]+B[0])/2+ux*o,mz=(A[1]+B[1])/2+uz*o;
       if(r3dOnOtherRoad(way,mx,mz,hh((u0+u1)/2))) continue;
+      /* v7: edge lines are left out where another road piece continues right beside this one (no doubled lines) */
+      if(edgeOut&&r3dOnOtherRoad(way,mx+ux*edgeOut,mz+uz*edgeOut,hh((u0+u1)/2))) continue;
       r3dQuad(G,[A[0]+ux*(o+half),hh(u0),A[1]+uz*(o+half)],[B[0]+ux*(o+half),hh(u1),B[1]+uz*(o+half)],
               [B[0]+ux*(o-half),hh(u1),B[1]+uz*(o-half)],[A[0]+ux*(o-half),hh(u0),A[1]+uz*(o-half)],col);
     }
@@ -329,7 +331,7 @@ function r3dDrawWay(LG,way,tx,ty){
     if(way.ow){
       const L=way.lanes||Math.max(1,Math.round(W/3.4));
       for(let k=1;k<L;k++) r3dDashes(M,way,N,a,b,-hw+k*W/L,3,6,0.06,R3DC.white,0.07);
-      if(major){r3dDashes(M,way,N,a,b,hw-0.35,1e6,0.001,0.06,R3DC.white,0.08);r3dDashes(M,way,N,a,b,-hw+0.35,1e6,0.001,0.06,R3DC.yellow,0.08);}
+      if(major){r3dDashes(M,way,N,a,b,hw-0.35,1e6,0.001,0.06,R3DC.white,0.08,1.5);r3dDashes(M,way,N,a,b,-hw+0.35,1e6,0.001,0.06,R3DC.yellow,0.08,-1.5);}
     }else if(way.cls!=='service'){
       r3dDashes(M,way,N,a,b,0,1e6,0.001,0.06,R3DC.yellow,0.08);
       const nh=way.lanes>=4?Math.floor(way.lanes/2):0;
@@ -493,7 +495,9 @@ if(R3D_ON){
     const d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(map.transform),'elevation');
     let works=false;
     if(d&&d.set){try{const was=map.transform.elevation;map.transform.elevation=1.5;works=Math.abs(map.transform.elevation-1.5)<0.01;map.transform.elevation=was||0;}catch(e){}}
-    if(works){
+    /* v7: turned off. In Tessy's browser this did not lift the camera, which ended up under the bridge deck.
+       Bridges use the safe camera pull-back again. */
+    if(false&&works){
       R3D.camOK=true;R3D.camElev=0;
       map.jumpTo=(function(base){return function(o){
         const r=base.call(this,o);
@@ -516,9 +520,10 @@ if(R3D_ON){
 if(typeof buildBuildingMesh==='function'){
   buildBuildingMesh=(function(base){return function(cell){
     try{
-      for(const e of cell.values()){
+      /* v8: the road grid is fetched once per building area, not once per building (that was slowing the whole app) */
+      const Gr=typeof r3GetGrid==='function'?r3GetGrid():null;
+      if(Gr&&Gr.size) for(const e of cell.values()){
         if(e.b>0||e._r3dChecked) continue;
-        const Gr=typeof r3GetGrid==='function'?r3GetGrid():null;if(!Gr||!Gr.size) continue;
         e._r3dChecked=1;
         const o=e.rings[0];let sx=0,sy=0;for(const p of o){sx+=p[0];sy+=p[1];}
         const q=toLocal(sx/o.length,sy/o.length);
