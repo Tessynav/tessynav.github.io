@@ -1,4 +1,4 @@
-/* TessyNav objects v13 (v13: small flat bridges become normal road, no more cross-shaped patches; v12: v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v15 (v15: merge areas between lanes are filled with asphalt; v14: v14: empty ground (no grass or road data) looks like ground, not dark blue; v13: v13: small flat bridges become normal road, no more cross-shaped patches; v12: v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -731,4 +731,83 @@ function tnoFlatRoad(b){
   t.w.push([n,b.cls,b.oneway?1:0,b.w||7,'',n,n-1,b.lanes||0,flat,0]);
   if(typeof r3LocalCache!=='undefined') r3LocalCache.delete(k);
   if(typeof r3Schedule==='function') r3Schedule();
+}
+
+/* ===== v14: empty ground looks like ground =====
+   Where the map has no grass, road or building data (for example the gap where a ramp splits off near a bridge),
+   you see the map's background, which was painted the same color as the sky haze: dark blue at night,
+   pale blue by day. It now leans toward a muted ground color, so gaps read as ground instead of "blue things". */
+if(typeof applySkyColors==='function'&&typeof mixHex==='function'){
+  applySkyColors=(function(base){return function(){
+    base();
+    try{
+      const nt=typeof nightNow==='number'?nightNow:0;
+      const fog=nt<0.5?mixHex('#dfe8f1','#c99a7a',nt*2):mixHex('#c99a7a','#101a36',(nt-0.5)*2);
+      const ground=mixHex('#c9cfbf','#1e2620',nt);
+      const bg=(map.getStyle().layers.find(l=>l.type==='background')||{}).id;
+      if(bg) map.setPaintProperty(bg,'background-color',mixHex(fog,ground,0.7));
+    }catch(e){}
+  };})(applySkyColors);
+  try{applySkyColors();}catch(e){}
+}
+
+/* ===== v15: merge areas (gores) filled with asphalt =====
+   Where a lane joins or splits from a highway, OpenStreetMap draws two separate roads with a narrow gap between them.
+   In reality that gap is painted asphalt (the white chevrons) up to the barrier, so it is now filled with road color
+   wherever two roads going the same direction are less than 4 m apart. Wider gaps (real grass medians) stay as they are. */
+function tnoGoreBuild(){
+  if(typeof r3LocalWays!=='function'||!map.getSource('r3-area')) return;
+  const c=map.getCenter(),[cx,cz]=toLocal(c.lng,c.lat),R2=900;
+  const ways=[];
+  for(const arr of r3LocalWays()) for(const W of arr){
+    if(!W.ow||W.pts.length<2||['motorway','trunk','primary','secondary'].indexOf(W.cls)<0) continue;
+    if(W.bb[1]<cx-R2||W.bb[0]>cx+R2||W.bb[3]<cz-R2||W.bb[2]>cz+R2) continue;
+    ways.push(W);
+  }
+  const G=new Map(),CS=20;
+  ways.forEach((W,wi)=>{const P=W.pts;for(let i=0;i<P.length-1;i++){const a=P[i],b=P[i+1];
+    for(let gx=Math.floor((Math.min(a[0],b[0])-12)/CS);gx<=Math.floor((Math.max(a[0],b[0])+12)/CS);gx++)
+      for(let gz=Math.floor((Math.min(a[1],b[1])-12)/CS);gz<=Math.floor((Math.max(a[1],b[1])+12)/CS);gz++){
+        const k=gx+','+gz;let l=G.get(k);if(!l){l=[];G.set(k,l);}l.push([wi,i]);}}});
+  const quads=[];
+  ways.forEach((A,ai)=>{
+    const P=A.pts;let prev=null;
+    for(let i=0;i<P.length-1;i++){
+      const a=P[i],b=P[i+1],dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz);if(L<0.5) continue;
+      const tx=dx/L*(A.ow===-1?-1:1),tz=dz/L*(A.ow===-1?-1:1);
+      for(let s=0;s<=L;s+=3){
+        const x=a[0]+dx*s/L,z=a[1]+dz*s/L;
+        let best=null;
+        for(const [wi,si] of (G.get(Math.floor(x/CS)+','+Math.floor(z/CS))||[])){
+          if(wi===ai) continue;const B=ways[wi],q0=B.pts[si],q1=B.pts[si+1];
+          const ex=q1[0]-q0[0],ez=q1[1]-q0[1],l2=ex*ex+ez*ez;if(l2<0.25) continue;
+          const el=Math.sqrt(l2),bx=ex/el*(B.ow===-1?-1:1),bz=ez/el*(B.ow===-1?-1:1);
+          if(bx*tx+bz*tz<0.9) continue;
+          const u=Math.max(0,Math.min(1,((x-q0[0])*ex+(z-q0[1])*ez)/l2)),fx=q0[0]+ex*u,fz=q0[1]+ez*u;
+          const d=Math.hypot(fx-x,fz-z),gap=d-(A.w+B.w)/2;
+          if(gap>0.2&&gap<4&&(!best||d<best.d)) best={d:d,fx:fx,fz:fz,w:B.w};
+        }
+        if(best){
+          const ux=(best.fx-x)/best.d,uz=(best.fz-z)/best.d;
+          const e1=[x+ux*(A.w/2-0.3),z+uz*(A.w/2-0.3)],e2=[best.fx-ux*(best.w/2-0.3),best.fz-uz*(best.w/2-0.3)];
+          if(prev) quads.push([prev[0],e1,e2,prev[1],prev[0]]);
+          prev=[e1,e2];
+        }else prev=null;
+      }
+    }
+  });
+  const feats=[{type:'Feature',properties:{},geometry:{type:'MultiPolygon',coordinates:quads.map(q=>[q.map(r3LL)])}}];
+  try{map.getSource('tno-gore').setData({type:'FeatureCollection',features:feats});}catch(e){}
+}
+function tnoGoreSetup(){
+  if(map.getSource('tno-gore')||!map.getLayer('r3-curb')) return;
+  map.addSource('tno-gore',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+  map.addLayer({id:'tno-gore',type:'fill',source:'tno-gore',minzoom:15,paint:{'fill-color':ROAD_COLORS.road}},'r3-curb');
+}
+if(typeof r3Rebuild==='function'){
+  r3Rebuild=(function(base){return function(){
+    const r=base.apply(this,arguments);
+    try{tnoGoreSetup();tnoGoreBuild();}catch(e){}
+    return r;
+  };})(r3Rebuild);
 }
