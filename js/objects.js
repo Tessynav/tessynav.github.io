@@ -1,4 +1,4 @@
-/* TessyNav objects v16 (v16: memory diagnostics in recordings, less reloading of road packs; v15: v15: merge areas between lanes are filled with asphalt; v14: v14: empty ground (no grass or road data) looks like ground, not dark blue; v13: v13: small flat bridges become normal road, no more cross-shaped patches; v12: v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
+/* TessyNav objects v18 (v18: street-view camera stays behind the car on bridges; v17: v17: bridges keep one width end to end; the car no longer climbs onto a bridge while it follows an exit or a road beside it; v16: v16: memory diagnostics in recordings, less reloading of road packs; v15: v15: merge areas between lanes are filled with asphalt; v14: v14: empty ground (no grass or road data) looks like ground, not dark blue; v13: v13: small flat bridges become normal road, no more cross-shaped patches; v12: v12: bridges at night match the road brightness instead of glowing brighter; v11: v11: no trees on roads or on the REM / train tracks; v10: v10: no more raised slabs from small bridges, bridges match the road brightness at night; v9: v9: no dark shadow patches at bridge entrances; v8: v8: bridges come from our own road tiles, with their real lanes, width and REM tracks; v7: v7: bridges are as wide as the road leading onto them; v6: v6: long bridges rise smoothly from the ground where they start, no more lanes going under a grass ramp; v5: v5: thick 3D bridge cables, tower also shows when you look at it on the map; v4: v4: better bridges everywhere: concrete barriers, real piers, street lights, T-shaped REM lights that light the tracks at night, and the Champlain Bridge tower and cables; v3: v3: a bridge made of many pieces gets one height, no more broken sections; v2: v2: bridge decks use the same light road color as the normal roads)
    Things that stood on the road now stand beside it, and the camera stays above bridges.
    1. Street lamps, traffic lights and stop signs: if one would stand on a drawn road, it is moved to
       the curb (about 1 m outside the road edge). Before, they were placed beside the old map-tile roads,
@@ -98,7 +98,8 @@ function tnoBuildChains(cross,roadIdx){
   }
   const groups=new Map();
   for(const b of all){
-    const r=find(b);let g=groups.get(r);if(!g){g={L:0,overH:0,ends:[],W:0};groups.set(r,g);}
+    const r=find(b);let g=groups.get(r);if(!g){g={L:0,overH:0,ends:[],W:0,BW:0};groups.set(r,g);}
+    if(b.w&&!rail(b)) g.BW=Math.max(g.BW,b.w); /* v17: widest piece of the bridge */
     /* v7: the bridge is as wide as the road that leads onto it (same lanes), not a fixed width */
     if(!rail(b)) for(const p of [b.pts[0],b.pts[b.pts.length-1]]){
       const q=toLocal(p[0],p[1]),h=tnoRoadHit(q[0],q[1],2.5);
@@ -123,7 +124,7 @@ function tnoBuildChains(cross,roadIdx){
     else if(g.overH){H=g.overH;}
     else{H=1.2;low=true;}
     const long=H>=5&&g.L>120;
-    out.set(b,{H:H,low:low,rampMul:rampMul,long:long,ends:g.ends,ramp:Math.max(60,Math.min(350,H*20)),W:g.W});
+    out.set(b,{H:H,low:low,rampMul:rampMul,long:long,ends:g.ends,ramp:Math.max(60,Math.min(350,H*20)),W:g.W,BW:g.BW});
   }
   return out;
 }
@@ -376,7 +377,7 @@ buildBridgeMesh=function(cell,endInfo,roadIdx,cross){
       H=0.06;
     }
     if(!isRail&&tch.W>=5) W=tch.W;
-    if(b.w) W=b.w; /* v8: real width from the bridge's own lanes (our road tiles) */
+    if(b.w) W=Math.max(b.w,tch.BW||0); /* v8/v17: real width from the lanes, the same along the whole bridge (no narrowing in the middle) */
     const lineCol=(isRail||b.cls==='path'||b.cls==='track')?null:(b.oneway?BR_COL.white:BR_COL.yellow);
     const railCol=low?BR_COL.railLow:BR_COL.rail;
     const ends=[
@@ -475,12 +476,14 @@ if(typeof camSpec==='function'){
     const cs=base();
     const y=(typeof carY==='number')?carY:0;
     if(y>0.5){
-      cs.pitch=Math.min(cs.pitch,Math.max(60,cs.pitch-y*0.8));
+      /* v18: keep the street-view angle on bridges (only tilt down a few degrees to show the bridge),
+         instead of swinging up over the car */
+      cs.pitch=cs.pitch-Math.min(4,y*0.25);
       const H=map.getContainer().clientHeight||600;
       const lat=gPos?gPos[1]:45.5;
       const mpp=40075016.7*Math.cos(lat*Math.PI/180)/(512*Math.pow(2,cs.zoom));
       const camH=1.5*H*mpp*Math.cos(cs.pitch*Math.PI/180);
-      const need=y+8;
+      const need=y+3.5;
       if(camH<need) cs.zoom-=Math.log2(need/camH);
     }
     return cs;
@@ -829,4 +832,19 @@ if(typeof recTick==='function'){
       }catch(e){}
     }
   };})(recTick);
+}
+
+/* ===== v17: the car only rides up onto a bridge when it is actually on the bridge =====
+   Where a bridge starts low beside an exit, the car (following the exit on the ground) touched the edge of the
+   low deck and climbed onto it for a moment, then dropped back. Now, while the car follows a ground road and is
+   at ground level, bridge decks are ignored for its height. */
+if(typeof bridgeSurfaces==='function'){
+  bridgeSurfaces=(function(base){return function(x,z){
+    try{
+      const onGroundRoad=typeof TNR!=='undefined'&&TNR.src==='r3'&&typeof curRoad!=='undefined'&&curRoad&&!curRoad.bridge;
+      const onBr=typeof snapBridge!=='undefined'&&snapBridge;
+      if(onGroundRoad&&!onBr&&carY<0.5) return [0];
+    }catch(e){}
+    return base(x,z);
+  };})(bridgeSurfaces);
 }
