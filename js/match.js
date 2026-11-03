@@ -1,4 +1,4 @@
-/* TessyNav match v4 (v4: in curves it re-matches on every GPS update instead of sliding straight; v3: v3: keeps following drawn roads through roundabouts and curved ramps; v2: v2: roads pointing another way, like ramps beside the highway, count as farther away)
+/* TessyNav match v5 (v5: smooth direction through roundabouts; v4: v4: in curves it re-matches on every GPS update instead of sliding straight; v3: v3: keeps following drawn roads through roundabouts and curved ramps; v2: v2: roads pointing another way, like ramps beside the highway, count as farther away)
    TessyNav match v1
    The car now follows the SAME roads that are drawn on screen (the OpenStreetMap roads from roads.js),
    instead of the map-tile roads, whose shape is different. That was why the car drove on the grass
@@ -121,7 +121,9 @@ function tnrMatch(x,z,spd,now){
       try{curRoad.lane=laneOffset(curRoad,x,z);}catch(e){}
       const s=onCurRoad(x,z);
       lastMatchInfo={why:'turn-follow',src:'r3'};
-      return {x:s[0],z:s[1],tx:b.tx,tz:b.tz};
+      /* v5: in a roundabout the direction follows your actual driving direction, not each short straight
+         piece of the drawn circle, so the car turns smoothly instead of in steps */
+      return {x:s[0],z:s[1],tx:tfx,tz:tfz};
     }
     curRoad=null;switchVotes=0;TNR.src='';lastMatchInfo={why:'turning',src:''};return null;
   }

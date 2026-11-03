@@ -1,4 +1,4 @@
-/* TessyNav motion v6 (v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
+/* TessyNav motion v7 (v7: stops at the line without backing up; v6: v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -9,7 +9,8 @@ const TNM_SPRING_ALONG=2.4,TNM_SPRING_SIDE=2.8,TNM_TURN_SPRING=3.5;
 function tnmReset(){TNM.p=null;TNM.hr=0;TNM.cv={x:0,z:0};TNM.fix=null;TNM.fixT=-1;}
 
 function tnmAddFix(f){
-  if(TNM.fix&&f.t-TNM.fix.t>5000) tnmReset();
+  /* v7: a long pause in GPS updates while stopped no longer makes the car jump */
+  if(TNM.fix&&f.t-TNM.fix.t>5000&&!(TNM.p&&Math.hypot(f.x-TNM.p.x,f.z-TNM.p.z)<6)) tnmReset();
   /* v6: how fast the road direction is turning, from the last few positions */
   if(f.h!=null){
     if(TNM.ph!=null){const dt=(f.t-TNM.pt)/1000;if(dt>0.02&&dt<1){const d=((f.h-TNM.ph+540)%360)-180;TNM.om+=(d/dt-TNM.om)*0.35;}}
@@ -29,7 +30,8 @@ function tnmStep(now,dt){
   /* where the matched position is now: the last fix moved forward by its speed */
   const tx=f.x+Math.sin(fh*R)*f.v*age,tz=f.z-Math.cos(fh*R)*f.v*age;
   /* speed eases toward the measured speed */
-  TNM.v+=(f.v-TNM.v)*(1-Math.exp(-dt*2.5));
+  /* v7: slows down quickly when you brake, so it doesn't run past the stop line */
+  TNM.v+=(f.v-TNM.v)*(1-Math.exp(-dt*(f.v<TNM.v?6:2.5)));
   /* heading: spring toward the travel direction; held still when slow (no spinning) */
   if(moving){
     const err=((fh-TNM.h+540)%360)-180,w=TNM_TURN_SPRING;
@@ -46,7 +48,9 @@ function tnmStep(now,dt){
   const ca=TNM.cv.x*fx+TNM.cv.z*fz,cs=TNM.cv.x*(-fz)+TNM.cv.z*fx;
   const wa=TNM_SPRING_ALONG,ws=TNM_SPRING_SIDE;
   const na=ca+(wa*wa*along-2*wa*ca)*dt,ns=cs+(ws*ws*side-2*ws*cs)*dt;
-  TNM.cv.x=fx*na+(-fz)*ns;TNM.cv.z=fz*na+fx*ns;
+  /* v7: the car never rolls backward to correct a small difference (under 4 m); only real big errors are corrected backward */
+  const na2=(TNM.v+na<0&&along>-4)?-TNM.v:na;
+  TNM.cv.x=fx*na2+(-fz)*ns;TNM.cv.z=fz*na2+fx*ns;
   TNM.p.x+=(fx*TNM.v+TNM.cv.x)*dt;
   TNM.p.z+=(fz*TNM.v+TNM.cv.z)*dt;
   return {x:TNM.p.x,z:TNM.p.z,h:TNM.h};
