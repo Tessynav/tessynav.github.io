@@ -187,9 +187,11 @@ TN.VERSION='v2 step 1';
            any bridge deck and the road ahead is visible. A little more zoomed out at speed. */
         /* Codriver-style zoom: close to the car when stopped, zooming out smoothly as speed builds up (fully out
            from about 60 km/h). Never so close that the camera could reach a bridge deck. */
-        const y=car.y||0,pitch=55;
+        /* matched to Codriver's screenshots: more top-down and close when stopped, more tilted (horizon in view)
+           and moderately zoomed out at speed */
         sKmh+=(kmh-sKmh)*Math.min(1,dt*0.8);
-        let zoom=20.9-1.3*Math.pow(Math.min(1,sKmh/60),0.7);
+        const sf=Math.pow(Math.min(1,sKmh/60),0.7),y=car.y||0,pitch=54+9*sf;
+        let zoom=21.0-1.1*sf;
         {const Hc=map.getContainer().clientHeight||600,c=1.5*Hc*Math.cos(pitch*TN.R)*40075016.7*Math.cos(ll[1]*TN.R)/512;
          /* camera height at a zoom is c/2^zoom: keep it at least 8 m above the car */
          const zMax=Math.log2(c/(y+8));if(zoom>zMax) zoom=zMax;}
@@ -204,7 +206,7 @@ TN.VERSION='v2 step 1';
           const d=camY*Math.tan(gPitch*TN.R),hr=camHd*TN.R;
           aim=TN.fromLocal(car.x+Math.sin(hr)*d,car.z-Math.cos(hr)*d);
         }
-        const view={center:aim,bearing:camHd,zoom:gZoom,pitch:gPitch,padding:{top:Math.round(H*0.5),bottom:0,left:0,right:0}};
+        const view={center:aim,bearing:camHd,zoom:gZoom,pitch:gPitch,padding:{top:Math.round(H*0.56),bottom:0,left:0,right:0}};
         map.jumpTo(view);
       }
       scene.update(ll[0],ll[1]);
