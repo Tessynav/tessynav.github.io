@@ -167,31 +167,57 @@ recStop=function(){
      ['Replay',()=>{location.href=location.pathname+'?replay='+encodeURIComponent('rec:trip:'+trip.start);}],['Close',hidePanel]]);
 };
 
-/* Auto-update: if a newer version is published, load it (never in the middle of a drive) */
+/* v10 Updates: no more automatic reloads. A small "Version" button shows the file versions loaded now and checks
+   for a newer version; when one is published, the button turns into "Update ready" and you update with one tap.
+   After an update, a short list shows which files changed. */
 (function(){
   if(typeof REPLAY!=='undefined'&&REPLAY) return;
-  const mine=[...document.querySelectorAll('script[src]')].map(s=>s.getAttribute('src')).join('|');
-  let updBtn=null;
-  function reloadNew(){location.replace(location.pathname+'?r='+Date.now());}
+  const list=html=>[...html.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
+  const mineArr=[...document.querySelectorAll('script[src]')].map(s=>s.getAttribute('src')).filter(s=>/^js\//.test(s));
+  const label=src=>{const m=src.match(/js\/([\w-]+)\.js\?v=(\d+)/);return m?m[1]+' v'+m[2]:src;};
+  let newer=null;
+  const btn=document.createElement('button');
+  btn.className='hud';btn.textContent='Version';
+  btn.style.cssText='bottom:12px;left:50%;transform:translateX(-50%);font-size:13px;border:0;cursor:pointer;z-index:9;opacity:0.85';
+  document.body.appendChild(btn);
+  function busy(){return (typeof rec!=='undefined'&&rec);}
+  function doUpdate(){
+    if(busy()){showPanel('Stop the recording first, then update.',[['Close',hidePanel]]);return;}
+    try{localStorage.setItem('tn_prevVersions',JSON.stringify(mineArr));}catch(e){}
+    const q=new URLSearchParams(location.search);q.set('r',String(Date.now()));
+    location.replace(location.pathname+'?'+q.toString());
+  }
   async function check(){
     try{
       const r=await fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'});
-      if(!r.ok) return;
-      const html=await r.text();
-      const srcs=[...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map(m=>m[1]).join('|');
-      if(!srcs||srcs===mine) return;
-      const busy=(typeof rec!=='undefined'&&rec)||(typeof watchId!=='undefined'&&watchId!==null);
-      if(!busy){reloadNew();return;}
-      if(!updBtn){
-        updBtn=document.createElement('button');
-        updBtn.className='hud';updBtn.textContent='↻ Update ready';
-        updBtn.style.cssText='top:12px;left:50%;transform:translateX(-50%);font-size:14px;border:0;cursor:pointer;z-index:9;color:#7fe3d4';
-        updBtn.onclick=()=>{if(typeof rec!=='undefined'&&rec){showPanel('Stop the recording first, then update.',[['Close',hidePanel]]);return;}reloadNew();};
-        document.body.appendChild(updBtn);
-      }
-    }catch(e){}
+      if(!r.ok) return null;
+      const arr=list(await r.text());
+      if(!arr.length) return null;
+      newer=arr.join('|')===mineArr.join('|')?null:arr;
+      btn.textContent=newer?'↻ Update ready':'Version';
+      btn.style.color=newer?'#7fe3d4':'';
+      return newer;
+    }catch(e){return null;}
   }
-  setTimeout(check,5000);
+  btn.onclick=async()=>{
+    showPanel('Checking for updates…',[]);
+    await check();
+    const now=mineArr.map(label).join(', ');
+    if(newer){
+      const changed=newer.filter(x=>mineArr.indexOf(x)<0).map(label).join(', ');
+      showPanel('Update available: '+changed+'<br><br>Running now: '+now,[['Update now',doUpdate],['Later',hidePanel]]);
+    }else showPanel('You have the latest version.<br><br>'+now,[['Close',hidePanel]]);
+  };
+  /* after an update: what changed */
+  try{
+    const prev=JSON.parse(localStorage.getItem('tn_prevVersions')||'null');
+    if(prev){
+      localStorage.removeItem('tn_prevVersions');
+      const changed=mineArr.filter(x=>prev.indexOf(x)<0).map(label);
+      setTimeout(()=>showPanel(changed.length?'Updated: '+changed.join(', '):'Already up to date.',[['Close',hidePanel]]),1500);
+    }
+  }catch(e){}
+  setTimeout(check,8000);
   setInterval(check,10*60*1000);
 })();
 
