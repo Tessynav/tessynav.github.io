@@ -84,7 +84,7 @@ TN.Scene.prototype.update=function(lng,lat){
   TN.prof('roads',performance.now()-t0);
 };
 TN.Scene.prototype.setNight=function(nt){
-  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#7a8196',nt));
+  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#a9b2c4',nt));
   for(const k in this.mats) this.mats[k].color.copy(c);
 };
 /* ---------- the car (Tessy's real model, model3.glb in the site's main folder) ---------- */
@@ -150,9 +150,23 @@ TN.Scene.prototype.styleMap=function(){
        things the map does, and street names are not needed in the driving view */
     if(l.type==='symbol') map.setLayoutProperty(l.id,'visibility','none');
   }
+  /* ground colours like Codriver: rich grass, deep teal water, muted city ground */
+  for(const l of map.getStyle().layers){
+    const id=l.id.toLowerCase();
+    try{
+      if(l.type==='background') map.setPaintProperty(l.id,'background-color','#6f7268');
+      else if(l.type==='fill'){
+        if(/water|ocean|river|lake/.test(id)) map.setPaintProperty(l.id,'fill-color','#1f5f6e');
+        else if(/grass|park|wood|forest|meadow|garden|scrub|farmland|landcover|pitch|golf|cemetery|playground|nature/.test(id)) map.setPaintProperty(l.id,'fill-color','#4f8d3d');
+        else if(/landuse|residential|commercial|industrial|retail|school|hospital|railway|airport|parking/.test(id)) map.setPaintProperty(l.id,'fill-color','#7a7d75');
+        else if(/building/.test(id)) {}
+        else if(/sand|beach/.test(id)) map.setPaintProperty(l.id,'fill-color','#b9a77c');
+      }else if(l.type==='line'&&/water|river|stream|canal/.test(id)) map.setPaintProperty(l.id,'line-color','#1f5f6e');
+    }catch(e){}
+  }
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,
-      paint:{'fill-extrusion-color':'#d8d2c6','fill-extrusion-height':['coalesce',['get','render_height'],8],
+      paint:{'fill-extrusion-color':'#c4bcae','fill-extrusion-height':['coalesce',['get','render_height'],8],
         'fill-extrusion-base':['coalesce',['get','render_min_height'],0],'fill-extrusion-opacity':1}});
   }
   for(const l of map.getStyle().layers) if(l.type==='fill-extrusion'&&l.id!=='tn-buildings') map.setLayoutProperty(l.id,'visibility','none');
@@ -162,8 +176,8 @@ TN.Scene.prototype.styleMap=function(){
 };
 TN.Scene.prototype.applyNight=function(nt){
   try{
-    this.map.setPaintProperty('tn-night','fill-opacity',0.55*nt);
-    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#d8d2c6','#3a4150',nt));
+    this.map.setPaintProperty('tn-night','fill-opacity',0.38*nt);
+    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#c4bcae','#4a4f5c',nt));
   }catch(e){}
   this.setNight(nt);
 };

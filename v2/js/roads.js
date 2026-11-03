@@ -18,7 +18,8 @@ TN.fromLocal=(x,z)=>{const mx=TN.OMX+x*TN.OMS,my=TN.OMY+z*TN.OMS;return [mx*360-
 TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
-TN.COL={road:'#c9cad1',curb:'#eeeef0',white:'#ffffff',yellow:'#e2b93b',side:'#b9b5ac',barrier:'#d4d1ca',pier:'#aaa69d'};
+/* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
+TN.COL={road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -363,16 +364,16 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     if(w.ow){
       const n=w.lanes||Math.max(1,Math.round(W/3.4));
       /* drawing direction = driving direction for ow=1; ow=-1 roads are drawn the other way */
-      for(let k=1;k<n;k++) line(L.mark,a,b,j=>-hwJ(j)+k*WJ[j]/n,3,6,TN.C.white,0.07);
+      for(let k=1;k<n;k++) line(L.mark,a,b,j=>-hwJ(j)+k*WJ[j]/n,3,6,TN.C.white,0.13);
       if(major){
         const lft=w.ow===-1?-1:1;
-        line(L.mark,a,b,j=>-lft*(hwJ(j)-0.35),1e6,0.001,TN.C.white,0.08,-lft*1.5);
-        line(L.mark,a,b,j=>lft*(hwJ(j)-0.35),1e6,0.001,TN.C.yellow,0.08,lft*1.5);
+        line(L.mark,a,b,j=>-lft*(hwJ(j)-0.35),1e6,0.001,TN.C.white,0.14,-lft*1.5);
+        line(L.mark,a,b,j=>lft*(hwJ(j)-0.35),1e6,0.001,TN.C.yellow,0.14,lft*1.5);
       }
     }else if(w.cls!=='service'){
-      line(L.mark,a,b,()=>0,1e6,0.001,TN.C.yellow,0.08);
+      line(L.mark,a,b,()=>0,1e6,0.001,TN.C.yellow,0.14);
       const nh=w.lanes>=4?Math.floor(w.lanes/2):0;
-      for(let k=1;k<nh;k++){line(L.mark,a,b,j=>k*hwJ(j)/nh,3,6,TN.C.white,0.07);line(L.mark,a,b,j=>-k*hwJ(j)/nh,3,6,TN.C.white,0.07);}
+      for(let k=1;k<nh;k++){line(L.mark,a,b,j=>k*hwJ(j)/nh,3,6,TN.C.white,0.13);line(L.mark,a,b,j=>-k*hwJ(j)/nh,3,6,TN.C.white,0.13);}
     }
     const raised=w.br?w.H>0:(w.hs&&w.hs.some((h,j)=>j>=a&&j<=b&&h>0.3));
     if(raised){
