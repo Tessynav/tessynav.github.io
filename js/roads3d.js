@@ -1,4 +1,4 @@
-/* TessyNav roads3d v4 — (v4: the car no longer sinks at the start of a bridge; v3: v3: camera rises with the car on bridges; v2: v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
+/* TessyNav roads3d v5 — (v5: lanes side by side rise together, no steps between them; v4: v4: the car no longer sinks at the start of a bridge; v3: v3: camera rises with the car on bridges; v2: v2: no flicker, markings not drawn across other roads, car height from the road it is on, buildings over roads lifted)
    TessyNav roads3d v1 — step 1 of the 3D road rebuild (test mode: add &test3d=1 to the address)
 
    Roads are drawn as real 3D surfaces with their own height, the way codriver does it:
@@ -117,6 +117,51 @@ function r3dHeights(D){
     if(w.hs.every(h=>h<0.05)) w.hs=null;
   }
   for(const b of D.brs.values()) b.hs=b.cum.map(()=>b.H);
+  /* v5: roads side by side (a lane joining or leaving, a carriageway split into several pieces) rise together:
+     a ground road that touches a raised road going the same way takes its height there, then every road's
+     height is smoothed along its length (max ~6% slope), so no steps or walls appear between lanes */
+  r3dIndex(D);
+  for(let pass=0;pass<3;pass++){
+    /* fine grid (20 m) of the raised road pieces only; every road vertex looks up its own cell */
+    const RG=new Map();
+    for(const v of D.ways.values()){
+      if(!v.hs) continue;
+      const Q=v.pts,pad=v.w/2+2;
+      for(let k=0;k<Q.length-1;k++){
+        if(v.hs[k]<0.05&&v.hs[k+1]<0.05) continue;
+        const q0=Q[k],q1=Q[k+1];
+        for(let gx=Math.floor((Math.min(q0[0],q1[0])-pad)/20);gx<=Math.floor((Math.max(q0[0],q1[0])+pad)/20);gx++)
+          for(let gz=Math.floor((Math.min(q0[1],q1[1])-pad)/20);gz<=Math.floor((Math.max(q0[1],q1[1])+pad)/20);gz++){
+            const key=gx*1e6+gz;let l=RG.get(key);if(!l){l=[];RG.set(key,l);}l.push(v,k);
+          }
+      }
+    }
+    let changed=false;
+    for(const w of D.ways.values()){
+      const P=w.pts;let touched=false;
+      for(let j=0;j<P.length;j++){
+        const x=P[j][0],z=P[j][1];
+        const l=RG.get(Math.floor(x/20)*1e6+Math.floor(z/20));if(!l) continue;
+        const cur=w.hs?w.hs[j]:0;
+        const a=P[Math.max(0,j-1)],b=P[Math.min(P.length-1,j+1)];let tx=b[0]-a[0],tz=b[1]-a[1];const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
+        let best=cur;
+        for(let n=0;n<l.length;n+=2){
+          const v=l[n],k=l[n+1];if(v===w) continue;
+          const r=r3dSegHit(v,k,x,z);if(!r||r.h<=best+0.05||r.h>16) continue;
+          if(Math.abs(r.tx*tx+r.tz*tz)<0.85) continue;
+          if(r.d-(w.w+r.W)/2>1.0) continue;
+          best=r.h;
+        }
+        if(best>cur+0.05){if(!w.hs) w.hs=w.cum.map(()=>0);w.hs[j]=best;changed=true;touched=true;}
+      }
+    }
+    for(const w of D.ways.values()) if(w.hs) r3dSlope(w);
+    if(!changed) break;
+  }
+  if(!D.idx) r3dIndex(D);
+  return D;
+}
+function r3dIndex(D){
   /* v2: coarse index of all roads (100 m cells, by each road's box) for markings and car height */
   const IDX=new Map(),CS=100;
   for(const w of [...D.ways.values(),...D.brs.values()]){
@@ -129,7 +174,12 @@ function r3dHeights(D){
       }
   }
   D.idx=IDX;
-  return D;
+}
+/* heights along a road change by at most ~6% (no steps) */
+function r3dSlope(w){
+  const hs=w.hs,c=w.cum,k=0.06;
+  for(let j=1;j<hs.length;j++) hs[j]=Math.max(hs[j],hs[j-1]-k*(c[j]-c[j-1]));
+  for(let j=hs.length-2;j>=0;j--) hs[j]=Math.max(hs[j],hs[j+1]-k*(c[j+1]-c[j]));
 }
 /* road pieces near a point: calls fn(way, segment index) */
 function r3dNear(D,x,z,fn){

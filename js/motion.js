@@ -1,4 +1,4 @@
-/* TessyNav motion v9 (v9: stops closer to the line; v8: v8: no shaking in city streets, stays in its lane on two-way streets; v7: v7: stops at the line without backing up; v6: v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
+/* TessyNav motion v10 (v10: camera keeps the car pointed up the screen in curves; v9: v9: stops closer to the line; v8: v8: no shaking in city streets, stays in its lane on two-way streets; v7: v7: stops at the line without backing up; v6: v6: the car turns with the road in curves and roundabouts instead of lagging; v5: v5: position no longer runs ahead of the GPS; v4: no overshoot when you stop; v3: lane position is smoothed GPS, no lane snapping)
    The car glides like a real car: it has its own speed and heading, and it is pulled toward
    the matched road position by a spring with a shock absorber, so corrections never jolt.
    Tested on recorded Tessy drives: worst sideways jolt 4-7 m/s2 (was 45-109), about 1 m from the GPS.
@@ -89,7 +89,10 @@ glideFrame=function(){
   /* calm camera: the map rotates smoothly behind the car */
   if(TNM.camHd===null) TNM.camHd=gHd;
   const cd=((gHd-TNM.camHd+540)%360)-180;
-  TNM.camHd=(TNM.camHd+cd*Math.min(1,dt*1.6)+360)%360;
+  /* v10: the camera follows the car's direction more tightly at speed (car stays pointed up the screen in
+     curves), and stays gentle at low speed where the GPS direction is noisy */
+  const kmhC=TNM.v*3.6,rateC=kmhC<15?1.6:kmhC<40?1.6+(kmhC-15)/25*2.4:4.0;
+  TNM.camHd=(TNM.camHd+cd*Math.min(1,dt*rateC)+360)%360;
   if(!follow||now-lastUserZoom<500||now-lastTouch<300) return;
   const cs=camSpec();
   gZoom+=(cs.zoom+userZoomDelta-gZoom)*0.04;
