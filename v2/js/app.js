@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=22;
+TN.APPBUILD=23;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -183,7 +183,9 @@ TN.APPBUILD=22;
   /* ---------- main loop ---------- */
   map.on('load',()=>{scene.styleMap();ready=true;night();
     /* opening animation: the city in glowing lines with the TessyNav name, then real colours */
-    if(TN.Intro){try{new TN.Intro(scene,map).start(scene.pendingNt!=null?scene.pendingNt:lastNt);}catch(e){}}
+    let started=false;
+    if(TN.Intro){try{started=new TN.Intro(scene,map).start(scene.pendingNt!=null?scene.pendingNt:lastNt);}catch(e){}}
+    if(!started){const b=document.getElementById('tn-boot');if(b&&b.parentNode) b.parentNode.removeChild(b);document.body.classList.remove('tn-intro');}
   });
   /* snapshots are taken right after the map is drawn (the picture is only complete at that moment) */
   map.on('render',()=>{if(rec.rec) rec.shoot(map.getCanvas());});

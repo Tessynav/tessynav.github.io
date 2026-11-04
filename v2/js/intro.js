@@ -1,5 +1,5 @@
 /* TessyNav v2 — intro.js
-   Opening animation (about 2.5 s), played while the map, roads and buildings load:
+   Opening animation (about 3.5 s), played while the map, roads and buildings load:
    the real city around you appears as glowing blue lines on a dark screen, the TessyNav name is traced in
    glowing outlines and then filled, with "Navigation for Tessy" under it and a scan line sweeping down;
    then everything fills in with its real colours.
@@ -29,6 +29,12 @@ TN.Intro.prototype.start=function(nt){
   cv.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;z-index:50;pointer-events:auto;';
   document.body.appendChild(cv);this.cv=cv;this.g=cv.getContext('2d');
   cv.addEventListener('pointerdown',()=>this.finish(),{once:true});
+  /* trees: plain blue lines too (their own colours would tint the lines) */
+  this.colors=[];s.three.scene.traverse(o=>{if(o.isInstancedMesh&&o.instanceColor){this.colors.push([o,o.instanceColor]);o.instanceColor=null;}});
+  /* the dark start screen goes away once the map has drawn itself dark */
+  const boot=document.getElementById('tn-boot');
+  if(boot){let n=0;const off=()=>{if(++n<3){m.once('render',off);try{m.triggerRepaint();}catch(e){}return;}boot.style.opacity='0';setTimeout(()=>{if(boot.parentNode) boot.parentNode.removeChild(boot);},400);};
+    try{m.once('render',off);m.triggerRepaint();}catch(e){off();off();off();}}
   this.frame=this.frame.bind(this);requestAnimationFrame(this.frame);
   return true;
 };
@@ -37,9 +43,12 @@ TN.Intro.prototype.frame=function(){
   const t=(performance.now()-this.t0)/1000,s=this.scene,m=this.map;
   /* keep the lines until something of the city has been built (at most 3.2 s) */
   const built=s.three&&s.three.scene.children.length>4;
-  if(!this.tSolid&&t>1.7&&(built||t>3.2)) this.tSolid=t;
+  if(!this.tSolid&&s.three.scene.overrideMaterial) s.three.scene.traverse(o=>{if(o.isInstancedMesh&&o.instanceColor){this.colors.push([o,o.instanceColor]);o.instanceColor=null;}});
+  /* the filled name stays readable for a good second before the colours come in */
+  if(!this.tSolid&&t>2.7&&(built||t>4.2)) this.tSolid=t;
   const ts=this.tSolid||1e9,k=Math.min(1,Math.max(0,(t-ts)/0.8)),fade=k*k*(3-2*k);
-  if(this.tSolid&&t-ts>0.2&&s.three.scene.overrideMaterial){s.three.scene.overrideMaterial=null;try{m.setLayoutProperty('tn-buildings','visibility','visible');}catch(e){}}
+  if(this.tSolid&&t-ts>0.2&&s.three.scene.overrideMaterial){s.three.scene.overrideMaterial=null;this.restoreColors();try{m.setLayoutProperty('tn-buildings','visibility','visible');}catch(e){}
+    document.body.classList.remove('tn-intro');}
   try{m.setPaintProperty('tn-night','fill-opacity',0.93+(0.16*this.nt-0.93)*fade);}catch(e){}
   if(this.mat) this.mat.opacity=0.85*(1-fade);
   this.draw(t,1-fade);
@@ -52,7 +61,7 @@ TN.Intro.prototype.draw=function(t,a){
   g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);if(a<=0) return;
   const E=x=>x<0?0:x>1?1:x*x*(3-2*x);
   /* scan line */
-  if(t<1.8){const y=H*((t/1.4)%1);g.fillStyle='rgba(120,220,255,'+(0.28*a)+')';g.fillRect(0,y,W,2);}
+  if(t<2.6){const y=H*((t/1.4)%1);g.fillStyle='rgba(120,220,255,'+(0.28*a)+')';g.fillRect(0,y,W,2);}
   /* the name: glowing outlines letter by letter, then filled */
   const txt='TessyNav',fs=Math.round(Math.min(72,W/8)),y=H*0.26;
   g.font='500 '+fs+'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';g.textAlign='left';g.textBaseline='alphabetic';
@@ -74,10 +83,15 @@ TN.Intro.prototype.draw=function(t,a){
     g.fillStyle='rgba(159,215,240,'+u+')';g.fillText('Navigation for Tessy',W/2,y+fs*0.62);
   }
 };
+TN.Intro.prototype.restoreColors=function(){
+  if(this.colors){for(const [o,c] of this.colors) o.instanceColor=c;this.colors=[];}
+};
 TN.Intro.prototype.finish=function(){
   if(this.done) return;this.done=true;
   const s=this.scene,m=this.map;
   if(s.three) s.three.scene.overrideMaterial=null;
+  this.restoreColors();document.body.classList.remove('tn-intro');
+  const boot=document.getElementById('tn-boot');if(boot&&boot.parentNode) boot.parentNode.removeChild(boot);
   try{m.setLayoutProperty('tn-buildings','visibility','visible');m.setPaintProperty('tn-night','fill-color','#0b1630');}catch(e){}
   if(this.cv&&this.cv.parentNode) this.cv.parentNode.removeChild(this.cv);
   if(this.mat){this.mat.dispose();this.mat=null;}
