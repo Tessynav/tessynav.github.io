@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#cfdcf0',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#cfdcf0',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -645,9 +645,10 @@ TN.Net.prototype.buildCellJob=function*(tx,ty){
     if(a>=0) this.drawRem(L,w,a,P.length-1);
     yield* pause();
   }
+  const sigDone=new Set();
   if(this.marks) for(const m of this.marks.values()){
     if(!inCell(m.x,m.z)) continue;
-    if(m.kind==='c') this.drawCrosswalk(L,m);else if(m.kind==='s'||m.kind==='y') this.drawSign(L,m);
+    if(m.kind==='c') this.drawCrosswalk(L,m);else if(m.kind==='s'||m.kind==='y') this.drawSign(L,m);else if(m.kind==='t') this.drawSignal(L,m,sigDone);
     yield* pause();
   }
   this._sg=null;
@@ -959,8 +960,13 @@ TN.Net.prototype.signPlace=function(m){
   if(dir) J=findJ(dir);
   else{const f=findJ(1),b=findJ(-1);if(f&&(!b||f.d<=b.d)){J=f;dir=1;}else if(b){J=b;dir=-1;}}
   if(!J) return null;
-  /* driving direction towards the junction, at the junction */
-  const j=J.j,jp=Math.max(0,Math.min(P.length-1,j-dir));
+  return this.approachPlace(w,J.j,dir);
+};
+/* the corner spot for traffic arriving at point j of road w, moving in direction dir along it: on the right side,
+   just before the junction, never in a road */
+TN.Net.prototype.approachPlace=function(w,j,dir){
+  const P=w.pts;
+  const jp=Math.max(0,Math.min(P.length-1,j-dir));
   let dx=P[j][0]-P[jp][0],dz=P[j][1]-P[jp][1];const dl=Math.hypot(dx,dz)||1;dx/=dl;dz/=dl;
   if(j===jp){return null;}
   /* the widest other road at the junction decides how far back the corner is */
@@ -974,6 +980,54 @@ TN.Net.prototype.signPlace=function(m){
     return {x:x,z:z,dx:dx,dz:dz,rx:rx,rz:rz,lx:P[j][0]-dx*(bk-0.8),lz:P[j][1]-dz*(bk-0.8),hw:hw,ow:w.ow,way:w};
   }
   return null;
+};
+/* traffic lights: at a mapped light on a junction point, one for every road arriving there; at a light mapped
+   before the junction, one for that approach. A pole on the right corner with an arm over the lanes, signal heads
+   facing the traffic, a smaller head on the pole, and a stop line. The lamps show their colours equally (none lit:
+   the app can't know the real light). */
+TN.Net.prototype.signalPlaces=function(m){
+  const hits=(this.keys.get(m.key)||[]).filter(h=>!h[0].br&&!h[0].tun&&h[0].cls!=='service');
+  const out=[];
+  if(hits.length>=2){
+    for(const [w,j] of hits){
+      if(j>0&&w.ow!==-1){const S=this.approachPlace(w,j,1);if(S) out.push(S);}
+      if(j<w.pts.length-1&&w.ow!==1){const S=this.approachPlace(w,j,-1);if(S) out.push(S);}
+    }
+    return out;
+  }
+  const S=this.signPlace(m);if(S) out.push(S);
+  return out;
+};
+TN.Net.prototype.drawSignal=function(L,m,done){
+  const G=L.road;
+  for(const S of this.signalPlaces(m)){
+    /* the same approach can be reached from two mapped lights: draw it once */
+    const key=Math.round(S.x/3)+','+Math.round(S.z/3);if(done.has(key)) continue;done.add(key);
+    const top=6.2,post=TN.C.post;
+    TN.box(G,S.x,S.z,S.dx,S.dz,0.22,0.22,0,top+0.2,post);
+    /* arm towards the middle of the lanes going into the junction */
+    const side=S.hw+1.2,mid=S.ow?0:S.hw/2,reach=Math.max(2,side-mid+1.2);
+    const ax=S.x-S.rx*reach/2,az=S.z-S.rz*reach/2;
+    TN.box(G,ax,az,-S.rx,-S.rz,reach,0.14,top,top+0.16,post);
+    const head=(hx,hz,y0,sz)=>{
+      /* housing, then the three lamps in front of it, facing the traffic (-d) */
+      TN.box(G,hx,hz,S.rx,S.rz,0.36*sz,0.26*sz,y0,y0+1.0*sz,TN.C.sigbox);
+      const fx=hx-S.dx*(0.15*sz),fz=hz-S.dz*(0.15*sz),r=0.11*sz;
+      [[TN.C.sigred,0.80],[TN.C.sigyel,0.50],[TN.C.siggrn,0.20]].forEach(([c,v])=>{
+        const cy=y0+v*sz,ring=[];for(let k=0;k<8;k++){const a=k/8*Math.PI*2;ring.push([Math.cos(a)*r,Math.sin(a)*r]);}
+        for(let k=0;k<8;k++){const p=ring[k],q=ring[(k+1)%8];
+          const C=[fx,cy,fz],A=[fx+S.rx*p[0],cy+p[1],fz+S.rz*p[0]],B=[fx+S.rx*q[0],cy+q[1],fz+S.rz*q[0]];
+          for(const tri of [[C,A,B],[C,B,A]]){const b=G.n;for(const v2 of tri){G.p.push(v2[0],v2[1],v2[2]);G.c.push(c[0],c[1],c[2]);}G.i.push(b,b+1,b+2);G.n+=3;}}
+      });
+    };
+    const n=S.hw>5&&!S.ow?1:(S.hw>5?2:1);
+    for(let k=0;k<n;k++){const o=side-mid-(n===1?0:(k===0?-S.hw*0.35:S.hw*0.35));const hx=S.x-S.rx*o,hz=S.z-S.rz*o;head(hx,hz,top-1.05,1);}
+    head(S.x-S.dx*0.2,S.z-S.dz*0.2,2.6,0.8);
+    /* stop line across the lanes going into the junction */
+    const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw;
+    const p=(o,a)=>[S.lx+S.rx*o+S.dx*a,y,S.lz+S.rz*o+S.dz*a];
+    TN.quad(L.mark,p(o0,-0.2),p(o1,-0.2),p(o1,0.2),p(o0,0.2),TN.C.white);
+  }
 };
 TN.Net.prototype.drawSign=function(L,m){
   const S=this.signPlace(m);if(!S) return;
