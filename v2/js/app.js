@@ -72,6 +72,9 @@ TN.VERSION='v2 step 1';
      - dragging, rotating or tilting by hand: following pauses so you can look around; Recenter brings it back */
   let userZoom=0;
   map.on('zoom',e=>{if(follow&&e.originalEvent) userZoom=Math.max(-4,Math.min(3,map.getZoom()-autoZoom));});
+  /* zoom buttons (like Codriver's): they always work, even where the screen's pinch gesture doesn't reach the map */
+  $('zin').onclick=()=>{userZoom=Math.min(3,userZoom+0.5);if(!follow) map.easeTo({zoom:map.getZoom()+0.5,duration:300});};
+  $('zout').onclick=()=>{userZoom=Math.max(-4,userZoom-0.5);if(!follow) map.easeTo({zoom:map.getZoom()-0.5,duration:300});};
   map.on('dragstart',e=>{if(e.originalEvent) follow=false;});
   map.on('rotatestart',e=>{if(e.originalEvent) follow=false;});
   map.on('pitchstart',e=>{if(e.originalEvent) follow=false;});
