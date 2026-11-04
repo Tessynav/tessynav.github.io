@@ -34,6 +34,17 @@ TN.Net.prototype.makeWay=function(r,isBridge){
   const flat=r[8],pts=[],keys=[];
   for(let i=0;i<flat.length;i+=2){pts.push(TN.toLocal(flat[i],flat[i+1]));keys.push(TN.vkey(flat[i],flat[i+1]));}
   if(pts.length<2) return null;
+  /* bridges get a point every ~20 m (their deck height changes along them); added points have their own keys so
+     they never look like junctions */
+  if(isBridge&&r[12]!=='t'){
+    const P2=[],K2=[];
+    for(let i=0;i<pts.length;i++){
+      if(i>0){const a=pts[i-1],b=pts[i],d=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.floor(d/20);
+        for(let k=1;k<n;k++){const t=k/n;P2.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]);K2.push(r[0]+':'+i+':'+k);}}
+      P2.push(pts[i]);K2.push(keys[i]);
+    }
+    pts.length=0;keys.length=0;for(let i=0;i<P2.length;i++){pts.push(P2[i]);keys.push(K2[i]);}
+  }
   const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
   const w={id:r[0],cls:r[1],ow:r[2]||0,w:r[3]||7,lanes:r[7]||0,name:r[4]||'',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],
     br:false,tun:false,layer:0,H:0,hs:null};
@@ -113,8 +124,7 @@ TN.seg=function(w,i,x,z){
 };
 /* height of way w at distance s along it */
 TN.heightAt=function(w,s){
-  if(w.br) return w.H;
-  if(!w.hs) return 0;
+  if(!w.hs) return w.br?w.H:0;
   const c=w.cum;let i=0;
   if(s<=0) return w.hs[0];if(s>=w.L) return w.hs[w.hs.length-1];
   let lo=0,hi=c.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(c[m]<=s) lo=m;else hi=m;}i=lo;
@@ -125,6 +135,157 @@ TN.width=function(w){return w.br?(w.W||w.w):w.w;};
 /* ---------------- heights ---------------- */
 TN.smooth=function(t){t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
 TN.rampLen=function(H){return Math.max(60,Math.min(350,H*20));};
+
+/* ---------- Codriver-style heights ----------
+   Ordinary roads stay at ground level. Each bridge or viaduct (pieces joined end to end) gets one deck height and
+   carries its own climb: from ground level where it meets the ground road network, rising smoothly (max ~6%) to
+   the deck height. Where a bridge is too short for that climb, the climb continues onto the road that carries
+   straight on from it, but never past an intersection and never under another bridge. Pieces that meet always
+   get the same height there, because heights come from the distance along the network. */
+TN.Net.prototype.heightsCD=function*(){
+  const ways=[...this.ways.values()];
+  for(const w of ways){if(w.brSrc===undefined) w.brSrc=w.br;w._br=w.brSrc;w._hs=null;w._H=0;w._W=w.w;}
+  const brs=ways.filter(w=>w._br);
+  /* bridge groups: pieces sharing end points */
+  const parent=new Map();for(const b of brs) parent.set(b,b);
+  const find=a=>{while(parent.get(a)!==a){parent.set(a,parent.get(parent.get(a)));a=parent.get(a);}return a;};
+  const ends=new Map();
+  for(const b of brs) for(const k of [b.keys[0],b.keys[b.keys.length-1]]){
+    const l=ends.get(k);if(l) for(const o of l) parent.set(find(o),find(b));
+    if(l) l.push(b);else ends.set(k,[b]);
+  }
+  /* bridges also join through their inner points (a ramp landing on a deck) */
+  for(const b of brs) for(const k of b.keys){const l=this.keys.get(k);if(l) for(const [v] of l) if(v!==b&&v._br) parent.set(find(v),find(b));}
+  const groups=new Map();let nb=0;
+  for(const b of brs){
+    const r=find(b);let g=groups.get(r);if(!g){g={L:0,cross:false,layer:0,W:0,m:[]};groups.set(r,g);}
+    g.m.push(b);g.L+=b.L;g.layer=Math.max(g.layer,b.layer);g.W=Math.max(g.W,b.w);
+    if(!g.cross&&this.crossesSomething(b)) g.cross=true;
+    if(++nb%10===0) yield;
+  }
+  const unit=(x,z)=>{const l=Math.hypot(x,z)||1;return [x/l,z/l];};
+  const isJunction=k=>{
+    /* an intersection: three or more road ends meet, or two roads cross there */
+    const l=this.keys.get(k);if(!l) return false;let ends=0;
+    for(const [v,i] of l){if(v.tun) continue;ends+=(i===0||i===v.pts.length-1)?1:2;}
+    return ends>=3;
+  };
+  const underDeck=(x,z,me)=>{let hit=false;this.near(x,z,0,(v,k)=>{if(v===me||!v._br||v._grp===me._grp) return;const r=TN.seg(v,k,x,z);if(r.d<TN.width(v)/2){hit=true;return true;}});return hit;};
+  for(const g of groups.values()){
+    let H;
+    if(g.cross) H=Math.max(6.5*Math.max(1,g.layer),g.L>400?15:0);
+    else if(g.L>=120) H=g.L>400?15:5;
+    else H=0;
+    for(const b of g.m){b._H=H;b._W=Math.max(b.w,g.W);b._grp=g;if(H===0) b._br=false;}
+    g.H=H;
+  }
+  let ng=0;
+  for(const g of groups.values()){
+    if(!(g.H>0)) continue;
+    if(++ng%8===0) yield;
+    const H=g.H,R=TN.rampLen(H),dist=new Map(),q=[];
+    /* exits: where the bridge meets ground roads (or simply ends) */
+    for(const b of g.m){
+      const n=b.pts.length;
+      for(const [i,j] of [[0,1],[n-1,n-2]]){
+        const k=b.keys[i],l=this.keys.get(k)||[];
+        const others=l.filter(([v])=>v!==b);
+        if(others.some(([v])=>v._br&&v._grp===g)) continue;          /* continues as bridge */
+        if(!others.some(([v])=>!v._br&&!v.tun)) continue;              /* no ground road here (edge of loaded area) */
+        /* walk out along the road that carries straight on, collecting the climb path */
+        const out=unit(b.pts[i][0]-b.pts[j][0],b.pts[i][1]-b.pts[j][1]);
+        const path=[];let E=0,key=k,dir=out,stop=isJunction(k)&&others.length>1;
+        const Emax=Math.max(0,R-g.L/2);
+        let guard=0;
+        while(!stop&&E<Emax&&guard++<20){
+          let best=null,bd=0.8;
+          for(const [v,vi] of (this.keys.get(key)||[])){
+            if(v._br||v.tun) continue;
+            for(const sd of [1,-1]){
+              const vj=vi+sd;if(vj<0||vj>=v.pts.length) continue;
+              const u=unit(v.pts[vj][0]-v.pts[vi][0],v.pts[vj][1]-v.pts[vi][1]),d=u[0]*dir[0]+u[1]*dir[1];
+              if(d>bd){bd=d;best=[v,vi,sd];}
+            }
+          }
+          if(!best) break;
+          const [v,vi,sd]=best;let j2=vi,brk=false;
+          while(true){
+            const jn=j2+sd;if(jn<0||jn>=v.pts.length) break;
+            const seg=Math.abs(v.cum[jn]-v.cum[j2]);
+            if(underDeck((v.pts[j2][0]+v.pts[jn][0])/2,(v.pts[j2][1]+v.pts[jn][1])/2,b)){brk=true;break;}
+            E+=seg;path.push([v,jn,E]);dir=unit(v.pts[jn][0]-v.pts[j2][0],v.pts[jn][1]-v.pts[j2][1]);j2=jn;
+            if(E>=Emax) break;
+            if(isJunction(v.keys[jn])){brk=true;break;}
+          }
+          if(brk||E>=Emax) break;
+          if(j2!==0&&j2!==v.pts.length-1) break;
+          key=v.keys[j2];
+        }
+        /* ground point G is at the far end of the path; heights along the path count from there */
+        (g.paths=g.paths||[]).push([path,E]);
+        const d0=E;
+        if(!dist.has(k)||d0<dist.get(k)){dist.set(k,d0);q.push([k,d0]);}
+      }
+    }
+    /* distances along the bridge from its exits (the deck climbs with that distance) */
+    while(q.length){
+      let bi=0;for(let j=1;j<q.length;j++) if(q[j][1]<q[bi][1]) bi=j;
+      const [k,d]=q.splice(bi,1)[0];if(d>dist.get(k)) continue;
+      for(const [v,i] of (this.keys.get(k)||[])){
+        if(v._grp!==g) continue;
+        for(const sd of [1,-1]){
+          let acc=d;
+          for(let j=i+sd;j>=0&&j<v.pts.length;j+=sd){
+            acc+=Math.abs(v.cum[j]-v.cum[j-sd]);
+            const kj=v.keys[j];
+            if(!dist.has(kj)||acc<dist.get(kj)-0.01){dist.set(kj,acc);q.push([kj,acc]);}
+            else break;
+          }
+        }
+      }
+    }
+    /* the deck must be at full height where it passes over another road: if that is closer to an end than the
+       normal climb length, the climb is made steeper (a short overpass climbs quickly, like the real ones) */
+    let Rg=R;
+    const gk=new Set();for(const b of g.m) for(const k of b.keys) gk.add(k);
+    for(const b of g.m){
+      const P=b.pts;
+      for(let i=0;i<P.length-1;i++){
+        const sl=b.cum[i+1]-b.cum[i];if(sl<0.5) continue;
+        const da=dist.has(b.keys[i])?dist.get(b.keys[i]):R,db=dist.has(b.keys[i+1])?dist.get(b.keys[i+1]):R;
+        const ux=(P[i+1][0]-P[i][0])/sl,uz=(P[i+1][1]-P[i][1])/sl;
+        for(let t=3;t<sl;t+=6){
+          const x=P[i][0]+ux*t,z=P[i][1]+uz*t;let over=false;
+          this.near(x,z,0,(v,k)=>{if(v._br||v.tun||v._grp===g) return;if(v.keys.some(q=>gk.has(q))) return;const r=TN.seg(v,k,x,z);
+            if(r.d<v.w/2&&Math.abs(r.tx*ux+r.tz*uz)<0.9){over=true;return true;}});
+          if(over){const d=Math.min(da+t,db+(sl-t));if(d<Rg) Rg=Math.max(12,d);}
+        }
+      }
+    }
+    for(const b of g.m){
+      b._hs=b.keys.map(k=>{const d=dist.has(k)?dist.get(k):Rg;return H*TN.smooth(Math.min(1,d/Rg));});
+      /* the deck never sinks below where it was set (a bridge with no exits stays at full height) */
+      if(!b.keys.some(k=>dist.has(k))) b._hs=b.keys.map(()=>H);
+    }
+    for(const [path,E] of (g.paths||[])) for(const [v,jn,e] of path){
+      const d=E-e;if(!v._hs) v._hs=new Array(v.pts.length).fill(0);
+      const h=H*TN.smooth(Math.min(1,d/Rg));if(h>v._hs[jn]) v._hs[jn]=h;
+    }
+  }
+  /* road pieces that meet: the same height there (climb paths of two bridges sharing a road) */
+  for(let pass=0;pass<4;pass++){
+    let ch=false;
+    for(const l of this.keys.values()){
+      if(l.length<2) continue;let m=0;for(const [w,i] of l){const h=w._hs?w._hs[i]:0;if(h>m) m=h;}
+      if(m<0.05) continue;
+      for(const [w,i] of l){if(w.tun) continue;if(!w._hs) w._hs=new Array(w.pts.length).fill(0);if(w._hs[i]<m-0.05){w._hs[i]=m;ch=true;}}
+    }
+    for(const w of ways) if(w._hs&&!w._br) TN.slope(w);
+    if(!ch) break;
+    yield;
+  }
+  for(const w of ways) if(w._hs&&!w._hs.some(h=>h>0.05)) w._hs=null;
+};
 TN.Net.prototype.crossesSomething=function(b){
   for(let s=8;s<b.L-8;s+=6){
     let i=0;while(i<b.pts.length-2&&b.cum[i+1]<s) i++;
@@ -140,7 +301,11 @@ TN.Net.prototype.crossesSomething=function(b){
   }
   return false;
 };
-TN.Net.prototype.heights=function*(){
+/* height model: 'cd' (Codriver-style, default) or 'old' */
+/* the new model is still being tuned: it is only used with ?heights=cd in the address */
+TN.HMODE=(typeof location!=='undefined'&&/[?&]heights=cd/.test(location.search))?'cd':'old';
+TN.Net.prototype.heights=function*(){if(TN.HMODE==='cd'){yield* this.heightsCD();return;}yield* this.heightsOld();};
+TN.Net.prototype.heightsOld=function*(){
   const ways=[...this.ways.values()];
   for(const w of ways){if(w.brSrc===undefined) w.brSrc=w.br;w._br=w.brSrc;w._hs=null;w._H=0;w._W=w.w;}
   const brs=ways.filter(w=>w._br);
@@ -253,11 +418,12 @@ TN.Net.prototype.heights=function*(){
   /* 3. roads side by side rise together (lane joining/leaving, carriageway split in pieces), then slopes are smoothed */
   for(let pass=0;pass<3;pass++){
     const RG=new Map();
-    for(const v of gnd){
-      if(!v._hs) continue;
-      const Q=v.pts,pad=v.w/2+2;
+    /* (bridge decks count too: a ramp joining a bridge deck rises to the deck where it lies on it) */
+    for(const v of ways){
+      if(v.tun||!(v._br?v._H>0:v._hs)) continue;
+      const Q=v.pts,pad=TN.width(v)/2+2;
       for(let k=0;k<Q.length-1;k++){
-        if(v._hs[k]<0.05&&v._hs[k+1]<0.05) continue;
+        if(!v._br&&v._hs[k]<0.05&&v._hs[k+1]<0.05) continue;
         const a=Q[k],b=Q[k+1];
         for(let gx=Math.floor((Math.min(a[0],b[0])-pad)/20);gx<=Math.floor((Math.max(a[0],b[0])+pad)/20);gx++)
           for(let gz=Math.floor((Math.min(a[1],b[1])-pad)/20);gz<=Math.floor((Math.max(a[1],b[1])+pad)/20);gz++){
@@ -283,10 +449,10 @@ TN.Net.prototype.heights=function*(){
           /* a highway/street is never pulled up by an exit or entrance ramp that splits from it (the ramp rises,
              the main road stays) */
           if(v.ramp&&!w.ramp) continue;
-          const r=TN.seg(v,k,x,z),h=v._hs[k]+(v._hs[k+1]-v._hs[k])*r.u;
+          const r=TN.seg(v,k,x,z),h=v._br?v._H:v._hs[k]+(v._hs[k+1]-v._hs[k])*r.u;
           if(h<=bestH+0.05||h>16) continue;
           if(Math.abs(r.tx*tx+r.tz*tz)<0.85) continue;
-          if(r.d-(w.w+v.w)/2>1.0) continue;
+          if(r.d-(w.w+TN.width(v))/2>1.0) continue;
           bestH=h;
         }
         if(bestH>cur+0.05){if(!w._hs) w._hs=w.cum.map(()=>0);w._hs[j]=bestH;changed=true;}
@@ -332,6 +498,7 @@ TN.Net.prototype.heights=function*(){
   gnd=ways.filter(w=>!w._br);
   yield;
   }
+
 };
 /* highest height within 200 m beyond one end of a road piece, on the pieces that continue it */
 TN.Net.prototype.beyond=function(w,atEnd){
@@ -400,7 +567,7 @@ TN.Net.prototype.onOther=function(way,x,z,h){
   let hit=false;
   this.near(x,z,0,(w,i)=>{
     if(w===way||w.tun) return;
-    const r=TN.seg(w,i,x,z),wh=w.br?w.H:(w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:0);
+    const r=TN.seg(w,i,x,z),wh=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);
     if(r.d<TN.width(w)/2-0.2&&Math.abs(wh-h)<1){hit=true;return true;}
   });
   return hit;
@@ -426,7 +593,7 @@ TN.Net.prototype.buildCell=function(tx,ty){
 };
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
-  const H=j=>w.br?w.H:(w.hs?w.hs[j]:0);
+  const H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
   /* where this road piece joins the next one and their widths differ (lanes added/dropped), both pieces meet
      at the same width and taper over up to 60 m, so the edges and lane lines flow without a step */
   const WJ=this.widthsAlong(w);
@@ -486,7 +653,7 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       const nh=w.lanes>=4?Math.floor(w.lanes/2):0;
       for(let k=1;k<nh;k++){line(L.mark,a,b,j=>k*hwJ(j)/nh,3,6,TN.C.white,0.13);line(L.mark,a,b,j=>-k*hwJ(j)/nh,3,6,TN.C.white,0.13);}
     }
-    const raised=w.br?w.H>0:(w.hs&&w.hs.some((h,j)=>j>=a&&j<=b&&h>0.3));
+    const raised=w.hs?w.hs.some((h,j)=>j>=a&&j<=b&&h>0.3):(w.br&&w.H>0);
     if(raised){
       /* low ramps: solid embankment wall to the ground; higher up: a 1.2 m deck with open space below (so roads
          passing underneath stay visible) */
@@ -495,18 +662,19 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       wall(L.road,a,b,j=>hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);wall(L.road,a,b,j=>-hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);
     }
     if(!w.br&&w.hs) this.rampPiers(L,w,a,b);
-    if(w.br&&w.H>=3){
+    if(w.br&&(w.hs?Math.max(...w.hs):w.H)>=3){
       const step=W>=9?36:28;
       for(let s=Math.ceil(w.cum[a]/step)*step+step/2;s<w.cum[b];s+=step){
         let i=0;while(i<P.length-2&&w.cum[i+1]<s) i++;
         const sg=w.cum[i+1]-w.cum[i]||1,t=(s-w.cum[i])/sg;
+        const dh=TN.heightAt(w,s);if(dh<3) continue;
         const x=P[i][0]+(P[i+1][0]-P[i][0])*t,z=P[i][1]+(P[i+1][1]-P[i][1])*t;
         const ux=(P[i+1][0]-P[i][0])/sg,uz=(P[i+1][1]-P[i][1])/sg,nx=-uz,nz=ux;
         const cols=W>=9?[-W*0.3,W*0.3]:[0];
         let onRoad=false;
         for(const o of cols){const px=x+nx*o,pz=z+nz*o;this.near(px,pz,0,(v,k)=>{if(v.br||v.tun) return;const r=TN.seg(v,k,px,pz);if(r.d<v.w/2+1.2){onRoad=true;return true;}});}
         if(onRoad) continue;
-        for(const o of cols) TN.box(L.road,x+nx*o,z+nz*o,ux,uz,1.3,1.3,0,w.H-1.2,TN.C.pier);
+        for(const o of cols) TN.box(L.road,x+nx*o,z+nz*o,ux,uz,1.3,1.3,0,dh-1.2,TN.C.pier);
       }
     }
   }
@@ -547,7 +715,7 @@ TN.Net.prototype.rampPiers=function(L,w,a,b){
     if(h<4.5) continue;
     const x=P[i][0]+(P[i+1][0]-P[i][0])*t,z=P[i][1]+(P[i+1][1]-P[i][1])*t,ux=(P[i+1][0]-P[i][0])/sg,uz=(P[i+1][1]-P[i][1])/sg;
     let onRoad=false;
-    this.near(x,z,0,(v,k)=>{if(v===w||v.tun) return;const r=TN.seg(v,k,x,z),vh=v.br?v.H:(v.hs?v.hs[k]:0);if(r.d<TN.width(v)/2+1.2&&vh<h-2){onRoad=true;return true;}});
+    this.near(x,z,0,(v,k)=>{if(v===w||v.tun) return;const r=TN.seg(v,k,x,z),vh=v.hs?v.hs[k]:(v.br?v.H:0);if(r.d<TN.width(v)/2+1.2&&vh<h-2){onRoad=true;return true;}});
     if(!onRoad) TN.box(L.road,x,z,ux,uz,1.3,Math.min(W*0.5,6),0,h-1.2,TN.C.pier);
   }
 };

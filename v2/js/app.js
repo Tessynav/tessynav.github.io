@@ -9,6 +9,7 @@ TN.VERSION='v2 step 1';
     fadeDuration:0,pixelRatio:1,
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
+  const trees=TN.Trees?new TN.Trees(scene,net):null;
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
@@ -161,7 +162,7 @@ TN.VERSION='v2 step 1';
   function night(){
     const c=map.getCenter(),alt=TN.sunAlt(new Date(),c.lat,c.lng);
     const nt=Math.min(1,Math.max(0,(6-alt)/12));
-    if(ready) scene.applyNight(nt);
+    if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);}
   }
   setInterval(night,60000);
 
@@ -225,6 +226,7 @@ TN.VERSION='v2 step 1';
         map.jumpTo(view);
       }
       scene.update(ll[0],ll[1]);
+      if(trees){try{trees.update(ll[0],ll[1],lastFps);}catch(e){}}
       if(rec.rec&&Date.now()-lastRec>=500){
         lastRec=Date.now();rec.frame(car,map.getZoom(),follow);
         /* something looks wrong: take a snapshot right away */

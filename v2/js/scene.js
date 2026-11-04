@@ -84,7 +84,7 @@ TN.Scene.prototype.update=function(lng,lat){
   TN.prof('roads',performance.now()-t0);
 };
 TN.Scene.prototype.setNight=function(nt){
-  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#c2c9d6',nt));
+  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#9aa3b6',nt));
   for(const k in this.mats) this.mats[k].color.copy(c);
 };
 /* ---------- the car (Tessy's real model, model3.glb in the site's main folder) ---------- */
@@ -181,8 +181,8 @@ TN.Scene.prototype.applyNight=function(nt){
       'fog-color':TN.mix('#dfe8ef','#1c2638',nt),'sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.85,'atmosphere-blend':0});
   }catch(e){}
   try{
-    this.map.setPaintProperty('tn-night','fill-opacity',0.25*nt);
-    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#c4bcae','#6b7180',nt));
+    this.map.setPaintProperty('tn-night','fill-opacity',0.16*nt);
+    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#c4bcae','#7d8494',nt));
   }catch(e){}
   this.setNight(nt);
 };
