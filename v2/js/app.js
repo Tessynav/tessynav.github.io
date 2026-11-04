@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=23;
+TN.APPBUILD=24;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -135,7 +135,13 @@ TN.APPBUILD=23;
   function update(target){
     if(rec.rec){panel('Stop the recording first, then update.',[['Close',hide]]);return;}
     try{sessionStorage.setItem('tn2_target',JSON.stringify(target));sessionStorage.setItem('tn2_tries','0');sessionStorage.setItem('tn2_prev',JSON.stringify(mine));}catch(e){}
-    location.replace(location.pathname+'?r='+Date.now());
+    hide();
+    if(!document.getElementById('tn-upd')){
+      const d=document.createElement('div');d.id='tn-upd';d.style.opacity='0';
+      d.innerHTML='<div class="t">Updating TessyNav</div><div class="bar"><div class="fill"></div></div><div class="s">Getting the new version… 0%</div>';
+      document.body.appendChild(d);requestAnimationFrame(()=>{d.style.opacity='1';});
+    }
+    setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);
   }
   $('ver').onclick=async()=>{
     panel('Checking GitHub…',[]);
@@ -181,7 +187,10 @@ TN.APPBUILD=23;
   setInterval(night,60000);
 
   /* ---------- main loop ---------- */
+  try{window.TN_PROGRESS&&window.TN_PROGRESS(75,'Preparing the map…');}catch(e){}
   map.on('load',()=>{scene.styleMap();ready=true;night();
+    try{window.TN_PROGRESS&&window.TN_PROGRESS(90,'Building the streets…');}catch(e){}
+    try{map.once('idle',()=>{try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e){}});}catch(e){try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e2){}}
     /* opening animation: the city in glowing lines with the TessyNav name, then real colours */
     let started=false;
     if(TN.Intro){try{started=new TN.Intro(scene,map).start(scene.pendingNt!=null?scene.pendingNt:lastNt);}catch(e){}}

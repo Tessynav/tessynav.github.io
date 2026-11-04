@@ -695,17 +695,58 @@ TN.Net.prototype.drawStalls=function(L,w,runs){
   for(const [a,b] of runs) for(let i=a;i<b;i++){
     const A=P[i],B=P[i+1],len=Math.hypot(B[0]-A[0],B[1]-A[1]);if(len<step*2) continue;
     const ux=(B[0]-A[0])/len,uz=(B[1]-A[1])/len,nx=uz,nz=-ux;
-    for(let s=step;s<=len-step+0.01;s+=step){
-      const x=A[0]+ux*s,z=A[1]+uz*s;
-      for(const sd of [1,-1]){
-        const mx=x+nx*sd*(hw+depth/2),mz=z+nz*sd*(hw+depth/2);
-        if(!inLot(mx,mz)||this.nearOther(w,mx,mz,0.5)) continue;
-        const o0=hw+0.3,o1=hw+depth;
-        TN.quad(L.mark,[x+nx*sd*o0+ux*half,y,z+nz*sd*o0+uz*half],[x+nx*sd*o1+ux*half,y,z+nz*sd*o1+uz*half],
-                       [x+nx*sd*o1-ux*half,y,z+nz*sd*o1-uz*half],[x+nx*sd*o0-ux*half,y,z+nz*sd*o0-uz*half],TN.C.white);
+    /* each space: a line on each side running from the back line towards the aisle (open on the aisle side), and a
+       solid back line along the row; rows facing each other meet at their back lines in the middle */
+    const o0=hw+0.5,o1=hw+depth;
+    const ln=(x0,z0,x1,z1,px,pz)=>TN.quad(L.mark,[x0+px,y,z0+pz],[x1+px,y,z1+pz],[x1-px,y,z1-pz],[x0-px,y,z0-pz],TN.C.white);
+    for(const sd of [1,-1]){
+      let runA=null,runB=null;
+      const flush=()=>{if(runA!=null&&runB>runA){const xa=A[0]+ux*runA+nx*sd*o1,za=A[1]+uz*runA+nz*sd*o1,xb=A[0]+ux*runB+nx*sd*o1,zb=A[1]+uz*runB+nz*sd*o1;
+          ln(xa-ux*half,za-uz*half,xb+ux*half,zb+uz*half,nx*half,nz*half);}runA=runB=null;};
+      for(let s=step;s<=len-step+0.01;s+=step){
+        /* the space between this line and the next one must lie inside the lot and off other roads */
+        const sm=s+step/2,mx=A[0]+ux*sm+nx*sd*(hw+depth/2),mz=A[1]+uz*sm+nz*sd*(hw+depth/2);
+        const ok=s+step<=len-step+0.01&&inLot(mx,mz)&&!this.nearOther(w,mx,mz,0.5);
+        if(!ok){if(runA!=null){const x=A[0]+ux*runB,z=A[1]+uz*runB;}flush();continue;}
+        for(const e of (runA==null?[s,s+step]:[s+step])){
+          const x=A[0]+ux*e,z=A[1]+uz*e;
+          ln(x+nx*sd*o0,z+nz*sd*o0,x+nx*sd*o1,z+nz*sd*o1,ux*half,uz*half);
+        }
+        if(runA==null) runA=s;runB=s+step;
+      }
+      flush();
+    }
+  }
+};
+/* the painted parking space nearest to (x,z), within 3.5 m of its middle: its middle and the heading of a car
+   parked in it (nose in or backed in, whichever is closer to the car's current heading) */
+TN.Net.prototype.stallNear=function(x,z,hd){
+  if(!this.parkings) return null;
+  const aisles=new Set();this.near(x,z,12,(w,i)=>{if(w.pa&&!w.br&&!w.hs) aisles.add(w);});
+  if(!aisles.size) return null;
+  const step=2.7,depth=5;let best=null;
+  for(const w of aisles){
+    const P=w.pts,hw=TN.width(w)/2;
+    const lots=[];for(const pk of this.parkings.values()){const b=pk.bb;if(x<b[0]-15||x>b[1]+15||z<b[2]-15||z>b[3]+15) continue;lots.push(pk);}
+    for(let i=0;i<P.length-1;i++){
+      const A=P[i],B=P[i+1],len=Math.hypot(B[0]-A[0],B[1]-A[1]);if(len<step*2) continue;
+      const ux=(B[0]-A[0])/len,uz=(B[1]-A[1])/len,nx=uz,nz=-ux;
+      const along=(x-A[0])*ux+(z-A[1])*uz;if(along<-5||along>len+5) continue;
+      const kc=Math.floor((along-step)/step);
+      for(const kk of [kc-1,kc,kc+1]){
+        const s0=step+kk*step,sm=s0+step/2;if(s0<step-0.01||s0+step>len-step+0.01) continue;
+        for(const sd of [1,-1]){
+          const mx=A[0]+ux*sm+nx*sd*(hw+depth/2),mz=A[1]+uz*sm+nz*sd*(hw+depth/2),d=Math.hypot(mx-x,mz-z);
+          if(d>3.5||(best&&d>=best.d)) continue;
+          if(!lots.some(pk=>TN.pip(mx,mz,pk.pts))||this.nearOther(w,mx,mz,0.5)) continue;
+          let h1=(Math.atan2(nx*sd,-nz*sd)/TN.R+360)%360;const h2=(h1+180)%360;
+          const ad=(a,b)=>{const d2=Math.abs(((a-b)%360+540)%360-180);return d2;};
+          best={x:mx,z:mz,d:d,hd:ad(h1,hd)<=ad(h2,hd)?h1:h2};
+        }
       }
     }
   }
+  return best;
 };
 /* the ground road a mapped point lies on: by its vertex when it is one of the road's points, otherwise nearest */
 TN.Net.prototype.roadAt=function(m){
@@ -784,6 +825,19 @@ TN.Net.prototype.drawSign=function(L,m){
   if(m.kind==='s'){
     const oct=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;oct.push([Math.cos(a)*0.4,Math.sin(a)*0.4]);}
     plate(oct,TN.C.stopred);
+    /* "ARRÊT" in white block letters across the middle of the sign */
+    const F={A:['01110','10001','10001','11111','10001','10001','10001'],R:['11110','10001','10001','11110','10100','10010','10001'],
+             E:['11111','10000','10000','11110','10000','10000','11111'],T:['11111','00100','00100','00100','00100','00100','00100']};
+    const txt='ARRET',px=0.021,cols=txt.length*6-1,u0=-cols*px/2,v0=3.5*px,wc=TN.C.signw;
+    const tx=cx-S.dx*0.012,tz=cz-S.dz*0.012;
+    const q=(ua,ub,va,vb)=>{const A=[tx+S.rx*ua,cy+va,tz+S.rz*ua],B=[tx+S.rx*ub,cy+va,tz+S.rz*ub],C=[tx+S.rx*ub,cy+vb,tz+S.rz*ub],D=[tx+S.rx*ua,cy+vb,tz+S.rz*ua];
+      TN.quad(G,A,B,C,D,wc);TN.quad(G,A,D,C,B,wc);};
+    for(let c=0;c<txt.length;c++){const g=F[txt[c]];
+      for(let r=0;r<7;r++){const row=g[r];let k=0;
+        while(k<5){if(row[k]!=='1'){k++;continue;}let e=k;while(e<5&&row[e]==='1') e++;
+          const ua=u0+(c*6+k)*px,ub=u0+(c*6+e)*px,va=v0-r*px,vb=v0-(r+1)*px;q(ua,ub,vb,va);k=e;}}}
+    /* the accent on the Ê */
+    {const ce=u0+(3*6+1)*px;q(ce,ce+3*px,v0+1.6*px,v0+0.7*px);}
     /* stop line across the lanes going into the junction */
     const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw;
     const p=(o,a)=>[S.lx+S.rx*o+S.dx*a,y,S.lz+S.rz*o+S.dz*a];

@@ -153,18 +153,18 @@ TN.Scene.prototype.addBrakeGlow=function(body){
     const back=Math.sign(c.z)||1;
     this.glows=[];
     for(const sx of [-1,1]){
-      const m=new THREE.SpriteMaterial({map:tex,color:0xffffff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
+      const m=new THREE.SpriteMaterial({map:tex,color:0xff2a2a,transparent:true,opacity:0,depthWrite:false});
       const sp=new THREE.Sprite(m);sp.scale.set(0.9,0.6,1);sp.position.set(c.x+sx*size.x*0.42,c.y,c.z+back*0.15);body.add(sp);this.glows.push(m);
     }
-    const gm=new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
-    const plane=new THREE.Mesh(new THREE.PlaneGeometry(2.6,2.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.04,c.z+back*1.4);
+    const gm=new THREE.MeshBasicMaterial({map:tex,color:0xff1e1e,transparent:true,opacity:0,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+    const plane=new THREE.Mesh(new THREE.PlaneGeometry(3.0,3.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.06,c.z+back*1.8);
     body.add(plane);this.glows.push(gm);this.glowGround=gm;
   }catch(e){}
 };
 /* brake lights: 0 = normal tail lights, 1 = braking (bright red, with glow) */
 TN.Scene.prototype.setBrake=function(k){
   if(!this.tails||this.brakeK===k) return;this.brakeK=k;
-  if(this.glows) for(const m of this.glows) m.opacity=(m===this.glowGround?0.45:0.95)*k;
+  if(this.glows) for(const m of this.glows) m.opacity=(m===this.glowGround?0.6:0.85)*k;
   for(const m of this.tails){m.emissive.setRGB(0.35+0.65*k,0.02*(1-k),0.02*(1-k));m.emissiveIntensity=1+1.6*k;m.color.setRGB(0.48+0.5*k,0.05,0.06);}
 };
 TN.Scene.prototype.placeCar=function(x,z,y,hd){

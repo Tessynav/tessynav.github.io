@@ -179,7 +179,15 @@ TN.Track.prototype.match=function(){
   this.hyps=hs;
   /* keep the current road unless another clearly fits better for a while */
   const cur=this.cur&&hs.find(h=>h.w===this.cur.w&&h.dir===this.cur.dir);
-  if(!cur){this.cur=best;}
+  if(!cur){
+    /* the current road piece just ended: prefer the piece that continues it (same street name, same direction)
+       over a side street that happens to fit a little better for a moment */
+    const prev=this.cur;let kid=null,ks=1e9;
+    if(prev) for(const h of hs){if(h.parent!==prev) continue;
+      const sc=(h.w.name&&h.w.name===prev.w.name?0:25)+TN.angDiff(h.hd,this.hd!=null?this.hd:prev.hd);
+      if(sc<ks){ks=sc;kid=h;}}
+    this.cur=(kid&&kid.cost<best.cost+6)?kid:best;
+  }
   else if(best!==cur&&best.cost<cur.cost-2.5){this.cur=best;}
   else this.cur=cur;
   /* turning at a junction: once the driving direction clearly leaves the current road and another road nearby
@@ -221,6 +229,17 @@ TN.Track.prototype.pointOn=function(w,s,lat,dir){
 };
 TN.Track.prototype.frame=function(now,dt){
   const L=this.last;if(!L) return null;
+  /* parked in a parking space: after 2 s stopped, the car settles between the painted lines of the nearest space */
+  if(L.v<0.5){if(!this.stopT) this.stopT=now;}else{this.stopT=0;this.stall=null;}
+  if(this.stopT&&now-this.stopT>2000&&this.net.stallNear){
+    if(!this.stall||now-(this.stallT||0)>3000){this.stall=this.net.stallNear(L.x,L.z,this.car&&this.car.hd!=null?this.car.hd:(this.hd||0));this.stallT=now;}
+    const S=this.stall,c=this.car;
+    if(S&&c&&c.x!=null){
+      const k=1-Math.exp(-dt*2.5);c.x+=(S.x-c.x)*k;c.z+=(S.z-c.z)*k;
+      c.hd=(c.hd+TN.angDiff2(S.hd,c.hd)*Math.min(1,dt*2.5)+360)%360;c.v=0;c.w=null;c.snapped=true;
+      return c;
+    }
+  }
   const h=this.cur;
   const age=Math.min(1,Math.max(0,(now-L.t)/1000));
   const snapped=!!h&&(h.side!=null?h.side:h.r.d)<=TN.width(h.w)/2+6;
@@ -257,8 +276,12 @@ TN.Track.prototype.frame=function(now,dt){
   if((dir>0&&car.s>w.L)||(dir<0&&car.s<0)){
     const endKey=dir>0?w.keys[w.keys.length-1]:w.keys[0];
     let nx=null;
+    /* prefer the piece that continues the street (same name, about the same direction) over a side street */
+    let nb=1e9;
     for(const o of this.hyps){if(o.w===w) continue;const k0=o.dir>0?o.w.keys[0]:o.w.keys[o.w.keys.length-1];
-      if(k0===endKey&&(!nx||o.cost<nx.cost)) nx=o;}
+      if(k0!==endKey) continue;
+      const sc=o.cost+(o.w.name&&o.w.name===w.name?0:4)+TN.angDiff(o.hd,car.hd!=null?car.hd:o.hd)/25;
+      if(sc<nb){nb=sc;nx=o;}}
     if(nx){
       const over=dir>0?car.s-w.L:-car.s;
       const ns=nx.dir>0?over:nx.w.L-over;
