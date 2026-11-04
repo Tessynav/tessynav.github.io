@@ -16,6 +16,9 @@ button.hud{border:0;cursor:pointer}
 #speed{bottom:24px;left:12px;font-size:34px;font-weight:bold}
 #speed small{font-size:15px;font-weight:normal;opacity:.7}
 #btn{bottom:24px;right:12px;font-size:18px}
+.zb{right:12px;font-size:26px;width:56px;height:56px;padding:0;line-height:56px;text-align:center}
+#zin{bottom:160px}
+#zout{bottom:96px}
 #rec{top:64px;left:12px;font-size:15px}
 #ver{bottom:24px;left:50%;transform:translateX(-50%);font-size:13px;opacity:.85}
 #panel{display:none;top:50%;left:50%;transform:translate(-50%,-50%);font-size:17px;text-align:center;max-width:80vw;z-index:9}
@@ -30,11 +33,13 @@ button.hud{border:0;cursor:pointer}
 <div id="speed" class="hud">0 <small>km/h</small></div>
 <button id="ver" class="hud">Version</button>
 <button id="btn" class="hud">Start</button>
+<button id="zin" class="hud zb">+</button>
+<button id="zout" class="hud zb">−</button>
 <div id="panel" class="hud"></div>
 <script src="js/roads.js?v=4"></script>
 <script src="js/track.js?v=6"></script>
 <script src="js/scene.js?v=6"></script>
 <script src="js/rec.js?v=2"></script>
-<script src="js/app.js?v=13"></script>
+<script src="js/app.js?v=14"></script>
 </body>
 </html>
