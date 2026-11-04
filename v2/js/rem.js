@@ -32,7 +32,7 @@ TN.Rem.prototype.build=function(){
 };
 TN.Rem.prototype.setNight=function(nt){
   this.night=nt;
-  if(this.matWin) this.matWin.color.set(TN.mix('#2c3a48','#ffe2a6',Math.max(0,Math.min(1,(nt-0.15)/0.5))));
+  if(this.matWin) this.matWin.color.set(TN.mix('#2c3a48','#ffe2a6',Math.max(0,Math.min(1,(nt-0.45)/0.35))));
   if(this.matBody) this.matBody.color.set(TN.mix('#ffffff','#8e97aa',nt));
 };
 TN.Rem.prototype.spawn=function(cx,cz){

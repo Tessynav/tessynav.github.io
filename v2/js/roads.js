@@ -800,6 +800,16 @@ TN.Net.prototype.drawRem=function(L,w,a,b){
 };
 /* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.
    At night (glow layer) the lamp heads shine white and each lamp casts a soft pool of white LED light on the road. */
+/* is there a road surface (ground, ramp or bridge) at (x,z) within pad metres, at about height y? */
+TN.Net.prototype.roadAtHeight=function(x,z,y,pad){
+  const hit=(w,i)=>{if(w.tun) return false;const r=TN.seg(w,i,x,z);if(r.d>=TN.width(w)/2+pad) return false;
+    const h=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);return Math.abs(h-y)<1.5;};
+  const G=this._sg;
+  if(G){for(let ax=Math.floor(x/10)-1;ax<=Math.floor(x/10)+1;ax++) for(let az=Math.floor(z/10)-1;az<=Math.floor(z/10)+1;az++){
+      const l=G.get(ax*1e6+az);if(l) for(const e of l) if(hit(e[0],e[1])) return true;}
+    return false;}
+  let f=false;this.near(x,z,pad,(w,i)=>{if(hit(w,i)){f=true;return true;}});return f;
+};
 TN.LIGHT={motorway:50,trunk:45,primary:40,secondary:42,tertiary:45,minor:55};
 /* lamp height: tall on highways and main streets, lower on residential streets */
 TN.LAMPH={motorway:9.5,trunk:9,primary:8.5,secondary:8.5,tertiary:7.5,minor:6.5};
@@ -816,8 +826,15 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       /* right side of the driving direction for one-way roads; alternating sides on two-way streets */
       const k=Math.round(s/sp);let side=w.ow===-1?1:-1;if(!w.ow&&k%2&&w.cls!=='minor') side=-side;
       const nx=N[i][0]*side,nz=N[i][1]*side,nl=Math.hypot(nx,nz)||1,ox=nx/nl,oz=nz/nl;
-      const off=w.br||y0>0.5?hw+0.25:hw+0.9,x=x0+ox*off,z=z0+oz*off;
-      if(!w.br&&y0<0.5&&this.nearOther(w,x,z,0.4)) continue;
+      /* never on a road: checked for every lamp, raised roads included (any road surface at about the same height),
+         trying a little further out before leaving the lamp out */
+      let x=0,z=0,ok=false;
+      for(const extra of [0,1,2]){
+        const off=(w.br||y0>0.5?hw+0.25:hw+0.9)+extra;x=x0+ox*off;z=z0+oz*off;
+        if(!this.roadAtHeight(x,z,y0,0.6)){ok=true;break;}
+        if(w.br||y0>0.5) break;
+      }
+      if(!ok) continue;
       const rx=-ox,rz=-oz,top=y0+(w.br?8.5:(TN.LAMPH[w.cls]||8));
       TN.box(L.road,x,z,ux,uz,0.18,0.18,y0,top,TN.C.post);
       TN.box(L.road,x+rx*1.1,z+rz*1.1,rx,rz,2.2,0.12,top-0.2,top-0.06,TN.C.post);

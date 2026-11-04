@@ -123,7 +123,7 @@ TN.Scene.prototype.update=function(lng,lat){
 TN.Scene.prototype.setNight=function(nt){
   this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#9aa3b6',nt));
   for(const k in this.mats) if(k!=='glow') this.mats[k].color.copy(c);
-  this.glowOp=Math.max(0,Math.min(1,(nt-0.15)/0.5));if(this.mats.glow) this.mats.glow.opacity=this.glowOp;
+  this.glowOp=Math.max(0,Math.min(1,(nt-0.45)/0.35));   /* street lights only once it is really getting dark */if(this.mats.glow) this.mats.glow.opacity=this.glowOp;
 };
 /* ---------- the car (Tessy's real model, model3.glb in the site's main folder) ---------- */
 TN.Scene.prototype.loadCar=async function(){
