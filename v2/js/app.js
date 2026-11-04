@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=20;
+TN.APPBUILD=21;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -111,7 +111,8 @@ TN.APPBUILD=20;
      The check asks GitHub itself (not the website copy, which can be up to 10 minutes behind), so it sees an
      upload within about a minute. "Update now" reloads; if the website copy is still behind, it waits and retries
      on its own until the new files are there. */
-  const mine=[...document.querySelectorAll('script[src]')].map(s=>s.getAttribute('src')).filter(s=>/^js\//.test(s));
+  /* the files this page actually loaded (from the loader in index.html; older pages: the script tags) */
+  const mine=(window.TN_FILES&&window.TN_FILES.length)?window.TN_FILES.slice():[...document.querySelectorAll('script[src]')].map(s=>s.getAttribute('src')).filter(s=>/^js\//.test(s));
   const label=s=>{const m=s.match(/js\/([\w-]+)\.js\?v=(\d+)/);return m?m[1]+' v'+m[2]:s;};
   async function latest(){
     const parse=html=>[...html.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
