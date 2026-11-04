@@ -12,6 +12,10 @@ html,body,#map{margin:0;height:100%;background:#e9ece6}
 .hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px;z-index:5;transition:opacity .6s}
 body.tn-intro .hud:not(#panel){opacity:0;pointer-events:none}
 #tn-boot{position:absolute;left:0;top:0;width:100%;height:100%;background:#080e1a;z-index:49;transition:opacity .35s}
+#tn-upd{position:absolute;left:0;top:0;width:100%;height:100%;z-index:60;background:rgba(8,14,26,.78);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:sans-serif;color:#e8f1fa;transition:opacity .4s}
+#tn-upd .t{font-size:22px;letter-spacing:.5px}#tn-upd .s{font-size:14px;color:#9fd7f0;min-height:18px}
+#tn-upd .bar{width:min(70%,420px);height:8px;border-radius:4px;background:rgba(120,220,255,.18);overflow:hidden}
+#tn-upd .fill{height:100%;width:0;background:#78dcff;border-radius:4px;transition:width .35s}
 button.hud{border:0;cursor:pointer}
 #status{top:12px;left:12px;font-size:15px}
 #tag{top:12px;right:12px;font-size:13px;opacity:.85}
@@ -31,6 +35,21 @@ button.hud{border:0;cursor:pointer}
 <div id="tn-boot"></div>
 <script>
 /* the opening animation starts dark from the first moment (no blank screen); skipped after an update or with ?intro=0 */
+/* after an update (reload): a faded "Updating TessyNav" screen with a progress bar instead of a blank page */
+window.TN_PROGRESS=function(){};
+(function(){let upd=false;try{upd=/[?&]r=\d/.test(location.search)||!!sessionStorage.getItem('tn2_target');}catch(e){}
+  if(!upd) return;
+  const d=document.createElement('div');d.id='tn-upd';
+  d.innerHTML='<div class="t">Updating TessyNav</div><div class="bar"><div class="fill"></div></div><div class="s">Loading the new version… 0%</div>';
+  document.body.appendChild(d);
+  let cur=0;
+  window.TN_PROGRESS=function(p,label){p=Math.max(cur,Math.min(100,Math.round(p)));cur=p;
+    d.querySelector('.fill').style.width=p+'%';d.querySelector('.s').textContent=(label||'Loading the new version…')+' '+p+'%';
+    if(p>=100){setTimeout(()=>{d.style.opacity='0';setTimeout(()=>{if(d.parentNode) d.parentNode.removeChild(d);},450);},250);}};
+  window.TN_PROGRESS(5,'Loading the new version…');
+  /* never stay on this screen if something goes wrong */
+  setTimeout(()=>window.TN_PROGRESS(100,'Ready'),12000);
+})();
 (function(){let on=true;try{if(/[?&]intro=0/.test(location.search)||/[?&]r=\d/.test(location.search)||sessionStorage.getItem('tn2_target')) on=false;}catch(e){}
   const b=document.getElementById('tn-boot');
   if(!on){b.parentNode.removeChild(b);return;}
@@ -51,14 +70,14 @@ button.hud{border:0;cursor:pointer}
 <div id="panel" class="hud"></div>
 <!-- the app's files (read by the loader below; also what the Version button compares) -->
 <template id="tn-files">
-<script src="js/roads.js?v=10"></script>
-<script src="js/track.js?v=7"></script>
-<script src="js/scene.js?v=11"></script>
+<script src="js/roads.js?v=12"></script>
+<script src="js/track.js?v=8"></script>
+<script src="js/scene.js?v=12"></script>
 <script src="js/trees.js?v=4"></script>
 <script src="js/buildings.js?v=1"></script>
 <script src="js/intro.js?v=2"></script>
 <script src="js/rec.js?v=2"></script>
-<script src="js/app.js?v=23"></script>
+<script src="js/app.js?v=24"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
@@ -71,7 +90,8 @@ button.hud{border:0;cursor:pointer}
   const load=(base,list)=>{
     window.TN_FILES=list;window.TN_BASE=base;let i=0;
     const next=()=>{if(i>=list.length) return;const s=document.createElement('script');s.src=base+list[i++];s.async=false;
-      s.onload=next;s.onerror=()=>{if(base){location.replace(location.pathname+'?local=1&r='+Date.now());}else next();};
+      s.onload=()=>{try{window.TN_PROGRESS(10+60*i/list.length,'Loading the new version…');}catch(e){}next();};
+      s.onerror=()=>{if(base){location.replace(location.pathname+'?local=1&r='+Date.now());}else next();};
       document.body.appendChild(s);};
     next();
   };
