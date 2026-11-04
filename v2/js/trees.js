@@ -2,7 +2,7 @@
    Trees from Montreal's open tree data (the same files the main app uses), drawn Codriver-style: faceted low-poly
    leafy trees mixed with conifers (about 1 in 4), sized from each tree's real trunk diameter, with seasonal
    colours: green in spring and summer, autumn colours from mid-September, bare branches and snowy conifers in
-   winter. Built to stay light:
+   winter. Parks, woods and lawns also get trees, generated inside the green areas of the map. Built to stay light:
    - all trees of one area are ONE drawing call for crowns and one for trunks (instancing)
    - only the areas around the car are kept (about 1 km), at most 1500 trees per area
    - trees that fall on a road surface are left out
@@ -58,10 +58,45 @@ TN.Trees.prototype.load=function(lng,lat){
     }).catch(()=>this.loading.delete(k));
   }
 };
+/* trees inside green areas of the map (woods, parks, grass), so parks are not empty: woods dense, parks medium,
+   lawns sparse. The shapes come from the map tiles already loaded on screen. */
+TN.inRing=function(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];
+  if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/((b[1]-a[1])||1e-12)+a[0])) c=!c;}return c;};
+TN.inPoly=function(x,y,rings){if(!TN.inRing(x,y,rings[0])) return false;for(let k=1;k<rings.length;k++) if(TN.inRing(x,y,rings[k])) return false;return true;};
+TN.Trees.prototype.greenFor=function(ck){
+  const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function') return [];
+  const [cx,cy]=ck.split(',').map(Number),lo0=cx*TN.CELL,la0=cy*TN.CELL,lo1=lo0+TN.CELL,la1=la0+TN.CELL;
+  const polys=[];
+  const add=(f,kind)=>{const g=f.geometry;if(!g) return;const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+    for(const rings of list){const r=rings[0];let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const p of r){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];}
+      if(x1<lo0||x0>lo1||y1<la0||y0>la1) continue;polys.push({rings:rings,kind:kind,bb:[x0,x1,y0,y1]});}};
+  try{
+    for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'landcover'})){const c=(f.properties||{}).class;
+      if(c==='wood'||c==='forest') add(f,'wood');else if(c==='grass') add(f,'grass');}
+    for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'park'})) add(f,'park');
+    for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'landuse'})){const c=(f.properties||{}).class;if(c==='cemetery'||c==='park') add(f,'park');}
+  }catch(e){return [];}
+  if(!polys.length) return [];
+  /* spacing (m) and chance per spot */
+  const K={wood:[9,0.75],park:[15,0.35],grass:[22,0.12]},out=[];
+  const mlat=TN.CELL/(111320),mlng=TN.CELL/(111320*Math.cos(la0*TN.R));
+  let h=(cx*73856093)^(cy*19349663);const rnd=()=>{h^=h<<13;h^=h>>>17;h^=h<<5;return ((h>>>0)%10000)/10000;};
+  for(const kind of ['wood','park','grass']){
+    const [sp,pr]=K[kind],dla=sp/111320,dlo=sp/(111320*Math.cos(la0*TN.R));
+    const mine=polys.filter(p=>p.kind===kind);if(!mine.length) continue;
+    for(let la=la0+dla/2;la<la1;la+=dla) for(let lo=lo0+dlo/2;lo<lo1;lo+=dlo){
+      const jx=lo+(rnd()-0.5)*dlo*0.8,jy=la+(rnd()-0.5)*dla*0.8;if(rnd()>pr) continue;
+      for(const p of mine){const b=p.bb;if(jx<b[0]||jx>b[1]||jy<b[2]||jy>b[3]) continue;
+        if(TN.inPoly(jx,jy,p.rings)){const q=TN.toLocal(jx,jy);out.push(q[0],q[1],0.7+rnd()*0.7,Math.floor(rnd()*1024));break;}}
+      if(out.length>=1200*4) return out;
+    }
+  }
+  return out;
+};
 TN.Trees.prototype.build=function(ck){
-  const b=this.buckets.get(ck);if(!b) return null;
+  const street=this.buckets.get(ck)||[],b=street.concat(this.greenFor(ck));if(!b.length) return null;
   const net=this.net,keep=[];
-  for(let i=0;i<b.length&&keep.length<1500*4;i+=4){
+  for(let i=0;i<b.length&&keep.length<2200*4;i+=4){
     const x=b[i],z=b[i+1];let onRoad=false;
     net.near(x,z,0,(v,k)=>{if(v.tun) return;const r=TN.seg(v,k,x,z);if(r.d<TN.width(v)/2+0.6){onRoad=true;return true;}});
     if(!onRoad) keep.push(x,z,b[i+2],b[i+3]);
@@ -114,7 +149,7 @@ TN.Trees.prototype.update=function(lng,lat,fps){
   const now=performance.now();if(now-this.lastBuild<300) return;
   let best=null;
   for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
-    const k=(cx+dx)+','+(cy+dy);if(this.cells.has(k)||!this.buckets.has(k)) continue;
+    const k=(cx+dx)+','+(cy+dy);if(this.cells.has(k)) continue;
     const d=dx*dx+dy*dy;if(!best||d<best.d) best={k:k,d:d};
   }
   if(!best||!this.net.ways.size||this.net.job) return;
