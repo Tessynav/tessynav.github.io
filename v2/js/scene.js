@@ -38,6 +38,12 @@ TN.Scene.prototype.layer=function(){
 /* ---------- road areas ---------- */
 TN.Scene.prototype.mat=function(k){
   if(this.mats[k]) return this.mats[k];
+  if(k==='glow'){
+    /* lamps and pools of light: added light, invisible by day, fading in at dusk */
+    const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:this.glowOp||0,
+      blending:THREE.AdditiveBlending,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-5,polygonOffsetUnits:-10});
+    this.mats[k]=m;return m;
+  }
   const off={curb:1,road:2,mark:4}[k];
   const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,
     polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
@@ -45,13 +51,13 @@ TN.Scene.prototype.mat=function(k){
 };
 TN.Scene.prototype.cellMesh=function(tx,ty){
   const L=this.net.buildCell(tx,ty),grp=new THREE.Group();let any=false;
-  for(const k of ['curb','road','mark']){
-    const G=L[k];if(!G.n) continue;any=true;
+  for(const k of ['curb','road','mark','glow']){
+    const G=L[k];if(!G||!G.n) continue;any=true;
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
     g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
     g.setIndex(G.i);
-    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={curb:1,road:2,mark:3}[k];
+    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={curb:1,road:2,mark:3,glow:4}[k];
     grp.add(mesh);
   }
   return any?grp:null;
@@ -85,7 +91,8 @@ TN.Scene.prototype.update=function(lng,lat){
 };
 TN.Scene.prototype.setNight=function(nt){
   this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#9aa3b6',nt));
-  for(const k in this.mats) this.mats[k].color.copy(c);
+  for(const k in this.mats) if(k!=='glow') this.mats[k].color.copy(c);
+  this.glowOp=Math.max(0,Math.min(1,(nt-0.15)/0.5));if(this.mats.glow) this.mats.glow.opacity=this.glowOp;
 };
 /* ---------- the car (Tessy's real model, model3.glb in the site's main folder) ---------- */
 TN.Scene.prototype.loadCar=async function(){
@@ -146,9 +153,9 @@ TN.Scene.prototype.addSilhouette=function(body){
     const list=[];body.traverse(o=>{if(o.isMesh&&!(o.parent&&o.parent.name&&/^Wheel/.test(o.parent.name))&&!(this.tails&&this.tails.indexOf(o.material)>=0)) list.push(o);});
     for(const o of list){
       const g=new THREE.Mesh(o.geometry,sm);g.position.copy(o.position);g.quaternion.copy(o.quaternion);g.scale.copy(o.scale);
-      g.renderOrder=1;g.frustumCulled=false;o.parent.add(g);
+      g.renderOrder=5;g.frustumCulled=false;o.parent.add(g);
     }
-    body.traverse(o=>{if(o.isMesh&&o.material!==sm) o.renderOrder=2;});
+    body.traverse(o=>{if(o.isMesh&&o.material!==sm) o.renderOrder=6;});
   }catch(e){}
 };
 /* a soft red glow behind each tail light, and on the road behind the car, shown while braking */

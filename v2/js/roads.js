@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#cfdcf0',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -591,7 +591,7 @@ TN.Net.prototype.onOther=function(way,x,z,h){
   return hit;
 };
 TN.Net.prototype.buildCell=function(tx,ty){
-  const L={curb:TN.geo(),road:TN.geo(),mark:TN.geo()};
+  const L={curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo()};
   const net=this;
   const inCell=(x,z)=>{const ll=TN.fromLocal(x,z);return Math.floor(ll[0]/TN.CELL)===tx&&Math.floor(ll[1]/TN.CELL)===ty;};
   const x0=TN.toLocal(tx*TN.CELL,(ty+1)*TN.CELL),x1=TN.toLocal((tx+1)*TN.CELL,ty*TN.CELL);
@@ -613,8 +613,9 @@ TN.Net.prototype.buildCell=function(tx,ty){
       if(ins&&a<0) a=i;if(!ins&&a>=0){runs.push([a,i]);a=-1;}
     }
     if(a>=0) runs.push([a,P.length-1]);
-    if(runs.length){this.drawWay(L,w,runs);this.drawWalks(L,w,runs);if(w.pa) this.drawStalls(L,w,runs);}
+    if(runs.length){this.drawWay(L,w,runs);this.drawWalks(L,w,runs);if(w.pa) this.drawStalls(L,w,runs);this.drawLights(L,w,runs);}
   }
+  {const T=TN.toLocal(TN.CHAMPLAIN.lng,TN.CHAMPLAIN.lat);if(inCell(T[0],T[1])) this.champlainTower(L);}
   if(this.marks) for(const m of this.marks.values()){
     if(!inCell(m.x,m.z)) continue;
     if(m.kind==='c') this.drawCrosswalk(L,m);else if(m.kind==='s'||m.kind==='y') this.drawSign(L,m);
@@ -715,6 +716,87 @@ TN.Net.prototype.drawStalls=function(L,w,runs){
         if(runA==null) runA=s;runB=s+step;
       }
       flush();
+    }
+  }
+};
+/* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.
+   At night (glow layer) the lamp heads shine white and each lamp casts a soft pool of white LED light on the road. */
+TN.LIGHT={motorway:50,trunk:45,primary:40,secondary:42};
+TN.Net.prototype.drawLights=function(L,w,runs){
+  if(w.tun||w.pa) return;
+  const sp=w.br?40:TN.LIGHT[w.cls];if(!sp) return;
+  const P=w.pts,N=TN.normals(P),hw=TN.width(w)/2,H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
+  for(const [a,b] of runs){
+    for(let s=Math.ceil(w.cum[a]/sp)*sp+sp*0.3;s<w.cum[b];s+=sp){
+      let i=a;while(i<b-1&&w.cum[i+1]<s) i++;
+      const sg=w.cum[i+1]-w.cum[i]||1,t=Math.max(0,Math.min(1,(s-w.cum[i])/sg));
+      const x0=P[i][0]+(P[i+1][0]-P[i][0])*t,z0=P[i][1]+(P[i+1][1]-P[i][1])*t,y0=H(i)+(H(i+1)-H(i))*t;
+      const ux=(P[i+1][0]-P[i][0])/sg,uz=(P[i+1][1]-P[i][1])/sg;
+      /* right side of the driving direction for one-way roads; alternating sides on two-way streets */
+      const k=Math.round(s/sp);let side=w.ow===-1?1:-1;if(!w.ow&&k%2) side=-side;
+      const nx=N[i][0]*side,nz=N[i][1]*side,nl=Math.hypot(nx,nz)||1,ox=nx/nl,oz=nz/nl;
+      const off=w.br||y0>0.5?hw+0.25:hw+0.9,x=x0+ox*off,z=z0+oz*off;
+      if(!w.br&&y0<0.5&&this.nearOther(w,x,z,0.4)) continue;
+      const rx=-ox,rz=-oz,top=y0+8.5;
+      TN.box(L.road,x,z,ux,uz,0.18,0.18,y0,top,TN.C.post);
+      TN.box(L.road,x+rx*1.1,z+rz*1.1,rx,rz,2.2,0.12,top-0.2,top-0.06,TN.C.post);
+      const hx=x+rx*2.2,hz=z+rz*2.2;
+      TN.box(L.road,hx,hz,rx,rz,0.6,0.3,top-0.36,top-0.16,TN.C.lamp);
+      /* night: the lamp's lit underside and its pool of light (bright in the middle, fading out) */
+      const G=L.glow,gc=TN.C.glowc;
+      TN.quad(G,[hx-rx*0.28-ux*0.13,top-0.37,hz-rz*0.28-uz*0.13],[hx+rx*0.28-ux*0.13,top-0.37,hz+rz*0.28-uz*0.13],
+                [hx+rx*0.28+ux*0.13,top-0.37,hz+rz*0.28+uz*0.13],[hx-rx*0.28+ux*0.13,top-0.37,hz-rz*0.28+uz*0.13],[1,1,1]);
+      const px=x+rx*2.8,pz=z+rz*2.8,py=y0+0.1,R=7.5,n=14,c0=G.n;
+      G.p.push(px,py,pz);G.c.push(gc[0]*0.55,gc[1]*0.55,gc[2]*0.55);
+      for(let q=0;q<=n;q++){const an=q/n*Math.PI*2;G.p.push(px+Math.cos(an)*R,py,pz+Math.sin(an)*R*0.8);G.c.push(0,0,0);}
+      for(let q=0;q<n;q++) G.i.push(c0,c0+1+q,c0+2+q);
+      G.n+=n+2;
+    }
+  }
+};
+/* the Samuel-De Champlain Bridge pylon: a twin-leg concrete tower about 168 m tall standing between the two road
+   decks, about 1 km from the Brossard end, with harp-pattern cables (parallel lines) down to both decks: the
+   240 m main span towards Brossard over the Seaway and the 124 m back span towards Nuns' Island.
+   Position estimated from the bridge's published ends and span lengths (within about 100 m). */
+TN.CHAMPLAIN={lng:-73.5048,lat:45.4679};
+TN.Net.prototype.champlainTower=function(L){
+  const T=TN.toLocal(TN.CHAMPLAIN.lng,TN.CHAMPLAIN.lat);
+  /* the two road decks nearest the tower point */
+  const decks=new Map();
+  this.near(T[0],T[1],80,(w,i)=>{if(!w.br||!/champlain/i.test(w.name||'')) return;const r=TN.seg(w,i,T[0],T[1]);
+    const k=w.ow===-1?'b':'f',o=decks.get(k);if(!o||r.d<o.d) decks.set(k,{w:w,i:i,u:r.u,d:r.d,x:r.qx,z:r.qz});});
+  if(!decks.size) return;
+  const D=[...decks.values()];
+  let cx=0,cz=0;for(const d of D){cx+=d.x;cz+=d.z;}cx/=D.length;cz/=D.length;
+  const w0=D[0].w,p0=w0.pts[D[0].i],p1=w0.pts[D[0].i+1];
+  let ax=p1[0]-p0[0],az=p1[1]-p0[1];const al=Math.hypot(ax,az)||1;ax/=al;az/=al;
+  /* main span side: the one heading east (towards Brossard) */
+  const east=ax>=0?1:-1;
+  const nx=-az,nz=ax,deck=TN.heightAt(w0,w0.cum[D[0].i]+D[0].u*(w0.cum[D[0].i+1]-w0.cum[D[0].i]))||15;
+  const G=L.road,top=deck+150;
+  /* two legs leaning in, joined near the top, with a cross beam under the decks */
+  for(const sd of [1,-1]){
+    const seg=[[0,deck+30,9,5.5],[deck+30,deck+95,6.5,4.5],[deck+95,top,4,3.4]];
+    for(const [y0,y1,off,sz] of seg) TN.box(G,cx+nx*sd*off,cz+nz*sd*off,ax,az,sz,sz*0.8,y0,y1,TN.C.tower);
+  }
+  TN.box(G,cx,cz,nx,nz,22,4,deck-4,deck-1.5,TN.C.cap);
+  TN.box(G,cx,cz,nx,nz,9,3.4,top-12,top-8,TN.C.tower);
+  TN.box(G,cx,cz,ax,az,4.5,4.5,top-8,top+4,TN.C.tower);
+  /* harp cables: 15 pairs per side, parallel, from the legs to each deck */
+  const cc=TN.C.cable;
+  for(const d of D){
+    const w=d.w,s0=w.cum[d.i]+d.u*(w.cum[d.i+1]-w.cum[d.i]);
+    const side=Math.sign((d.x-cx)*nx+(d.z-cz)*nz)||1,lx=cx+nx*side*4.5,lz=cz+nz*side*4.5;
+    /* this deck's own drawing direction relative to east */
+    const q0=w.pts[d.i],q1=w.pts[d.i+1],dirE=Math.sign((q1[0]-q0[0])*ax*east+(q1[1]-q0[1])*az*east)||1;
+    /* harp: every cable on a side has the same slope (parallel lines); anchors climb the tower evenly */
+    for(const [span,slope] of [[1,0.62],[-1,1.2]]) for(let k=1;k<=15;k++){
+      const rise=20+k*8.5,sa=s0+dirE*span*rise/slope;if(sa<0||sa>w.L) continue;
+      let i=0;while(i<w.pts.length-2&&w.cum[i+1]<sa) i++;
+      const sg=w.cum[i+1]-w.cum[i]||1,t=Math.max(0,Math.min(1,(sa-w.cum[i])/sg));
+      const bx=w.pts[i][0]+(w.pts[i+1][0]-w.pts[i][0])*t,bz=w.pts[i][1]+(w.pts[i+1][1]-w.pts[i][1])*t,by=TN.heightAt(w,sa)+0.5;
+      const ay=deck+rise;
+      TN.quad(G,[lx,ay,lz],[bx,by,bz],[bx,by+0.3,bz],[lx,ay+0.3,lz],cc);
     }
   }
 };
@@ -932,6 +1014,17 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       wall(L.road,a,b,j=>hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);wall(L.road,a,b,j=>-hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);
     }
     if(!w.br&&w.hs) this.rampPiers(L,w,a,b);
+    /* girders: two beams under the deck of a bridge, seen from the side */
+    if(w.br) for(let i=a;i<b;i++){
+      if(Math.min(H(i),H(i+1))<3) continue;
+      for(const o of [hw*0.55,-hw*0.55]) for(const e of [0.45,-0.45]){
+        const p=(j,y)=>[P[j][0]+N[j][0]*(o+e),y,P[j][1]+N[j][1]*(o+e)];
+        TN.quad(L.road,p(i,H(i)-1.2),p(i+1,H(i+1)-1.2),p(i+1,H(i+1)-2.0),p(i,H(i)-2.0),TN.C.girder);
+      }
+      const q=(j,o,y)=>[P[j][0]+N[j][0]*o,y,P[j][1]+N[j][1]*o];
+      for(const o of [hw*0.55,-hw*0.55]) TN.quad(L.road,q(i,o-0.45,H(i)-2.0),q(i+1,o-0.45,H(i+1)-2.0),q(i+1,o+0.45,H(i+1)-2.0),q(i,o+0.45,H(i)-2.0),TN.C.girder);
+    }
+
     if(w.br&&(w.hs?Math.max(...w.hs):w.H)>=3){
       const step=W>=9?36:28;
       for(let s=Math.ceil(w.cum[a]/step)*step+step/2;s<w.cum[b];s+=step){
@@ -944,7 +1037,9 @@ TN.Net.prototype.drawWay=function(L,w,runs){
         let onRoad=false;
         for(const o of cols){const px=x+nx*o,pz=z+nz*o;this.near(px,pz,0,(v,k)=>{if(v.br||v.tun) return;const r=TN.seg(v,k,px,pz);if(r.d<v.w/2+1.2){onRoad=true;return true;}});}
         if(onRoad) continue;
-        for(const o of cols) TN.box(L.road,x+nx*o,z+nz*o,ux,uz,1.3,1.3,0,dh-1.2,TN.C.pier);
+        /* T-shaped piers: column(s) with a cap beam under the deck */
+        for(const o of cols) TN.box(L.road,x+nx*o,z+nz*o,ux,uz,1.2,1.2,0,dh-2.1,TN.C.pier);
+        TN.box(L.road,x,z,nx,nz,Math.max(3,W*0.82),1.6,dh-2.1,dh-1.2,TN.C.cap);
       }
     }
   }
