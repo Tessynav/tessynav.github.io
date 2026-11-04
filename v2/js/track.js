@@ -235,7 +235,8 @@ TN.Track.prototype.frame=function(now,dt){
       const r=TN.seg(w,bj,car.x,car.z);
       if(r.d<20){s0=r.s;lat0=r.lat*dir;}
     }
-    car={w:w,dir:dir,s:s0,lat:lat0,v:car?car.v:L.v,cv:car&&car.cv||0,x:car?car.x:null,z:car?car.z:null,hd:car?car.hd:h.hd,y:car?car.y:0,gl:lat0};
+    car={w:w,dir:dir,s:s0,lat:lat0,v:car?car.v:L.v,cv:car&&car.cv||0,x:car?car.x:null,z:car?car.z:null,hd:car?car.hd:h.hd,y:car?car.y:0,gl:lat0,
+      ease:{lat0:lat0,s0:s0}};
     this.lane.idx=null;
   }
   /* the car reached the end of its road piece before the matching moved on: continue on the best connected piece */
@@ -246,7 +247,8 @@ TN.Track.prototype.frame=function(now,dt){
       if(k0===endKey&&(!nx||o.cost<nx.cost)) nx=o;}
     if(nx){
       const over=dir>0?car.s-w.L:-car.s;
-      const nc={w:nx.w,dir:nx.dir,s:nx.dir>0?over:nx.w.L-over,lat:car.lat,v:car.v,cv:car.cv,x:car.x,z:car.z,hd:car.hd,y:car.y,gl:car.gl};
+      const ns=nx.dir>0?over:nx.w.L-over;
+      const nc={w:nx.w,dir:nx.dir,s:ns,lat:car.lat,v:car.v,cv:car.cv,x:car.x,z:car.z,hd:car.hd,y:car.y,gl:car.gl,ease:{lat0:car.lat,s0:ns}};
       this.cur=nx;car=nc;this.car=car;
       /* (at most a few road pieces at once, never an endless loop) */
       this.depth=(this.depth||0)+1;
@@ -269,7 +271,14 @@ TN.Track.prototype.frame=function(now,dt){
   /* like Codriver: no lane guessing (the GPS can't tell lanes apart). One-way roads and highways: the car rides in
      the middle of its carriageway. Two-way streets: in the middle of the right half. Steady, no lane jumps. */
   const target=w.ow?0:Math.max(1.2,W/4);
-  car.lat+=(target-car.lat)*(1-Math.exp(-dt/(Math.abs(target-car.lat)>3?0.35:0.9)));
+  if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2) car.ease.lat0=Math.sign(car.ease.lat0)*W/2;
+  if(car.ease){
+    /* after moving onto another road piece (a split, a merge, a turn), the car glides to its new place over the
+       next 35 m of driving, like steering, instead of sliding sideways on the spot */
+    const u=Math.min(1,Math.abs(car.s-car.ease.s0)/35),k=u*u*(3-2*u);
+    car.lat=car.ease.lat0+(target-car.ease.lat0)*k;
+    if(u>=1) car.ease=null;
+  }else car.lat+=(target-car.lat)*(1-Math.exp(-dt/0.9));
   const p=this.pointOn(w,car.s,car.lat,dir);
   car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*8)+360)%360;
   /* corners of the road drawing (and turns from one road piece onto another) are rounded: the shown car follows

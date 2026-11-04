@@ -190,8 +190,10 @@ TN.VERSION='v2 step 1';
         /* matched to Codriver's screenshots: more top-down and close when stopped, more tilted (horizon in view)
            and moderately zoomed out at speed */
         sKmh+=(kmh-sKmh)*Math.min(1,dt*0.8);
-        const sf=Math.pow(Math.min(1,sKmh/60),0.7),y=car.y||0,pitch=54+9*sf;
-        let zoom=21.0-1.1*sf;
+        /* from Codriver on Tessy's screen: tilted enough to see the sky and the city ahead, close when slow,
+           further back at speed */
+        const sf=Math.pow(Math.min(1,sKmh/60),0.7),y=car.y||0,pitch=66+3*sf;
+        let zoom=20.7-0.9*sf;
         {const Hc=map.getContainer().clientHeight||600,c=1.5*Hc*Math.cos(pitch*TN.R)*40075016.7*Math.cos(ll[1]*TN.R)/512;
          /* camera height at a zoom is c/2^zoom: keep it at least 8 m above the car */
          const zMax=Math.log2(c/(y+8));if(zoom>zMax) zoom=zMax;}

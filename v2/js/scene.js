@@ -175,6 +175,11 @@ TN.Scene.prototype.styleMap=function(){
   map.addLayer(this.layer());
 };
 TN.Scene.prototype.applyNight=function(nt){
+  /* a sky above the horizon: blue by day, deep night blue at night */
+  try{
+    if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':TN.mix('#5d8fd1','#0d1830',nt),'horizon-color':TN.mix('#cfe0f2','#2a3a5c',nt),
+      'fog-color':TN.mix('#dfe8ef','#1c2638',nt),'sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.85,'atmosphere-blend':0});
+  }catch(e){}
   try{
     this.map.setPaintProperty('tn-night','fill-opacity',0.25*nt);
     this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#c4bcae','#6b7180',nt));
