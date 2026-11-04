@@ -37,7 +37,8 @@ TN.Net.prototype.makeWay=function(r,isBridge){
   const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
   const w={id:r[0],cls:r[1],ow:r[2]||0,w:r[3]||7,lanes:r[7]||0,name:r[4]||'',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],
     br:false,tun:false,layer:0,H:0,hs:null};
-  if(isBridge){w.layer=r[9]||0;if(r[12]==='t') w.tun=true;else w.br=true;}
+  if(isBridge){w.layer=r[9]||0;w.ramp=!!r[10];if(r[12]==='t') w.tun=true;else w.br=true;}
+  else w.ramp=!!r[9];
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of pts){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
   const pad=w.w/2+3;w.bb=[x0-pad,x1+pad,z0-pad,z1+pad];
   return w;
@@ -215,6 +216,29 @@ TN.Net.prototype.heights=function*(){
     }
   }
   for(const [w,a] of best){if(a.some(h=>h>0.05)) w._hs=Array.from(a);}
+  /* 2b. an exit/entrance ramp only starts climbing once it has separated from the road it splits from: while it still
+     lies on top of that road it stays at that road's height, then rises at most 6% */
+  /* (also any narrower road that splits from / merges into a wider one: the main road wins) */
+  const rank=v=>(v.ramp?0:1000)+TN.width(v);
+  for(const w of ways){
+    if(w._br||!w._hs) continue;
+    const P=w.pts,n=P.length,cap=new Array(n).fill(Infinity);let any=false;
+    for(let j=0;j<n;j++){
+      const x=P[j][0],z=P[j][1],a=P[Math.max(0,j-1)],b=P[Math.min(n-1,j+1)];let tx=b[0]-a[0],tz=b[1]-a[1];const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
+      this.near(x,z,0,(v,k)=>{
+        if(v===w||v.tun||v._br||rank(v)<=rank(w)) return;
+        const r=TN.seg(v,k,x,z);if(Math.abs(r.tx*tx+r.tz*tz)<0.8) return;
+        if(r.d>Math.max(1,(TN.width(v)+TN.width(w))/2-1.5)) return;    /* still overlapping that road */
+        const vh=v._hs?v._hs[k]+(v._hs[k+1]-v._hs[k])*r.u:0;
+        if(vh<w._hs[j]-0.3&&vh<cap[j]){cap[j]=vh;any=true;}
+      });
+    }
+    if(!any) continue;
+    for(let j=1;j<n;j++) cap[j]=Math.min(cap[j],cap[j-1]+0.06*(w.cum[j]-w.cum[j-1]));
+    for(let j=n-2;j>=0;j--) cap[j]=Math.min(cap[j],cap[j+1]+0.06*(w.cum[j+1]-w.cum[j]));
+    for(let j=0;j<n;j++) if(cap[j]<w._hs[j]) w._hs[j]=cap[j];
+  }
+
   /* a bridge piece that sits on the climb toward a higher bridge (its ends are higher than its own height) becomes
      part of that climb: it slopes like the road around it instead of making a step */
   const keyRamp=k=>{let m=0;for(const [w,i] of (this.keys.get(k)||[])){if(w._br) continue;const a=best.get(w);if(a&&a[i]>m) m=a[i];}return m;};
@@ -256,6 +280,9 @@ TN.Net.prototype.heights=function*(){
              with it); a separate road that just runs beside a ramp must not be lifted */
           if(!w._ks) w._ks=new Set(w.keys);
           if(!v.keys.some(q=>w._ks.has(q))) continue;
+          /* a highway/street is never pulled up by an exit or entrance ramp that splits from it (the ramp rises,
+             the main road stays) */
+          if(v.ramp&&!w.ramp) continue;
           const r=TN.seg(v,k,x,z),h=v._hs[k]+(v._hs[k+1]-v._hs[k])*r.u;
           if(h<=bestH+0.05||h>16) continue;
           if(Math.abs(r.tx*tx+r.tz*tz)<0.85) continue;
@@ -408,6 +435,8 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     const p=(j,o)=>[P[j][0]+N[j][0]*o,H(j)+dy,P[j][1]+N[j][1]*o];
     TN.quad(G,p(i,o1(i)),p(i+1,o1(i+1)),p(i+1,o2(i+1)),p(i,o2(i)),col);}};
   const wall=(G,a,b,o,top,bot,col)=>{for(let i=a;i<b;i++){
+    /* walls and barriers only where this part of the road is actually raised (not on its ground-level part) */
+    if(Math.max(H(i),H(i+1))<0.5) continue;
     const t0=H(i)+top,t1=H(i+1)+top,b0=bot(i),b1=bot(i+1);if(t0-b0<0.05&&t1-b1<0.05) continue;
     /* where another road is right beside this edge at about the same height (a ramp joining or leaving the
        highway), there is no wall: you can drive across there */
