@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=24;
+TN.APPBUILD=25;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -12,7 +12,7 @@ TN.APPBUILD=24;
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   const trees=TN.Trees?new TN.Trees(scene,net):null;
-  const buildings=TN.Buildings?new TN.Buildings(scene):null;
+  const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
   const brk={t:0,v:0,d:0,k:0,moved:0};
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;

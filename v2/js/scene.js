@@ -126,6 +126,7 @@ TN.Scene.prototype.loadCar=async function(){
     }
     root.remove(tmp);root.add(body);
     this.addBrakeGlow(body);
+    this.addSilhouette(body);
   }catch(e){console.warn('car model',e.message);}
 };
 TN.Scene.prototype.carMat=function(md){
@@ -136,6 +137,19 @@ TN.Scene.prototype.carMat=function(md){
   if(name==='tail'){const m=new THREE.MeshStandardMaterial({color:0x7a0d10,emissive:0x5a0000,roughness:0.3});(this.tails=this.tails||[]).push(m);return m;}
   return new THREE.MeshStandardMaterial({color:new THREE.Color(c[0],c[1],c[2]),metalness:pbr.metallicFactor!=null?pbr.metallicFactor:0.2,
     roughness:pbr.roughnessFactor!=null?pbr.roughnessFactor:0.6,side:THREE.DoubleSide});
+};
+/* when a building (or anything else) is between the camera and the car, the hidden part of the car is drawn as a
+   soft blue-grey silhouette, so you always see where you are. Drawn after the city but before the car itself. */
+TN.Scene.prototype.addSilhouette=function(body){
+  try{
+    const sm=new THREE.MeshBasicMaterial({color:0x7f9bb8,depthFunc:THREE.GreaterDepth,depthWrite:false});
+    const list=[];body.traverse(o=>{if(o.isMesh&&!(o.parent&&o.parent.name&&/^Wheel/.test(o.parent.name))&&!(this.tails&&this.tails.indexOf(o.material)>=0)) list.push(o);});
+    for(const o of list){
+      const g=new THREE.Mesh(o.geometry,sm);g.position.copy(o.position);g.quaternion.copy(o.quaternion);g.scale.copy(o.scale);
+      g.renderOrder=1;g.frustumCulled=false;o.parent.add(g);
+    }
+    body.traverse(o=>{if(o.isMesh&&o.material!==sm) o.renderOrder=2;});
+  }catch(e){}
 };
 /* a soft red glow behind each tail light, and on the road behind the car, shown while braking */
 TN.Scene.prototype.addBrakeGlow=function(body){
@@ -204,8 +218,8 @@ TN.Scene.prototype.styleMap=function(){
   }
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,
-      paint:{'fill-extrusion-color':TN.farBuildingColor(0),'fill-extrusion-height':['coalesce',['get','render_height'],8],
-        'fill-extrusion-base':['coalesce',['get','render_min_height'],0],'fill-extrusion-opacity':1}});
+      paint:{'fill-extrusion-color':TN.farBuildingColor(0),'fill-extrusion-height':['max',['coalesce',['get','render_height'],8],['+',['coalesce',['feature-state','lift'],0],2]],
+        'fill-extrusion-base':['max',['coalesce',['get','render_min_height'],0],['coalesce',['feature-state','lift'],0]],'fill-extrusion-opacity':1}});
   }
   for(const l of map.getStyle().layers) if(l.type==='fill-extrusion'&&l.id!=='tn-buildings') map.setLayoutProperty(l.id,'visibility','none');
   map.addSource('tn-night',{type:'geojson',data:{type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}}});

@@ -8,8 +8,8 @@
    ?buildings=0 in the address switches the detailed buildings off. Nothing here touches the car or the roads. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.Buildings=function(scene){
-  this.scene=scene;this.on=!(typeof location!=='undefined'&&/[?&]buildings=0/.test(location.search));
+TN.Buildings=function(scene,net){
+  this.scene=scene;this.net=net||null;this.on=!(typeof location!=='undefined'&&/[?&]buildings=0/.test(location.search));
   this.cells=new Map();this.job=null;this.mat=null;this.night=0;this.slowT=0;this.range=1;
 };
 TN.Buildings.prototype.material=function(){
@@ -55,10 +55,35 @@ TN.Buildings.prototype.collect=function(ck){
       /* each building belongs to the area its middle is in (no doubles) */
       if(Math.floor(sx/TN.CELL)!==cx||Math.floor(sy/TN.CELL)!==cy) continue;
       const key=r[0][0].toFixed(6)+','+r[0][1].toFixed(6)+','+H;if(seen.has(key)) continue;seen.add(key);
-      out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B});
+      const ring=r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1]));let Bx=B;
+      /* a building whose footprint crosses a street (a skybridge, a building over a road): there must be room to
+         drive underneath, so it starts high up, also in the map's own building layer further away */
+      if(this.crossesRoad(ring)){Bx=Math.max(B,H>=8?5.5:H*0.55);
+        if(f.id!=null&&B<Bx){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:f.id},{lift:Bx});}catch(e){}}}
+      out.push({ring:ring,H:Math.max(H,Bx+2),B:Bx});
     }
   }
   return out;
+};
+TN.segX=function(a,b,c,d){const cr=(o,p,q)=>(p[0]-o[0])*(q[1]-o[1])-(p[1]-o[1])*(q[0]-o[0]);
+  const d1=cr(c,d,a),d2=cr(c,d,b),d3=cr(a,b,c),d4=cr(a,b,d);return ((d1>0)!==(d2>0))&&((d3>0)!==(d4>0));};
+TN.Buildings.prototype.crossesRoad=function(ring){
+  const net=this.net;if(!net||ring.length<3) return false;
+  let cx=0,cz=0,r=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=ring.length;cz/=ring.length;
+  for(const p of ring) r=Math.max(r,Math.hypot(p[0]-cx,p[1]-cz));if(r>150) return false;
+  let hit=false;
+  net.near(cx,cz,r,(w,i)=>{
+    if(w.tun||w.br||w.pa) return;
+    const a=w.pts[i],b=w.pts[i+1];
+    /* the street's line runs through the footprint: it crosses an edge, or its middle lies inside */
+    const m=[(a[0]+b[0])/2,(a[1]+b[1])/2];let inside=false;
+    for(let k=0,j=ring.length-1;k<ring.length;j=k++){const A=ring[k],B=ring[j];
+      if(((A[1]>m[1])!==(B[1]>m[1]))&&(m[0]<(B[0]-A[0])*(m[1]-A[1])/((B[1]-A[1])||1e-9)+A[0])) inside=!inside;}
+    if(inside){hit=true;return true;}
+    let n=0;for(let k=0;k<ring.length;k++) if(TN.segX(a,b,ring[k],ring[(k+1)%ring.length])) n++;
+    if(n>=2){hit=true;return true;}
+  });
+  return hit;
 };
 TN.Buildings.prototype.palette=function(H,seed){
   const pick=a=>a[seed%a.length];

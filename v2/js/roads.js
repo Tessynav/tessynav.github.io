@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#c62828',signw:'#f4f4f2',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -816,7 +816,7 @@ TN.Net.prototype.drawSign=function(L,m){
   const S=this.signPlace(m);if(!S) return;
   const G=L.road,post=TN.C.post;
   /* post */
-  TN.box(G,S.x,S.z,S.dx,S.dz,0.08,0.08,0,2.2,post);
+  TN.box(G,S.x,S.z,S.dx,S.dz,0.08,0.08,0,m.kind==='s'?1.62:1.5,post);
   /* plate faces the traffic coming towards it (facing -d), both sides drawn */
   const cx=S.x-S.dx*0.06,cz=S.z-S.dz*0.06,cy=2.05;
   const plate=(pts,col)=>{const c=[cx,cy,cz];for(let k=0;k<pts.length;k++){const a=pts[k],b=pts[(k+1)%pts.length];
@@ -824,20 +824,31 @@ TN.Net.prototype.drawSign=function(L,m){
       for(const tri of [[c,A,B],[c,B,A]]){const base=G.n;for(const v of tri){G.p.push(v[0],v[1],v[2]);G.c.push(col[0],col[1],col[2]);}G.i.push(base,base+1,base+2);G.n+=3;}}};
   if(m.kind==='s'){
     const oct=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;oct.push([Math.cos(a)*0.4,Math.sin(a)*0.4]);}
-    plate(oct,TN.C.stopred);
-    /* "ARRÊT" in white block letters across the middle of the sign */
-    const F={A:['01110','10001','10001','11111','10001','10001','10001'],R:['11110','10001','10001','11110','10100','10010','10001'],
-             E:['11111','10000','10000','11110','10000','10000','11111'],T:['11111','00100','00100','00100','00100','00100','00100']};
-    const txt='ARRET',px=0.021,cols=txt.length*6-1,u0=-cols*px/2,v0=3.5*px,wc=TN.C.signw;
-    const tx=cx-S.dx*0.012,tz=cz-S.dz*0.012;
-    const q=(ua,ub,va,vb)=>{const A=[tx+S.rx*ua,cy+va,tz+S.rz*ua],B=[tx+S.rx*ub,cy+va,tz+S.rz*ub],C=[tx+S.rx*ub,cy+vb,tz+S.rz*ub],D=[tx+S.rx*ua,cy+vb,tz+S.rz*ua];
+    /* white border ring, then the red face, then "ARRÊT" in smooth bold strokes */
+    const ring=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;ring.push([Math.cos(a)*0.43,Math.sin(a)*0.43]);}
+    plate(ring,TN.C.signw);
+    {const c0=[cx,cz];const sv={x:cx,z:cz};
+     const face=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;face.push([Math.cos(a)*0.39,Math.sin(a)*0.39]);}
+     const fx=cx-S.dx*0.006,fz=cz-S.dz*0.006;
+     for(let k=0;k<8;k++){const a=face[k],b=face[(k+1)%8];
+       const A=[fx+S.rx*a[0],cy+a[1],fz+S.rz*a[0]],B=[fx+S.rx*b[0],cy+b[1],fz+S.rz*b[0]],C=[fx,cy,fz],col=TN.C.stopred;
+       for(const tri of [[C,A,B],[C,B,A]]){const base=G.n;for(const v of tri){G.p.push(v[0],v[1],v[2]);G.c.push(col[0],col[1],col[2]);}G.i.push(base,base+1,base+2);G.n+=3;}}}
+    const LET={A:[[[0,0],[0.5,1.4],[1,0]],[[0.22,0.55],[0.78,0.55]]],
+      R:[[[0,0],[0,1.4],[0.68,1.4],[0.95,1.22],[0.95,0.93],[0.68,0.75],[0,0.75]],[[0.42,0.75],[1,0]]],
+      E:[[[1,1.4],[0,1.4],[0,0],[1,0]],[[0,0.72],[0.82,0.72]]],
+      T:[[[0,1.4],[1,1.4]],[[0.5,1.4],[0.5,0]]]};
+    const word='ARRET',lw=0.094,gap=0.034,lh=0.15,th=0.029,u0=-(word.length*lw+(word.length-1)*gap)/2,v0=-lh/2;
+    const tx=cx-S.dx*0.012,tz=cz-S.dz*0.012,wc=TN.C.signw;
+    const seg=(ua,va,ub,vb)=>{const du=ub-ua,dv=vb-va,l=Math.hypot(du,dv)||1,pu=-dv/l*th/2,pv=du/l*th/2,eu=du/l*th/2,ev=dv/l*th/2;
+      const P=(u,v)=>[tx+S.rx*u,cy+v,tz+S.rz*u];
+      const A=P(ua-eu+pu,va-ev+pv),B=P(ub+eu+pu,vb+ev+pv),C=P(ub+eu-pu,vb+ev-pv),D=P(ua-eu-pu,va-ev-pv);
       TN.quad(G,A,B,C,D,wc);TN.quad(G,A,D,C,B,wc);};
-    for(let c=0;c<txt.length;c++){const g=F[txt[c]];
-      for(let r=0;r<7;r++){const row=g[r];let k=0;
-        while(k<5){if(row[k]!=='1'){k++;continue;}let e=k;while(e<5&&row[e]==='1') e++;
-          const ua=u0+(c*6+k)*px,ub=u0+(c*6+e)*px,va=v0-r*px,vb=v0-(r+1)*px;q(ua,ub,vb,va);k=e;}}}
-    /* the accent on the Ê */
-    {const ce=u0+(3*6+1)*px;q(ce,ce+3*px,v0+1.6*px,v0+0.7*px);}
+    for(let c=0;c<word.length;c++){
+      const ox=u0+c*(lw+gap);
+      for(const line of LET[word[c]]) for(let k=0;k<line.length-1;k++){const a=line[k],b=line[k+1];
+        seg(ox+a[0]*lw,v0+a[1]/1.4*lh,ox+b[0]*lw,v0+b[1]/1.4*lh);}
+      if(c===3){seg(ox+0.15*lw,v0+lh+0.025,ox+0.5*lw,v0+lh+0.05);seg(ox+0.5*lw,v0+lh+0.05,ox+0.85*lw,v0+lh+0.025);}
+    }
     /* stop line across the lanes going into the junction */
     const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw;
     const p=(o,a)=>[S.lx+S.rx*o+S.dx*a,y,S.lz+S.rz*o+S.dz*a];
