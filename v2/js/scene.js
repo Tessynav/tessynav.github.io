@@ -150,18 +150,24 @@ TN.Scene.prototype.styleMap=function(){
        things the map does, and street names are not needed in the driving view */
     if(l.type==='symbol') map.setLayoutProperty(l.id,'visibility','none');
   }
-  /* ground colours like Codriver: rich grass, deep teal water, muted city ground */
+  /* ground colours: bright and saturated (a painted look): vivid blue-teal water, rich greens in several shades
+     (parks, grass, woods), light warm city ground so the dark roads stand out. Layers that the map style draws
+     half-transparent are made solid, otherwise the colours look washed out. */
+  const solid=(id,prop)=>{try{map.setPaintProperty(id,prop,1);}catch(e){}};
   for(const l of map.getStyle().layers){
     const id=l.id.toLowerCase();
     try{
-      if(l.type==='background') map.setPaintProperty(l.id,'background-color','#8e9188');
+      if(l.type==='background') map.setPaintProperty(l.id,'background-color','#c2c3b6');
       else if(l.type==='fill'){
-        if(/water|ocean|river|lake/.test(id)) map.setPaintProperty(l.id,'fill-color','#1f5f6e');
-        else if(/grass|park|wood|forest|meadow|garden|scrub|farmland|landcover|pitch|golf|cemetery|playground|nature/.test(id)) map.setPaintProperty(l.id,'fill-color','#5a9a45');
-        else if(/landuse|residential|commercial|industrial|retail|school|hospital|railway|airport|parking/.test(id)) map.setPaintProperty(l.id,'fill-color','#90938a');
-        else if(/building/.test(id)) {}
-        else if(/sand|beach/.test(id)) map.setPaintProperty(l.id,'fill-color','#b9a77c');
-      }else if(l.type==='line'&&/water|river|stream|canal/.test(id)) map.setPaintProperty(l.id,'line-color','#1f5f6e');
+        let c=null;
+        if(/water|ocean|river|lake|basin|reservoir/.test(id)) c='#2f9fd6';
+        else if(/wood|forest/.test(id)) c='#3f9a3a';
+        else if(/park|garden|playground|nature|cemetery/.test(id)) c='#5dbb44';
+        else if(/grass|meadow|scrub|farmland|landcover|pitch|golf|village_green|recreation/.test(id)) c='#6cc24a';
+        else if(/sand|beach/.test(id)) c='#e6d39b';
+        else if(/residential|commercial|industrial|retail|school|hospital|railway|airport|parking|landuse/.test(id)) c='#c8c7bb';
+        if(c){map.setPaintProperty(l.id,'fill-color',c);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',c);}catch(e){}}
+      }else if(l.type==='line'&&/water|river|stream|canal/.test(id)){map.setPaintProperty(l.id,'line-color','#2f9fd6');solid(l.id,'line-opacity');}
     }catch(e){}
   }
   if(!map.getLayer('tn-buildings')){
