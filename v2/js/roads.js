@@ -179,24 +179,36 @@ TN.Net.prototype.heights=function*(){
   const val=(H,d)=>H*TN.smooth(1-d/TN.rampLen(H));
   const best=new Map(); /* way id -> per-vertex height */
   const setH=(w,i,h)=>{let a=best.get(w);if(!a){a=new Float64Array(w.pts.length);best.set(w,a);}if(h>a[i]) a[i]=h;};
+  /* the climb follows the road that CONTINUES the bridge (same general direction), not the cross streets at the
+     intersection where a bridge ends: those stay at street level */
+  const unit=(ax,az)=>{const l=Math.hypot(ax,az)||1;return [ax/l,az/l];};
+  const srcDir=new Map();
+  for(const b of brs){
+    if(!(b._H>0)) continue;const n=b.pts.length;
+    srcDir.set(b.keys[0],unit(b.pts[0][0]-b.pts[1][0],b.pts[0][1]-b.pts[1][1]));
+    srcDir.set(b.keys[n-1],unit(b.pts[n-1][0]-b.pts[n-2][0],b.pts[n-1][1]-b.pts[n-2][1]));
+  }
   let ns=0;
   for(const [k0,H] of keyH){
     if(++ns%15===0) yield;
-    const R=TN.rampLen(H),dist=new Map([[k0,0]]),q=[[k0,0]];
+    const R=TN.rampLen(H),dist=new Map([[k0,0]]),q=[[k0,0,srcDir.get(k0)||null]];
     while(q.length){
       let bi=0;for(let j=1;j<q.length;j++) if(q[j][1]<q[bi][1]) bi=j;
-      const [k,d]=q.splice(bi,1)[0];
+      const [k,d,dv]=q.splice(bi,1)[0];
       if(d>dist.get(k)) continue;
       for(const [w,i] of (this.keys.get(k)||[])){
         if(w._br) continue;
-        /* walk both directions along this way from vertex i */
         for(const dir of [1,-1]){
-          let acc=d;
-          for(let j=i;j>=0&&j<w.pts.length;j+=dir){
-            if(j!==i) acc+=Math.abs(w.cum[j]-w.cum[j-dir]);
+          const j1=i+dir;if(j1<0||j1>=w.pts.length) continue;
+          const wd=unit(w.pts[j1][0]-w.pts[i][0],w.pts[j1][1]-w.pts[i][1]);
+          if(dv&&wd[0]*dv[0]+wd[1]*dv[1]<0.6) continue;
+          let acc=d;setH(w,i,val(H,acc));
+          for(let j=j1;j>=0&&j<w.pts.length;j+=dir){
+            acc+=Math.abs(w.cum[j]-w.cum[j-dir]);
             if(acc>=R) break;
             setH(w,j,val(H,acc));
-            if(j!==i){const kj=w.keys[j];if(!dist.has(kj)||acc<dist.get(kj)){dist.set(kj,acc);q.push([kj,acc]);}}
+            const kj=w.keys[j];
+            if(!dist.has(kj)||acc<dist.get(kj)){dist.set(kj,acc);q.push([kj,acc,unit(w.pts[j][0]-w.pts[j-dir][0],w.pts[j][1]-w.pts[j-dir][1])]);}
           }
         }
       }
@@ -240,6 +252,10 @@ TN.Net.prototype.heights=function*(){
         let bestH=cur;
         for(let n=0;n<l.length;n+=2){
           const v=l[n],k=l[n+1];if(v===w) continue;
+          /* only roads that are actually joined to this one (a lane merging in or splitting off shares a point
+             with it); a separate road that just runs beside a ramp must not be lifted */
+          if(!w._ks) w._ks=new Set(w.keys);
+          if(!v.keys.some(q=>w._ks.has(q))) continue;
           const r=TN.seg(v,k,x,z),h=v._hs[k]+(v._hs[k+1]-v._hs[k])*r.u;
           if(h<=bestH+0.05||h>16) continue;
           if(Math.abs(r.tx*tx+r.tz*tz)<0.85) continue;
@@ -252,8 +268,10 @@ TN.Net.prototype.heights=function*(){
     for(const w of gnd) if(w._hs) TN.slope(w);
     if(!changed) break;
   }
-  /* 4. road pieces that meet at a point have the same height there (no steps between pieces) */
-  for(let pass=0;pass<3;pass++){
+  /* 4. road pieces that meet at a point have the same height there (no steps between pieces); repeated until
+     nothing changes any more, so a change can travel along several connected pieces */
+  for(let round=0;round<3;round++){
+  for(let pass=0;pass<12;pass++){
     let changed=false;
     let nk=0;
     for(const l of this.keys.values()){
@@ -272,6 +290,20 @@ TN.Net.prototype.heights=function*(){
     for(const w of gnd) if(w._hs&&this.valleyAcross(w)) changed=true;
     for(const w of gnd) if(w._hs) TN.slope(w);
     if(!changed) break;
+  }
+  /* a bridge whose ends meet roads that ended up higher than the bridge (it sits on a climb): it slopes with them */
+  let conv=false;
+  const endGround=k=>{let m=0;for(const [w,i] of (this.keys.get(k)||[])){if(w._br||w.tun) continue;if(w._hs&&w._hs[i]>m) m=w._hs[i];}return m;};
+  for(const b of ways){
+    if(!b._br||!(b._H>0)) continue;
+    const gA=endGround(b.keys[0]),gB=endGround(b.keys[b.keys.length-1]);
+    if(Math.max(gA,gB)<=b._H+0.3) continue;
+    const A=Math.max(b._H,gA),B=Math.max(b._H,gB);
+    b._br=false;b._hs=b.cum.map(c=>A+(B-A)*(c/(b.L||1)));conv=true;
+  }
+  if(!conv) break;
+  gnd=ways.filter(w=>!w._br);
+  yield;
   }
 };
 /* highest height within 200 m beyond one end of a road piece, on the pieces that continue it */
@@ -381,7 +413,10 @@ TN.Net.prototype.drawWay=function(L,w,runs){
        highway), there is no wall: you can drive across there */
     {const oi=o(i),oj=o(i+1),sg=Math.sign(oi+oj)||1,mx=(P[i][0]+P[i+1][0])/2+(N[i][0]+N[i+1][0])/2*((oi+oj)/2+sg*1.5),
       mz=(P[i][1]+P[i+1][1])/2+(N[i][1]+N[i+1][1])/2*((oi+oj)/2+sg*1.5);
-     if(net.onOther(w,mx,mz,(H(i)+H(i+1))/2)) continue;}
+     if(net.onOther(w,mx,mz,(H(i)+H(i+1))/2)) continue;
+     /* the edge itself runs across another road at the same height (a street joining the ramp): no wall either */
+     const ex=(P[i][0]+P[i+1][0])/2+(N[i][0]+N[i+1][0])/2*(oi+oj)/2,ez=(P[i][1]+P[i+1][1])/2+(N[i][1]+N[i+1][1])/2*(oi+oj)/2;
+     if(net.onOther(w,ex,ez,(H(i)+H(i+1))/2)) continue;}
     const p=(j,h)=>[P[j][0]+N[j][0]*o(j),h,P[j][1]+N[j][1]*o(j)];
     TN.quad(G,p(i,b0),p(i+1,b1),p(i+1,t1),p(i,t0),col);}};
   const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
