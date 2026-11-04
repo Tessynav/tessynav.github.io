@@ -988,11 +988,14 @@ TN.Net.prototype.drawSign=function(L,m){
   if(m.kind==='s'){
     const oct=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;oct.push([Math.cos(a)*0.4,Math.sin(a)*0.4]);}
     /* white border ring, then the red face, then "ARRÊT" in smooth bold strokes */
-    const ring=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;ring.push([Math.cos(a)*0.43,Math.sin(a)*0.43]);}
-    plate(ring,TN.C.signw);
+    /* white border: a ring around the red face (the two never overlap, so they can't flicker) */
+    for(let k=0;k<8;k++){const a0=Math.PI/8+k*Math.PI/4,a1=a0+Math.PI/4;
+      const o0=[Math.cos(a0)*0.43,Math.sin(a0)*0.43],o1=[Math.cos(a1)*0.43,Math.sin(a1)*0.43],i0=[Math.cos(a0)*0.39,Math.sin(a0)*0.39],i1=[Math.cos(a1)*0.39,Math.sin(a1)*0.39];
+      const P3=q=>[cx+S.rx*q[0],cy+q[1],cz+S.rz*q[0]];
+      TN.quad(G,P3(o0),P3(o1),P3(i1),P3(i0),TN.C.signw);TN.quad(G,P3(o0),P3(i0),P3(i1),P3(o1),TN.C.signw);}
     {const c0=[cx,cz];const sv={x:cx,z:cz};
      const face=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;face.push([Math.cos(a)*0.39,Math.sin(a)*0.39]);}
-     const fx=cx-S.dx*0.006,fz=cz-S.dz*0.006;
+     const fx=cx,fz=cz;
      for(let k=0;k<8;k++){const a=face[k],b=face[(k+1)%8];
        const A=[fx+S.rx*a[0],cy+a[1],fz+S.rz*a[0]],B=[fx+S.rx*b[0],cy+b[1],fz+S.rz*b[0]],C=[fx,cy,fz],col=TN.C.stopred;
        for(const tri of [[C,A,B],[C,B,A]]){const base=G.n;for(const v of tri){G.p.push(v[0],v[1],v[2]);G.c.push(col[0],col[1],col[2]);}G.i.push(base,base+1,base+2);G.n+=3;}}}
@@ -1001,7 +1004,7 @@ TN.Net.prototype.drawSign=function(L,m){
       E:[[[1,1.4],[0,1.4],[0,0],[1,0]],[[0,0.72],[0.82,0.72]]],
       T:[[[0,1.4],[1,1.4]],[[0.5,1.4],[0.5,0]]]};
     const word='ARRET',lw=0.094,gap=0.034,lh=0.15,th=0.029,u0=-(word.length*lw+(word.length-1)*gap)/2,v0=-lh/2;
-    const tx=cx-S.dx*0.012,tz=cz-S.dz*0.012,wc=TN.C.signw;
+    const tx=cx-S.dx*0.03,tz=cz-S.dz*0.03,wc=TN.C.signw;
     const seg=(ua,va,ub,vb)=>{const du=ub-ua,dv=vb-va,l=Math.hypot(du,dv)||1,pu=-dv/l*th/2,pv=du/l*th/2,eu=du/l*th/2,ev=dv/l*th/2;
       const P=(u,v)=>[tx+S.rx*u,cy+v,tz+S.rz*u];
       const A=P(ua-eu+pu,va-ev+pv),B=P(ub+eu+pu,vb+ev+pv),C=P(ub+eu-pu,vb+ev-pv),D=P(ua-eu-pu,va-ev-pv);
@@ -1021,7 +1024,7 @@ TN.Net.prototype.drawSign=function(L,m){
     const c=[cx-S.dx*0.01,cz-S.dz*0.01];
     const inner=[[-0.3,0.17],[0.3,0.17],[0,-0.35]];
     const G2=G;const col=TN.C.signw;
-    for(const tri of [[0,1,2],[0,2,1]]){const base=G2.n;for(const k of tri){const a=inner[k];G2.p.push(c[0]+S.rx*a[0]-S.dx*0.005,cy+a[1],c[1]+S.rz*a[0]-S.dz*0.005);G2.c.push(col[0],col[1],col[2]);}G2.i.push(base,base+1,base+2);G2.n+=3;}
+    for(const tri of [[0,1,2],[0,2,1]]){const base=G2.n;for(const k of tri){const a=inner[k];G2.p.push(c[0]+S.rx*a[0]-S.dx*0.03,cy+a[1],c[1]+S.rz*a[0]-S.dz*0.03);G2.c.push(col[0],col[1],col[2]);}G2.i.push(base,base+1,base+2);G2.n+=3;}
   }
 };
 TN.Net.prototype.drawWay=function(L,w,runs){

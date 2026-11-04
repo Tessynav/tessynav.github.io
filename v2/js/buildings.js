@@ -58,6 +58,7 @@ TN.Buildings.prototype.collect=function(ck){
       if(Math.floor(sx/TN.CELL)!==cx||Math.floor(sy/TN.CELL)!==cy) continue;
       const key=r[0][0].toFixed(6)+','+r[0][1].toFixed(6)+','+H;if(seen.has(key)) continue;seen.add(key);
       out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B,id:f.id});
+      this.idSeen=(this.idSeen||0)+1;if(f.id==null) this.idMissing=(this.idMissing||0)+1;
     }
   }
   return out;
@@ -197,6 +198,10 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   }
   if(!best) return;
   const t0=performance.now(),list=this.collect(best.k);
+  if(!this.noIdMode&&(this.idSeen||0)>200&&(this.idMissing||0)>this.idSeen*0.5){
+    this.noIdMode=true;this.range=Math.max(this.range,2);
+    try{this.scene.map.setLayoutProperty('tn-buildings','visibility','none');}catch(e){}
+  }
   let sg=null;if(this.net&&list.length){const [x,y]=best.k.split(',').map(Number),a=TN.toLocal(x*TN.CELL,(y+1)*TN.CELL),b=TN.toLocal((x+1)*TN.CELL,y*TN.CELL);
     sg=this.net.segGrid([Math.min(a[0],b[0])-20,Math.max(a[0],b[0])+20,Math.min(a[1],b[1])-20,Math.max(a[1],b[1])+20]);}
   this.job={k:best.k,list:list,i:0,tries:best.tries,G:{p:[],n:[],c:[],w:[],i:[],cnt:0},ids:[],sg:sg};
