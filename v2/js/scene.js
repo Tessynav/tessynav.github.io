@@ -148,14 +148,21 @@ TN.Scene.prototype.carMat=function(md){
 /* when a building (or anything else) is between the camera and the car, the hidden part of the car is drawn as a
    soft blue-grey silhouette, so you always see where you are. Drawn after the city but before the car itself. */
 TN.Scene.prototype.addSilhouette=function(body){
+  /* the real car, see-through: where something hides the car, its hidden parts are drawn with their own colours
+     but faint (a fine dither pattern lets the building show through), so you see Tessy herself through it */
   try{
-    const sm=new THREE.MeshBasicMaterial({color:0x7f9bb8,depthFunc:THREE.GreaterDepth,depthWrite:false});
-    const list=[];body.traverse(o=>{if(o.isMesh&&!(o.parent&&o.parent.name&&/^Wheel/.test(o.parent.name))&&!(this.tails&&this.tails.indexOf(o.material)>=0)) list.push(o);});
+    const list=[];body.traverse(o=>{if(o.isMesh&&!o.userData.ghost) list.push(o);});
+    const cache=new Map();
     for(const o of list){
-      const g=new THREE.Mesh(o.geometry,sm);g.position.copy(o.position);g.quaternion.copy(o.quaternion);g.scale.copy(o.scale);
+      let gm=cache.get(o.material);
+      if(!gm){gm=o.material.clone();gm.depthFunc=THREE.GreaterDepth;gm.depthWrite=false;gm.transparent=false;
+        gm.alphaHash=true;gm.opacity=0.55;cache.set(o.material,gm);}
+      const g=new THREE.Mesh(o.geometry,gm);g.userData.ghost=true;
+      g.position.copy(o.position);g.quaternion.copy(o.quaternion);g.scale.copy(o.scale);
       g.renderOrder=5;g.frustumCulled=false;o.parent.add(g);
     }
-    body.traverse(o=>{if(o.isMesh&&o.material!==sm) o.renderOrder=6;});
+    for(const o of list) o.renderOrder=6;
+    this.ghostMats=[...cache.values()];
   }catch(e){}
 };
 /* a soft red glow behind each tail light, and on the road behind the car, shown while braking */

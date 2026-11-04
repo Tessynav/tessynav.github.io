@@ -784,7 +784,9 @@ TN.Net.prototype.drawRem=function(L,w,a,b){
 };
 /* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.
    At night (glow layer) the lamp heads shine white and each lamp casts a soft pool of white LED light on the road. */
-TN.LIGHT={motorway:50,trunk:45,primary:40,secondary:42};
+TN.LIGHT={motorway:50,trunk:45,primary:40,secondary:42,tertiary:45,minor:55};
+/* lamp height: tall on highways and main streets, lower on residential streets */
+TN.LAMPH={motorway:9.5,trunk:9,primary:8.5,secondary:8.5,tertiary:7.5,minor:6.5};
 TN.Net.prototype.drawLights=function(L,w,runs){
   if(w.tun||w.pa) return;
   const sp=w.br?40:TN.LIGHT[w.cls];if(!sp) return;
@@ -796,11 +798,11 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       const x0=P[i][0]+(P[i+1][0]-P[i][0])*t,z0=P[i][1]+(P[i+1][1]-P[i][1])*t,y0=H(i)+(H(i+1)-H(i))*t;
       const ux=(P[i+1][0]-P[i][0])/sg,uz=(P[i+1][1]-P[i][1])/sg;
       /* right side of the driving direction for one-way roads; alternating sides on two-way streets */
-      const k=Math.round(s/sp);let side=w.ow===-1?1:-1;if(!w.ow&&k%2) side=-side;
+      const k=Math.round(s/sp);let side=w.ow===-1?1:-1;if(!w.ow&&k%2&&w.cls!=='minor') side=-side;
       const nx=N[i][0]*side,nz=N[i][1]*side,nl=Math.hypot(nx,nz)||1,ox=nx/nl,oz=nz/nl;
       const off=w.br||y0>0.5?hw+0.25:hw+0.9,x=x0+ox*off,z=z0+oz*off;
       if(!w.br&&y0<0.5&&this.nearOther(w,x,z,0.4)) continue;
-      const rx=-ox,rz=-oz,top=y0+8.5;
+      const rx=-ox,rz=-oz,top=y0+(w.br?8.5:(TN.LAMPH[w.cls]||8));
       TN.box(L.road,x,z,ux,uz,0.18,0.18,y0,top,TN.C.post);
       TN.box(L.road,x+rx*1.1,z+rz*1.1,rx,rz,2.2,0.12,top-0.2,top-0.06,TN.C.post);
       const hx=x+rx*2.2,hz=z+rz*2.2;
