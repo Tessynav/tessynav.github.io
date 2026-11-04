@@ -10,7 +10,7 @@ TN.VERSION='v2 step 1';
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0;
+  let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
   /* ---------- panel ---------- */
   function panel(html,buttons){
@@ -63,11 +63,18 @@ TN.VERSION='v2 step 1';
     wantPacks(c.longitude,c.latitude);
   }
   $('btn').onclick=()=>{
-    follow=true;$('btn').textContent='Recenter';
+    follow=true;userZoom=0;$('btn').textContent='Recenter';
     if(watchId===null) watchId=navigator.geolocation.watchPosition(onPos,()=>{$('status').textContent='Location not available';},
       {enableHighAccuracy:true,maximumAge:0,timeout:15000});
   };
-  map.on('dragstart',()=>{follow=false;});
+  /* using the screen while following:
+     - pinch / zoom buttons / scroll: your zoom is kept as an offset, and the map keeps following the car
+     - dragging, rotating or tilting by hand: following pauses so you can look around; Recenter brings it back */
+  let userZoom=0;
+  map.on('zoom',e=>{if(follow&&e.originalEvent) userZoom=Math.max(-4,Math.min(3,map.getZoom()-autoZoom));});
+  map.on('dragstart',e=>{if(e.originalEvent) follow=false;});
+  map.on('rotatestart',e=>{if(e.originalEvent) follow=false;});
+  map.on('pitchstart',e=>{if(e.originalEvent) follow=false;});
 
   /* ---------- recording ---------- */
   $('rec').onclick=async()=>{
@@ -196,7 +203,7 @@ TN.VERSION='v2 step 1';
         let zoom=20.7-0.9*sf;
         {const Hc=map.getContainer().clientHeight||600,c=1.5*Hc*Math.cos(pitch*TN.R)*40075016.7*Math.cos(ll[1]*TN.R)/512;
          /* camera height at a zoom is c/2^zoom: keep it at least 8 m above the car */
-         const zMax=Math.log2(c/(y+8));if(zoom>zMax) zoom=zMax;}
+         zMaxNow=Math.log2(c/(y+8));if(zoom>zMaxNow) zoom=zMaxNow;}
         gZoom+=(zoom-gZoom)*Math.min(1,dt*1.2);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
         camY+=(y-camY)*Math.min(1,dt*4);
         const H=map.getContainer().clientHeight||800;
@@ -208,7 +215,8 @@ TN.VERSION='v2 step 1';
           const d=camY*Math.tan(gPitch*TN.R),hr=camHd*TN.R;
           aim=TN.fromLocal(car.x+Math.sin(hr)*d,car.z-Math.cos(hr)*d);
         }
-        const view={center:aim,bearing:camHd,zoom:gZoom,pitch:gPitch,padding:{top:Math.round(H*0.56),bottom:0,left:0,right:0}};
+        autoZoom=gZoom;
+        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow),pitch:gPitch,padding:{top:Math.round(H*0.56),bottom:0,left:0,right:0}};
         map.jumpTo(view);
       }
       scene.update(ll[0],ll[1]);
