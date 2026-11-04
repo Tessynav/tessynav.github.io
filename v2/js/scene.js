@@ -125,6 +125,7 @@ TN.Scene.prototype.loadCar=async function(){
       }
     }
     root.remove(tmp);root.add(body);
+    this.addBrakeGlow(body);
   }catch(e){console.warn('car model',e.message);}
 };
 TN.Scene.prototype.carMat=function(md){
@@ -136,9 +137,34 @@ TN.Scene.prototype.carMat=function(md){
   return new THREE.MeshStandardMaterial({color:new THREE.Color(c[0],c[1],c[2]),metalness:pbr.metallicFactor!=null?pbr.metallicFactor:0.2,
     roughness:pbr.roughnessFactor!=null?pbr.roughnessFactor:0.6,side:THREE.DoubleSide});
 };
-/* brake lights: 0 = normal tail lights, 1 = braking (bright red glow) */
+/* a soft red glow behind each tail light, and on the road behind the car, shown while braking */
+TN.Scene.prototype.addBrakeGlow=function(body){
+  try{
+    const cv=document.createElement('canvas');cv.width=cv.height=64;const g=cv.getContext('2d');
+    const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,60,50,1)');gr.addColorStop(0.35,'rgba(255,30,30,0.55)');gr.addColorStop(1,'rgba(255,0,0,0)');
+    g.fillStyle=gr;g.fillRect(0,0,64,64);
+    const tex=new THREE.CanvasTexture(cv);
+    /* where the tail lights are, from the model's own tail-light parts */
+    const box=new THREE.Box3();let found=false;
+    body.updateMatrixWorld(true);
+    body.traverse(o=>{if(o.isMesh&&this.tails&&this.tails.indexOf(o.material)>=0){box.expandByObject(o);found=true;}});
+    if(!found) return;
+    const c=new THREE.Vector3();box.getCenter(c);const size=new THREE.Vector3();box.getSize(size);
+    const back=Math.sign(c.z)||1;
+    this.glows=[];
+    for(const sx of [-1,1]){
+      const m=new THREE.SpriteMaterial({map:tex,color:0xffffff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
+      const sp=new THREE.Sprite(m);sp.scale.set(0.9,0.6,1);sp.position.set(c.x+sx*size.x*0.42,c.y,c.z+back*0.15);body.add(sp);this.glows.push(m);
+    }
+    const gm=new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
+    const plane=new THREE.Mesh(new THREE.PlaneGeometry(2.6,2.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.04,c.z+back*1.4);
+    body.add(plane);this.glows.push(gm);this.glowGround=gm;
+  }catch(e){}
+};
+/* brake lights: 0 = normal tail lights, 1 = braking (bright red, with glow) */
 TN.Scene.prototype.setBrake=function(k){
   if(!this.tails||this.brakeK===k) return;this.brakeK=k;
+  if(this.glows) for(const m of this.glows) m.opacity=(m===this.glowGround?0.45:0.95)*k;
   for(const m of this.tails){m.emissive.setRGB(0.35+0.65*k,0.02*(1-k),0.02*(1-k));m.emissiveIntensity=1+1.6*k;m.color.setRGB(0.48+0.5*k,0.05,0.06);}
 };
 TN.Scene.prototype.placeCar=function(x,z,y,hd){
@@ -178,7 +204,7 @@ TN.Scene.prototype.styleMap=function(){
   }
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,
-      paint:{'fill-extrusion-color':'#c4bcae','fill-extrusion-height':['coalesce',['get','render_height'],8],
+      paint:{'fill-extrusion-color':TN.farBuildingColor(0),'fill-extrusion-height':['coalesce',['get','render_height'],8],
         'fill-extrusion-base':['coalesce',['get','render_min_height'],0],'fill-extrusion-opacity':1}});
   }
   for(const l of map.getStyle().layers) if(l.type==='fill-extrusion'&&l.id!=='tn-buildings') map.setLayoutProperty(l.id,'visibility','none');
@@ -194,9 +220,14 @@ TN.Scene.prototype.applyNight=function(nt){
   }catch(e){}
   try{
     this.map.setPaintProperty('tn-night','fill-opacity',0.16*nt);
-    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#c4bcae','#7d8494',nt));
+    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.farBuildingColor(nt));
   }catch(e){}
   this.setNight(nt);
+};
+/* buildings further away (the map's own): coloured by height like the detailed ones, instead of plain cement */
+TN.farBuildingColor=function(nt){
+  const d=c=>TN.mix(c,'#4e5463',nt*0.75);
+  return ['step',['coalesce',['get','render_height'],8],d('#b47862'),13,d('#cfc6b4'),32,d('#a7b4c1')];
 };
 TN.mix=function(a,b,t){
   const pa=[1,3,5].map(i=>parseInt(a.substr(i,2),16)),pb=[1,3,5].map(i=>parseInt(b.substr(i,2),16));
