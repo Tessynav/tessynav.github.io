@@ -84,7 +84,7 @@ TN.Scene.prototype.update=function(lng,lat){
   TN.prof('roads',performance.now()-t0);
 };
 TN.Scene.prototype.setNight=function(nt){
-  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#a9b2c4',nt));
+  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#c2c9d6',nt));
   for(const k in this.mats) this.mats[k].color.copy(c);
 };
 /* ---------- the car (Tessy's real model, model3.glb in the site's main folder) ---------- */
@@ -154,11 +154,11 @@ TN.Scene.prototype.styleMap=function(){
   for(const l of map.getStyle().layers){
     const id=l.id.toLowerCase();
     try{
-      if(l.type==='background') map.setPaintProperty(l.id,'background-color','#6f7268');
+      if(l.type==='background') map.setPaintProperty(l.id,'background-color','#8e9188');
       else if(l.type==='fill'){
         if(/water|ocean|river|lake/.test(id)) map.setPaintProperty(l.id,'fill-color','#1f5f6e');
-        else if(/grass|park|wood|forest|meadow|garden|scrub|farmland|landcover|pitch|golf|cemetery|playground|nature/.test(id)) map.setPaintProperty(l.id,'fill-color','#4f8d3d');
-        else if(/landuse|residential|commercial|industrial|retail|school|hospital|railway|airport|parking/.test(id)) map.setPaintProperty(l.id,'fill-color','#7a7d75');
+        else if(/grass|park|wood|forest|meadow|garden|scrub|farmland|landcover|pitch|golf|cemetery|playground|nature/.test(id)) map.setPaintProperty(l.id,'fill-color','#5a9a45');
+        else if(/landuse|residential|commercial|industrial|retail|school|hospital|railway|airport|parking/.test(id)) map.setPaintProperty(l.id,'fill-color','#90938a');
         else if(/building/.test(id)) {}
         else if(/sand|beach/.test(id)) map.setPaintProperty(l.id,'fill-color','#b9a77c');
       }else if(l.type==='line'&&/water|river|stream|canal/.test(id)) map.setPaintProperty(l.id,'line-color','#1f5f6e');
@@ -176,8 +176,8 @@ TN.Scene.prototype.styleMap=function(){
 };
 TN.Scene.prototype.applyNight=function(nt){
   try{
-    this.map.setPaintProperty('tn-night','fill-opacity',0.38*nt);
-    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#c4bcae','#4a4f5c',nt));
+    this.map.setPaintProperty('tn-night','fill-opacity',0.25*nt);
+    this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.mix('#c4bcae','#6b7180',nt));
   }catch(e){}
   this.setNight(nt);
 };
