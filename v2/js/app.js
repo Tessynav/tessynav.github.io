@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=21;
+TN.APPBUILD=22;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -172,15 +172,19 @@ TN.APPBUILD=21;
   },120000);
 
   /* ---------- night ---------- */
+  let lastNt=0;
   function night(){
     const c=map.getCenter(),alt=TN.sunAlt(new Date(),c.lat,c.lng);
-    const nt=Math.min(1,Math.max(0,(6-alt)/12));
+    const nt=Math.min(1,Math.max(0,(6-alt)/12));lastNt=nt;
     if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);}
   }
   setInterval(night,60000);
 
   /* ---------- main loop ---------- */
-  map.on('load',()=>{scene.styleMap();ready=true;night();});
+  map.on('load',()=>{scene.styleMap();ready=true;night();
+    /* opening animation: the city in glowing lines with the TessyNav name, then real colours */
+    if(TN.Intro){try{new TN.Intro(scene,map).start(scene.pendingNt!=null?scene.pendingNt:lastNt);}catch(e){}}
+  });
   /* snapshots are taken right after the map is drawn (the picture is only complete at that moment) */
   map.on('render',()=>{if(rec.rec) rec.shoot(map.getCanvas());});
   let last=performance.now(),fpsN=0,fpsT=performance.now(),worst=0,lastRec=0,prevCar=null,lastFps=0;

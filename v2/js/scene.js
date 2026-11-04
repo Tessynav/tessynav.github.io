@@ -213,6 +213,7 @@ TN.Scene.prototype.styleMap=function(){
   map.addLayer(this.layer());
 };
 TN.Scene.prototype.applyNight=function(nt){
+  if(this.introActive){this.pendingNt=nt;this.setNight(nt);return;}   /* the intro restores the sky when it ends */
   /* a sky above the horizon: blue by day, deep night blue at night */
   try{
     if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':TN.mix('#5d8fd1','#0d1830',nt),'horizon-color':TN.mix('#cfe0f2','#2a3a5c',nt),
