@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=18;
+TN.APPBUILD=19;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -235,8 +235,10 @@ TN.APPBUILD=18;
         const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow),pitch:gPitch,padding:{top:Math.round(H*0.56),bottom:0,left:0,right:0}};
         map.jumpTo(view);
       }
-      scene.update(ll[0],ll[1]);
-      if(trees){try{trees.update(ll[0],ll[1],lastFps);}catch(e){}}
+      /* roads and trees are built around the car while following, and around what you look at when you browse */
+      const ac=follow?{lng:ll[0],lat:ll[1]}:map.getCenter();
+      scene.update(ac.lng,ac.lat);
+      if(trees){try{trees.update(ac.lng,ac.lat,lastFps);}catch(e){}}
       if(rec.rec&&Date.now()-lastRec>=500){
         lastRec=Date.now();rec.frame(car,map.getZoom(),follow);
         /* something looks wrong: take a snapshot right away */
@@ -251,6 +253,7 @@ TN.APPBUILD=18;
       }
     }else{
       const c=map.getCenter();scene.update(c.lng,c.lat);
+      if(trees){try{trees.update(c.lng,c.lat,lastFps);}catch(e){}}
     }
   }
   requestAnimationFrame(loop);

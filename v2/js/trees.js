@@ -94,7 +94,8 @@ TN.Trees.prototype.greenFor=function(ck){
   return out;
 };
 TN.Trees.prototype.build=function(ck){
-  const street=this.buckets.get(ck)||[],b=street.concat(this.greenFor(ck));if(!b.length) return null;
+  const green=this.greenFor(ck);this.lastGreen=green.length;
+  const street=this.buckets.get(ck)||[],b=street.concat(green);if(!b.length) return null;
   const net=this.net,keep=[];
   for(let i=0;i<b.length&&keep.length<2200*4;i+=4){
     const x=b[i],z=b[i+1];let onRoad=false;
@@ -149,14 +150,21 @@ TN.Trees.prototype.update=function(lng,lat,fps){
   const now=performance.now();if(now-this.lastBuild<300) return;
   let best=null;
   for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
-    const k=(cx+dx)+','+(cy+dy);if(this.cells.has(k)) continue;
+    const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k);
+    if(e){
+      if(e.green||e.tries>=3||now-e.t<4000) continue;
+      this.free(k);this.cells.set(k,{grp:null,green:0,t:now,tries:e.tries+1});this.cells.delete(k);
+      const d=dx*dx+dy*dy;if(!best||d<best.d) best={k:k,d:d,tries:e.tries+1};continue;
+    }
     const d=dx*dx+dy*dy;if(!best||d<best.d) best={k:k,d:d};
   }
   if(!best||!this.net.ways.size||this.net.job) return;
   this.lastBuild=now;
   const t0=performance.now(),grp=this.build(best.k);
   if(grp) this.scene.three.scene.add(grp);
-  this.cells.set(best.k,{grp:grp});
+  /* if the map's green shapes for this area were not loaded yet, build it again a little later (up to 3 times) */
+  const tries=best.tries||0;
+  this.cells.set(best.k,{grp:grp,green:this.lastGreen||0,t:now,tries:tries});
   TN.prof('trees',performance.now()-t0);
 };
 TN.Trees.prototype.setNight=function(nt){
