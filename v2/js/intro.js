@@ -49,7 +49,7 @@ TN.Intro.prototype.frame=function(){
   const ts=this.tSolid||1e9,k=Math.min(1,Math.max(0,(t-ts)/0.8)),fade=k*k*(3-2*k);
   if(this.tSolid&&t-ts>0.2&&s.three.scene.overrideMaterial){s.three.scene.overrideMaterial=null;this.restoreColors();try{m.setLayoutProperty('tn-buildings','visibility','visible');}catch(e){}
     document.body.classList.remove('tn-intro');}
-  try{m.setPaintProperty('tn-night','fill-opacity',0.93+(0.16*this.nt-0.93)*fade);}catch(e){}
+  try{m.setPaintProperty('tn-night','fill-opacity',0.93*(1-fade));}catch(e){}
   if(this.mat) this.mat.opacity=0.85*(1-fade);
   this.draw(t,1-fade);
   if(this.tSolid&&t-ts>=0.85){this.finish();return;}

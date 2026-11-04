@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=27;
+TN.APPBUILD=28;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -192,7 +192,9 @@ TN.APPBUILD=27;
   let lastNt=0;
   function night(){
     const c=map.getCenter(),alt=TN.sunAlt(new Date(),c.lat,c.lng);
-    const nt=Math.min(1,Math.max(0,(6-alt)/12));lastNt=nt;
+    let nt=Math.min(1,Math.max(0,(6-alt)/12));
+    {const mm=typeof location!=='undefined'&&location.search.match(/[?&]night=([0-9.]+)/);if(mm) nt=Math.min(1,Math.max(0,parseFloat(mm[1])));}
+    lastNt=nt;
     if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);if(rem) rem.setNight(nt);}
   }
   setInterval(night,60000);

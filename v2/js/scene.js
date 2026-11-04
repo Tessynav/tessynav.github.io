@@ -121,8 +121,8 @@ TN.Scene.prototype.update=function(lng,lat){
   TN.prof('roads',performance.now()-t0);
 };
 TN.Scene.prototype.setNight=function(nt){
-  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#9aa3b6',nt));
-  for(const k in this.mats) if(k!=='glow') this.mats[k].color.copy(c);
+  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#6f7686',nt)),cm=new THREE.Color(TN.mix('#ffffff','#c9d0de',nt));
+  for(const k in this.mats) if(k!=='glow') this.mats[k].color.copy(k==='mark'?cm:c);
   this.glowOp=Math.max(0,Math.min(1,(nt-0.45)/0.35));   /* street lights only once it is really getting dark */if(this.mats.glow) this.mats.glow.opacity=this.glowOp;
 };
 /* ---------- the car (Tessy's real model, model3.glb in the site's main folder) ---------- */
@@ -254,10 +254,11 @@ TN.Scene.prototype.styleMap=function(){
      (parks, grass, woods), light warm city ground so the dark roads stand out. Layers that the map style draws
      half-transparent are made solid, otherwise the colours look washed out. */
   const solid=(id,prop)=>{try{map.setPaintProperty(id,prop,1);}catch(e){}};
+  this.dayPaint=[];
   for(const l of map.getStyle().layers){
     const id=l.id.toLowerCase();
     try{
-      if(l.type==='background') map.setPaintProperty(l.id,'background-color','#c2c3b6');
+      if(l.type==='background'){map.setPaintProperty(l.id,'background-color','#c2c3b6');this.dayPaint.push([l.id,'background-color','#c2c3b6','#3a3f48']);}
       else if(l.type==='fill'){
         let c=null;
         if(/water|ocean|river|lake|basin|reservoir/.test(id)) c='#2f9fd6';
@@ -266,8 +267,10 @@ TN.Scene.prototype.styleMap=function(){
         else if(/grass|meadow|scrub|farmland|landcover|pitch|golf|village_green|recreation/.test(id)) c='#6cc24a';
         else if(/sand|beach/.test(id)) c='#e6d39b';
         else if(/residential|commercial|industrial|retail|school|hospital|railway|airport|parking|landuse/.test(id)) c='#c8c7bb';
-        if(c){map.setPaintProperty(l.id,'fill-color',c);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',c);}catch(e){}}
-      }else if(l.type==='line'&&/water|river|stream|canal/.test(id)){map.setPaintProperty(l.id,'line-color','#2f9fd6');solid(l.id,'line-opacity');}
+        if(c){map.setPaintProperty(l.id,'fill-color',c);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',c);}catch(e){}
+          this.dayPaint.push([l.id,'fill-color',c,TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);}
+      }else if(l.type==='line'&&/water|river|stream|canal/.test(id)){map.setPaintProperty(l.id,'line-color','#2f9fd6');solid(l.id,'line-opacity');
+        this.dayPaint.push([l.id,'line-color','#2f9fd6','#0e2a44']);}
     }catch(e){}
   }
   if(!map.getLayer('tn-buildings')){
@@ -288,12 +291,17 @@ TN.Scene.prototype.applyNight=function(nt){
       'fog-color':TN.mix('#dfe8ef','#1c2638',nt),'sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.85,'atmosphere-blend':0});
   }catch(e){}
   try{
-    this.map.setPaintProperty('tn-night','fill-opacity',0.16*nt);
+    this.map.setPaintProperty('tn-night','fill-opacity',0);
+    /* ground, grass and water: day colours blend into their night colours */
+    if(this.dayPaint&&Math.abs((this.lastNt==null?-1:this.lastNt)-nt)>0.01){this.lastNt=nt;
+      for(const [id,prop,d,n] of this.dayPaint){try{this.map.setPaintProperty(id,prop,TN.mix(d,n,nt));}catch(e){}}}
     this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.farBuildingColor(nt));
   }catch(e){}
   this.setNight(nt);
 };
 /* buildings further away (the map's own): coloured by height like the detailed ones, instead of plain cement */
+TN.NIGHTCOL={'#c2c3b6':'#3a3f48','#c8c7bb':'#3d424b','#2f9fd6':'#0e2a44','#3f9a3a':'#173320','#5dbb44':'#1e3d25',
+  '#6cc24a':'#21412a','#e6d39b':'#45433a'};
 TN.farBuildingColor=function(nt){
   const d=c=>TN.mix(c,'#4e5463',nt*0.75);
   return ['step',['coalesce',['get','render_height'],8],d('#b47862'),13,d('#cfc6b4'),32,d('#a7b4c1')];
