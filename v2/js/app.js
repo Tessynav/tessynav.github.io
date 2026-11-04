@@ -203,10 +203,12 @@ TN.VERSION='v2 step 1';
         /* from Codriver on Tessy's screen: tilted enough to see the sky and the city ahead, close when slow,
            further back at speed */
         const sf=Math.pow(Math.min(1,sKmh/60),0.7),y=car.y||0,pitch=66+3*sf;
-        let zoom=20.7-0.9*sf;
+        /* stopped: close on the car (it fills more of the screen), like Codriver at a light */
+        let zoom=21.35-1.55*sf;
         {const Hc=map.getContainer().clientHeight||600,c=1.5*Hc*Math.cos(pitch*TN.R)*40075016.7*Math.cos(ll[1]*TN.R)/512;
          /* camera height at a zoom is c/2^zoom: keep it at least 8 m above the car */
-         zMaxNow=Math.log2(c/(y+8));if(zoom>zMaxNow) zoom=zMaxNow;}
+         /* on raised roads keep the camera 8 m above the car (clear of any deck); on the ground 4.5 m is enough */
+         zMaxNow=Math.log2(c/(y>0.5?y+8:4.5));if(zoom>zMaxNow) zoom=zMaxNow;}
         gZoom+=(zoom-gZoom)*Math.min(1,dt*1.2);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
         camY+=(y-camY)*Math.min(1,dt*4);
         const H=map.getContainer().clientHeight||800;

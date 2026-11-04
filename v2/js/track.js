@@ -107,7 +107,12 @@ TN.Track.prototype.emit=function(h){
   h.side=side;
   const out=Math.max(0,side-hw*0.7);
   let e=(out/3)*(out/3)+(over/12)*(over/12);
-  if(this.hd!=null&&L.v>2){const a=TN.angDiff(h.hd,this.hd);e+=a>8?((a-8)/20)*((a-8)/20):0;}
+  if(this.hd!=null&&L.v>2){
+    const a=TN.angDiff(h.hd,this.hd);let he=a>8?((a-8)/20)*((a-8)/20):0;
+    /* a road turning off at a junction just ahead: don't punish it for pointing another way before you turn */
+    if(h.jx!=null&&Math.hypot(L.x-h.jx,L.z-h.jz)<25) he*=0.05;
+    e+=he;
+  }
   return e;
 };
 /* move a hypothesis along its road to the GPS; spawn the roads that branch off at junctions it passes */
@@ -142,7 +147,7 @@ TN.Track.prototype.advance=function(h,out){
         const c=this.hypAt(v,si,dir,L.x,L.z);
         /* no U-turns at junctions */
         if(TN.angDiff(c.hd,h.hd)>110) continue;
-        c.cost=h.cost+0.5;c.lastKey=key;c.parent=h;
+        c.cost=h.cost+0.5;c.lastKey=key;c.parent=h;c.jx=w.pts[j][0];c.jz=w.pts[j][1];
         out.push(c);
       }
     }
@@ -169,13 +174,22 @@ TN.Track.prototype.match=function(){
   for(const h of next){const k=h.w.id+':'+h.dir,b=by.get(k);if(!b||h.cost<b.cost) by.set(k,h);}
   let hs=[...by.values()].sort((a,b)=>a.cost-b.cost);
   const best=hs[0];
-  hs=hs.filter(h=>h.cost<best.cost+25&&h.r.d<35).slice(0,10);
+  const nearJ=h=>h.jx!=null&&Math.hypot(L.x-h.jx,L.z-h.jz)<30;
+  hs=hs.filter(h=>(h.cost<best.cost+25||nearJ(h))&&h.r.d<35).slice(0,14);
   this.hyps=hs;
   /* keep the current road unless another clearly fits better for a while */
   const cur=this.cur&&hs.find(h=>h.w===this.cur.w&&h.dir===this.cur.dir);
   if(!cur){this.cur=best;}
   else if(best!==cur&&best.cost<cur.cost-2.5){this.cur=best;}
   else this.cur=cur;
+  /* turning at a junction: once the driving direction clearly leaves the current road and another road nearby
+     matches it, follow that road right away (no driving on past the corner, then jumping) */
+  if(this.cur&&this.hd!=null&&L.v>2&&TN.angDiff(this.cur.hd,this.hd)>35){
+    let alt=null;
+    for(const h of hs){if(h===this.cur) continue;const a=TN.angDiff(h.hd,this.hd);
+      if(a<25&&(h.side!=null?h.side:h.r.d)<TN.width(h.w)/2+6&&(!alt||a<TN.angDiff(alt.hd,this.hd))) alt=h;}
+    if(alt) this.cur=alt;
+  }
   /* lost: every road is far away -> look again around the GPS */
   if(!this.cur||this.cur.r.d>TN.width(this.cur.w)/2+12){
     this.lost++;
@@ -236,7 +250,7 @@ TN.Track.prototype.frame=function(now,dt){
       if(r.d<20){s0=r.s;lat0=r.lat*dir;}
     }
     car={w:w,dir:dir,s:s0,lat:lat0,v:car?car.v:L.v,cv:car&&car.cv||0,x:car?car.x:null,z:car?car.z:null,hd:car?car.hd:h.hd,y:car?car.y:0,gl:lat0,
-      ease:{lat0:lat0,s0:s0}};
+      ease:{lat0:lat0,s0:s0,len:car&&car.hd!=null&&TN.angDiff(car.hd,h.hd)>45?12:35}};
     this.lane.idx=null;
   }
   /* the car reached the end of its road piece before the matching moved on: continue on the best connected piece */
@@ -275,7 +289,7 @@ TN.Track.prototype.frame=function(now,dt){
   if(car.ease){
     /* after moving onto another road piece (a split, a merge, a turn), the car glides to its new place over the
        next 35 m of driving, like steering, instead of sliding sideways on the spot */
-    const u=Math.min(1,Math.abs(car.s-car.ease.s0)/35),k=u*u*(3-2*u);
+    const u=Math.min(1,Math.abs(car.s-car.ease.s0)/(car.ease.len||35)),k=u*u*(3-2*u);
     car.lat=car.ease.lat0+(target-car.ease.lat0)*k;
     if(u>=1) car.ease=null;
   }else car.lat+=(target-car.lat)*(1-Math.exp(-dt/0.9));
