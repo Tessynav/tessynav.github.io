@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#cfdcf0',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#cfdcf0',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -60,6 +60,12 @@ TN.Net.prototype.addPack=function(key,P,later){
   const rec={ids:new Set()};
   for(const r of P.w||[]){rec.ids.add(r[0]);if(!this.ways.has(r[0])){const w=this.makeWay(r,false);if(w) this.ways.set(w.id,w);}}
   for(const r of P.b||[]){
+    if(r[1]==='transit'&&/REM/.test(r[4]||'')){
+      /* the REM's elevated guideway (kept separately: trains, not cars, use it) */
+      rec.rm=rec.rm||new Set();rec.rm.add(r[0]);this.rem=this.rem||new Map();
+      if(!this.rem.has(r[0])){const w=this.makeWay(r,true);if(w){w.rem=true;w.br=false;this.rem.set(w.id,w);this.remVer=(this.remVer||0)+1;}}
+      continue;
+    }
     if(r[1]==='rail'||r[1]==='transit') continue;
     rec.ids.add(r[0]);if(!this.ways.has(r[0])){const w=this.makeWay(r,true);if(w) this.ways.set(w.id,w);}
   }
@@ -86,6 +92,8 @@ TN.Net.prototype.dropPack=function(key,later){
   this.packs.delete(key);
   const keep=new Set();for(const r of this.packs.values()) for(const id of r.ids) keep.add(id);
   for(const id of rec.ids) if(!keep.has(id)) this.ways.delete(id);
+  if(rec.rm&&this.rem){const kr=new Set();for(const r of this.packs.values()) if(r.rm) for(const id of r.rm) kr.add(id);
+    for(const id of rec.rm) if(!kr.has(id)){this.rem.delete(id);this.remVer=(this.remVer||0)+1;}}
   if(rec.mk&&this.marks){const km=new Set();for(const r of this.packs.values()) if(r.mk) for(const k of r.mk) km.add(k);
     for(const k of rec.mk) if(!km.has(k)) this.marks.delete(k);}
   if(rec.pk&&this.parkings){const kp=new Set();for(const r of this.packs.values()) if(r.pk) for(const id of r.pk) kp.add(id);
@@ -616,6 +624,13 @@ TN.Net.prototype.buildCell=function(tx,ty){
     if(runs.length){this.drawWay(L,w,runs);this.drawWalks(L,w,runs);if(w.pa) this.drawStalls(L,w,runs);this.drawLights(L,w,runs);}
   }
   {const T=TN.toLocal(TN.CHAMPLAIN.lng,TN.CHAMPLAIN.lat);if(inCell(T[0],T[1])) this.champlainTower(L);}
+  if(this.rem) for(const w of this.rem.values()){
+    if(w.bb[1]<cb[0]||w.bb[0]>cb[1]||w.bb[3]<cb[2]||w.bb[2]>cb[3]) continue;
+    const P=w.pts;let a=-1;
+    for(let i=0;i<P.length-1;i++){const ins=inCell((P[i][0]+P[i+1][0])/2,(P[i][1]+P[i+1][1])/2);
+      if(ins&&a<0) a=i;if(!ins&&a>=0){this.drawRem(L,w,a,i);a=-1;}}
+    if(a>=0) this.drawRem(L,w,a,P.length-1);
+  }
   if(this.marks) for(const m of this.marks.values()){
     if(!inCell(m.x,m.z)) continue;
     if(m.kind==='c') this.drawCrosswalk(L,m);else if(m.kind==='s'||m.kind==='y') this.drawSign(L,m);
@@ -717,6 +732,54 @@ TN.Net.prototype.drawStalls=function(L,w,runs){
       }
       flush();
     }
+  }
+};
+/* ---------- REM: elevated guideway ---------- */
+/* which REM pieces meet at each point (to follow the line from piece to piece) */
+TN.Net.prototype.remLinks=function(){
+  if(this._rlv===this.remVer&&this._rl) return this._rl;
+  const m=new Map();if(this.rem) for(const w of this.rem.values()){for(const j of [0,w.pts.length-1]){const k=w.keys[j];let l=m.get(k);if(!l){l=[];m.set(k,l);}l.push([w,j]);}}
+  this._rl=m;this._rlv=this.remVer;return m;
+};
+/* guideway height at each point: level with a road bridge it runs beside (the Champlain Bridge carries it in the
+   middle), otherwise 9 m; coming down to the ground over 150 m where the elevated part ends */
+TN.Net.prototype.remHeights=function(w){
+  const v=this.ver+':'+(this.remVer||0);if(w.hv===v&&w.rh) return w.rh;
+  const links=this.remLinks(),P=w.pts,hs=[];
+  for(let j=0;j<P.length;j++){
+    let h=-1;const x=P[j][0],z=P[j][1];
+    this.near(x,z,30,(v2,i)=>{if(!v2.br) return;const r=TN.seg(v2,i,x,z);if(r.d<TN.width(v2)/2+30){
+      const hh=v2.hs?v2.hs[i]+(v2.hs[i+1]-v2.hs[i])*r.u:v2.H;if(hh>h) h=hh;}});
+    hs.push(h>3?h:9);
+  }
+  const free=j=>(links.get(w.keys[j])||[]).length<2;
+  for(const [end,dir] of [[0,1],[P.length-1,-1]]){
+    if(!free(end)) continue;
+    for(let j=end;j>=0&&j<P.length;j+=dir){const d=Math.abs(w.cum[j]-w.cum[end]);if(d>150) break;hs[j]=Math.min(hs[j],hs[j]*(d/150));}
+  }
+  w.rh=hs;w.hv=v;return hs;
+};
+TN.remAt=function(w,hs,s){let i=0;while(i<w.pts.length-2&&w.cum[i+1]<s) i++;const sg=w.cum[i+1]-w.cum[i]||1,t=Math.max(0,Math.min(1,(s-w.cum[i])/sg));
+  return {x:w.pts[i][0]+(w.pts[i+1][0]-w.pts[i][0])*t,z:w.pts[i][1]+(w.pts[i+1][1]-w.pts[i][1])*t,y:hs[i]+(hs[i+1]-hs[i])*t,ux:(w.pts[i+1][0]-w.pts[i][0])/sg,uz:(w.pts[i+1][1]-w.pts[i][1])/sg};};
+TN.Net.prototype.drawRem=function(L,w,a,b){
+  const P=w.pts,N=TN.normals(P),hs=this.remHeights(w),hw=2.5,G=L.road;   /* one track per map line */
+  const at=(j,o,y)=>[P[j][0]+N[j][0]*o,y,P[j][1]+N[j][1]*o];
+  for(let i=a;i<b;i++){
+    const h0=hs[i],h1=hs[i+1];
+    TN.quad(G,at(i,-hw,h0),at(i+1,-hw,h1),at(i+1,hw,h1),at(i,hw,h0),TN.C.remdeck);
+    for(const o of [hw,-hw]){
+      TN.quad(G,at(i,o,Math.max(0,h0-1.6)),at(i+1,o,Math.max(0,h1-1.6)),at(i+1,o,h1+0.6),at(i,o,h0+0.6),TN.C.remside);
+    }
+    TN.quad(G,at(i,-hw,Math.max(0,h0-1.6)),at(i+1,-hw,Math.max(0,h1-1.6)),at(i+1,hw,Math.max(0,h1-1.6)),at(i,hw,Math.max(0,h0-1.6)),TN.C.girder);
+    /* the two rails of this track */
+    for(const o of [-0.72,0.72]) TN.quad(L.mark,at(i,o-0.06,h0+0.08),at(i+1,o-0.06,h1+0.08),at(i+1,o+0.06,h1+0.08),at(i,o+0.06,h0+0.08),TN.C.rail);
+  }
+  /* single-column piers with a cap, every 32 m, where the guideway is high enough and not above a road */
+  for(let s=Math.ceil(w.cum[a]/32)*32+16;s<w.cum[b];s+=32){
+    const q=TN.remAt(w,hs,s);if(q.y<4) continue;
+    if(this.nearOther(null,q.x,q.z,1.0)) continue;
+    TN.box(G,q.x,q.z,q.ux,q.uz,2.0,2.0,0,q.y-2.6,TN.C.pier);
+    TN.box(G,q.x,q.z,-q.uz,q.ux,4.6,1.8,q.y-2.6,q.y-1.6,TN.C.cap);
   }
 };
 /* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.

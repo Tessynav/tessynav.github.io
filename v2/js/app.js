@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=25;
+TN.APPBUILD=26;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -13,6 +13,7 @@ TN.APPBUILD=25;
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
+  const rem=TN.Rem?new TN.Rem(scene,net):null;
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
   const brk={t:0,v:0,d:0,k:0,moved:0};
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
@@ -182,7 +183,7 @@ TN.APPBUILD=25;
   function night(){
     const c=map.getCenter(),alt=TN.sunAlt(new Date(),c.lat,c.lng);
     const nt=Math.min(1,Math.max(0,(6-alt)/12));lastNt=nt;
-    if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);}
+    if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);if(rem) rem.setNight(nt);}
   }
   setInterval(night,60000);
 
@@ -258,6 +259,7 @@ TN.APPBUILD=25;
       scene.update(ac.lng,ac.lat);
       if(trees){try{trees.update(ac.lng,ac.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(ac.lng,ac.lat,lastFps);}catch(e){}}
+      if(rem){try{const q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
       /* brake lights: on while slowing down clearly, and while stopped after driving (like a held brake) */
       {const L=track.last;if(L&&L.t!==brk.t){
         if(brk.t){const dts=(L.t-brk.t)/1000;if(dts>0.05&&dts<2){const a=(brk.v-L.v)/dts;brk.d+=(a-brk.d)*Math.min(1,dts*3);}}
@@ -280,6 +282,7 @@ TN.APPBUILD=25;
       const c=map.getCenter();scene.update(c.lng,c.lat);
       if(trees){try{trees.update(c.lng,c.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(c.lng,c.lat,lastFps);}catch(e){}}
+      if(rem){try{const q=TN.toLocal(c.lng,c.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
     }
   }
   requestAnimationFrame(loop);
