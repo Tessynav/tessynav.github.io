@@ -15,18 +15,20 @@ TN.Buildings=function(scene,net){
 TN.Buildings.prototype.material=function(){
   if(this.mat) return this.mat;
   this.mat=new THREE.ShaderMaterial({
-    uniforms:{night:{value:this.night}},
+    uniforms:Object.assign({night:{value:this.night}},TN.CUTU||{}),
     vertexColors:true,side:THREE.DoubleSide,
     vertexShader:[
       'attribute vec3 wuv;',
-      'varying vec3 vCol;varying vec3 vUv;varying float vShade;',
-      'void main(){vCol=color;vUv=wuv;',
+      'varying vec3 vCol;varying vec3 vUv;varying float vShade;varying vec3 vCutW;',
+      'void main(){vCol=color;vUv=wuv;vCutW=(modelMatrix*vec4(position,1.0)).xyz;',
       '  vec3 n=normalize(normal);vShade=0.80+0.20*abs(n.x)+0.10*max(n.y,0.0);',
       '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'].join('\n'),
     fragmentShader:[
+      (TN.CUTGLSL||'varying vec3 vCutW;bool tnCut(){return false;}'),
       'uniform float night;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
       'float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
       'void main(){',
+      '  if(tnCut()) discard;',
       '  vec3 wall=vCol*vShade*(1.0-0.62*night);',
       '  if(vUv.z<0.0){gl_FragColor=vec4(wall,1.0);return;}',
       '  vec2 cell=vec2(floor(vUv.x/3.2),floor(vUv.y/3.0));vec2 f=vec2(fract(vUv.x/3.2),fract(vUv.y/3.0));',

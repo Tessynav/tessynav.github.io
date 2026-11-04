@@ -30,6 +30,13 @@ TN.Scene.prototype.layer=function(){
       /* MapLibre 5 passes an object with the matrix, MapLibre 4 the matrix itself */
       const matrix=arg&&arg.modelViewProjectionMatrix?arg.modelViewProjectionMatrix:arg;
       T.camera.projectionMatrix=new THREE.Matrix4().fromArray(matrix).multiply(T.model);
+      try{
+        const inv=T.camera.projectionMatrix.clone().invert();
+        TN.CUTU.cutCam.value.set(0,0,-1).applyMatrix4(inv);
+        const c=S.car3d;
+        if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=9;}
+        else TN.CUTU.cutR.value=0;
+      }catch(e){}
       T.renderer.resetState();
       T.renderer.render(T.scene,T.camera);
     }
@@ -147,23 +154,30 @@ TN.Scene.prototype.carMat=function(md){
 };
 /* when a building (or anything else) is between the camera and the car, the hidden part of the car is drawn as a
    soft blue-grey silhouette, so you always see where you are. Drawn after the city but before the car itself. */
-TN.Scene.prototype.addSilhouette=function(body){
-  /* the real car, see-through: where something hides the car, its hidden parts are drawn with their own colours
-     but faint (a fine dither pattern lets the building show through), so you see Tessy herself through it */
-  try{
-    const list=[];body.traverse(o=>{if(o.isMesh&&!o.userData.ghost) list.push(o);});
-    const cache=new Map();
-    for(const o of list){
-      let gm=cache.get(o.material);
-      if(!gm){gm=o.material.clone();gm.depthFunc=THREE.GreaterDepth;gm.depthWrite=false;gm.transparent=false;
-        gm.alphaHash=true;gm.opacity=0.55;cache.set(o.material,gm);}
-      const g=new THREE.Mesh(o.geometry,gm);g.userData.ghost=true;
-      g.position.copy(o.position);g.quaternion.copy(o.quaternion);g.scale.copy(o.scale);
-      g.renderOrder=5;g.frustumCulled=false;o.parent.add(g);
-    }
-    for(const o of list) o.renderOrder=6;
-    this.ghostMats=[...cache.values()];
-  }catch(e){}
+TN.Scene.prototype.addSilhouette=function(body){ /* replaced by the see-through circle around the car (TN.CUT) */ };
+/* ---------- see-through circle around the car (like Codriver) ----------
+   Buildings and trees between the camera and the car fade out (fine dither) inside a circle around the car,
+   so Tessy always stays solid and clear; outside the circle everything looks normal. */
+TN.CUTU={cutCam:{value:new THREE.Vector3()},cutCar:{value:new THREE.Vector3(0,-1e6,0)},cutR:{value:0}};
+TN.CUTGLSL=[
+  'uniform vec3 cutCam;uniform vec3 cutCar;uniform float cutR;varying vec3 vCutW;',
+  'bool tnCut(){',
+  '  if(cutR<=0.0) return false;',
+  '  vec3 d=cutCar-cutCam;float dd=dot(d,d);if(dd<1.0) return false;',
+  '  float t=dot(vCutW-cutCam,d)/dd;',
+  '  if(t<=0.0||t>1.0-2.5/sqrt(dd)) return false;',
+  '  float r=length(vCutW-(cutCam+d*t));',
+  '  float k=0.82*(1.0-smoothstep(cutR*0.55,cutR,r));',
+  '  if(k<=0.0) return false;',
+  '  return fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)<k;',
+  '}'].join('\n');
+TN.CUTVERT='\n#ifdef USE_INSTANCING\nvCutW=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;\n#else\nvCutW=(modelMatrix*vec4(transformed,1.0)).xyz;\n#endif\n';
+/* add the circle to a built-in material (trees) */
+TN.cutPatch=function(mat){
+  mat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,TN.CUTU);
+    sh.vertexShader='varying vec3 vCutW;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>'+TN.CUTVERT);
+    sh.fragmentShader=TN.CUTGLSL+'\n'+sh.fragmentShader.replace('void main() {','void main() {\n  if(tnCut()) discard;');};
+  mat.needsUpdate=true;
 };
 /* a soft red glow behind each tail light, and on the road behind the car, shown while braking */
 TN.Scene.prototype.addBrakeGlow=function(body){
