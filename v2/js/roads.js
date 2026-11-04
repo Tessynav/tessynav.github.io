@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#c62828',signw:'#f4f4f2',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -49,7 +49,7 @@ TN.Net.prototype.makeWay=function(r,isBridge){
   const w={id:r[0],cls:r[1],ow:r[2]||0,w:r[3]||7,lanes:r[7]||0,name:r[4]||'',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],
     br:false,tun:false,layer:0,H:0,hs:null};
   if(isBridge){w.layer=r[9]||0;w.ramp=!!r[10];if(r[12]==='t') w.tun=true;else w.br=true;}
-  else w.ramp=!!r[9];
+  else{w.ramp=!!r[9];w.pa=!!r[10];}
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of pts){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
   const pad=w.w/2+3;w.bb=[x0-pad,x1+pad,z0-pad,z1+pad];
   return w;
@@ -70,8 +70,13 @@ TN.Net.prototype.addPack=function(key,P,later){
     const f=r[1],pts=[];for(let i=0;i<f.length;i+=2) pts.push(TN.toLocal(f[i],f[i+1]));
     if(pts.length<3) continue;
     let cx=0,cz=0;for(const q of pts){cx+=q[0];cz+=q[1];}
-    this.parkings.set(r[0],{pts:pts,c:[cx/pts.length,cz/pts.length]});
+    let bx0=1e9,bx1=-1e9,bz0=1e9,bz1=-1e9;for(const q of pts){if(q[0]<bx0)bx0=q[0];if(q[0]>bx1)bx1=q[0];if(q[1]<bz0)bz0=q[1];if(q[1]>bz1)bz1=q[1];}
+    this.parkings.set(r[0],{pts:pts,c:[cx/pts.length,cz/pts.length],bb:[bx0,bx1,bz0,bz1]});
   }
+  /* stop signs, yield signs and crosswalks: [lng, lat, kind s/y/c, direction f/b/''] */
+  rec.mk=new Set();this.marks=this.marks||new Map();
+  for(const m of P.n||[]){const k=m[0]+','+m[1]+','+m[2];rec.mk.add(k);if(this.marks.has(k)) continue;
+    const q=TN.toLocal(m[0],m[1]);this.marks.set(k,{x:q[0],z:q[1],kind:m[2],dir:m[3]||'',key:TN.vkey(m[0],m[1])});}
   this.packs.set(key,rec);
   if(!later) this.rebuildIndex();
   return true;
@@ -81,6 +86,8 @@ TN.Net.prototype.dropPack=function(key,later){
   this.packs.delete(key);
   const keep=new Set();for(const r of this.packs.values()) for(const id of r.ids) keep.add(id);
   for(const id of rec.ids) if(!keep.has(id)) this.ways.delete(id);
+  if(rec.mk&&this.marks){const km=new Set();for(const r of this.packs.values()) if(r.mk) for(const k of r.mk) km.add(k);
+    for(const k of rec.mk) if(!km.has(k)) this.marks.delete(k);}
   if(rec.pk&&this.parkings){const kp=new Set();for(const r of this.packs.values()) if(r.pk) for(const id of r.pk) kp.add(id);
     for(const id of rec.pk) if(!kp.has(id)) this.parkings.delete(id);}
   if(!later) this.rebuildIndex();
@@ -589,6 +596,7 @@ TN.Net.prototype.buildCell=function(tx,ty){
   const inCell=(x,z)=>{const ll=TN.fromLocal(x,z);return Math.floor(ll[0]/TN.CELL)===tx&&Math.floor(ll[1]/TN.CELL)===ty;};
   const x0=TN.toLocal(tx*TN.CELL,(ty+1)*TN.CELL),x1=TN.toLocal((tx+1)*TN.CELL,ty*TN.CELL);
   const cb=[Math.min(x0[0],x1[0]),Math.max(x0[0],x1[0]),Math.min(x0[1],x1[1]),Math.max(x0[1],x1[1])];
+  this._sg=this.segGrid(cb);
   if(this.parkings) for(const pk of this.parkings.values()){
     if(!inCell(pk.c[0],pk.c[1])) continue;
     const tri=TN.earcut(pk.pts);
@@ -605,9 +613,188 @@ TN.Net.prototype.buildCell=function(tx,ty){
       if(ins&&a<0) a=i;if(!ins&&a>=0){runs.push([a,i]);a=-1;}
     }
     if(a>=0) runs.push([a,P.length-1]);
-    if(runs.length) this.drawWay(L,w,runs);
+    if(runs.length){this.drawWay(L,w,runs);this.drawWalks(L,w,runs);if(w.pa) this.drawStalls(L,w,runs);}
   }
+  if(this.marks) for(const m of this.marks.values()){
+    if(!inCell(m.x,m.z)) continue;
+    if(m.kind==='c') this.drawCrosswalk(L,m);else if(m.kind==='s'||m.kind==='y') this.drawSign(L,m);
+  }
+  this._sg=null;
   return L;
+};
+/* ---------- street details: sidewalks, crosswalks, parking spaces, stop and yield signs ---------- */
+TN.pip=function(x,z,P){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];
+  if(((a[1]>z)!==(b[1]>z))&&(x<(b[0]-a[0])*(z-a[1])/((b[1]-a[1])||1e-9)+a[0])) c=!c;}return c;};
+/* is (x,z) on (or within pad metres of) a ground road other than this one? */
+TN.Net.prototype.nearOther=function(way,x,z,pad){
+  const G=this._sg;
+  if(G){
+    const gx=Math.floor(x/10),gz=Math.floor(z/10);
+    for(let ax=gx-1;ax<=gx+1;ax++) for(let az=gz-1;az<=gz+1;az++){
+      const l=G.get(ax*1e6+az);if(!l) continue;
+      for(const e of l){const w=e[0];if(w===way) continue;const r=TN.seg(w,e[1],x,z);if(r.d<TN.width(w)/2+pad) return true;}
+    }
+    return false;
+  }
+  let hit=false;
+  this.near(x,z,pad,(w,i)=>{if(w===way||w.tun||w.br) return;const r=TN.seg(w,i,x,z);if(r.d<TN.width(w)/2+pad){hit=true;return true;}});
+  return hit;
+};
+/* ground road pieces of an area in 10 m buckets (each piece in every bucket its box touches, widened by half its width) */
+TN.Net.prototype.segGrid=function(cb){
+  const G=new Map(),cand=new Set();
+  for(let ix=Math.floor((cb[0]-30)/100);ix<=Math.floor((cb[1]+30)/100);ix++)
+    for(let iz=Math.floor((cb[2]-30)/100);iz<=Math.floor((cb[3]+30)/100);iz++){const l=this.idx.get(ix*1e6+iz);if(l) for(const w of l) cand.add(w);}
+  for(const w of cand){
+    if(w.tun||w.br) continue;if(w.bb[1]<cb[0]-30||w.bb[0]>cb[1]+30||w.bb[3]<cb[2]-30||w.bb[2]>cb[3]+30) continue;
+    const P=w.pts,h=TN.width(w)/2+2;
+    for(let i=0;i<P.length-1;i++){
+      const a=P[i],c=P[i+1];
+      const x0=Math.floor((Math.min(a[0],c[0])-h)/10),x1=Math.floor((Math.max(a[0],c[0])+h)/10);
+      const z0=Math.floor((Math.min(a[1],c[1])-h)/10),z1=Math.floor((Math.max(a[1],c[1])+h)/10);
+      if((x1-x0+1)*(z1-z0+1)>400) continue;
+      for(let gx=x0;gx<=x1;gx++) for(let gz=z0;gz<=z1;gz++){const k=gx*1e6+gz;let l=G.get(k);if(!l){l=[];G.set(k,l);}l.push([w,i]);}
+    }
+  }
+  return G;
+};
+TN.WALK={primary:1,secondary:1,tertiary:1,minor:1};
+/* sidewalks: a light concrete strip on both sides of city streets, raised 15 cm, with a grey curb;
+   they stop before other streets (so they never cover a crossing street) and are left out on highways, ramps,
+   bridges, parking aisles and raised roads */
+TN.Net.prototype.drawWalks=function(L,w,runs){
+  if(!TN.WALK[w.cls]||w.ramp||w.br||w.pa||(w.hs&&w.hs.some(h=>h>0.3))) return;
+  const P=w.pts,N=TN.normals(P),WJ=this.widthsAlong(w),y=0.15,ww=2.0;
+  for(const [a,b] of runs) for(let i=a;i<b;i++){
+    const A=P[i],B=P[i+1],len=Math.hypot(B[0]-A[0],B[1]-A[1]);if(len<0.2) continue;
+    const n=Math.max(1,Math.ceil(len/5));
+    for(let k=0;k<n;k++){
+      const u0=k/n,u1=(k+1)/n,um=(u0+u1)/2;
+      const pt=u=>[A[0]+(B[0]-A[0])*u,A[1]+(B[1]-A[1])*u];
+      const nn=u=>[N[i][0]+(N[i+1][0]-N[i][0])*u,N[i][1]+(N[i+1][1]-N[i][1])*u];
+      const hw=u=>(WJ[i]+(WJ[i+1]-WJ[i])*u)/2+0.3;
+      for(const sd of [1,-1]){
+        const m=pt(um),q=nn(um),o=sd*(hw(um)+ww/2);
+        if(this.nearOther(w,m[0]+q[0]*o,m[1]+q[1]*o,1.3)) continue;
+        const v=(u,off,h)=>{const p=pt(u),c=nn(u);return [p[0]+c[0]*sd*off,h,p[1]+c[1]*sd*off];};
+        TN.quad(L.curb,v(u0,hw(u0),y),v(u1,hw(u1),y),v(u1,hw(u1)+ww,y),v(u0,hw(u0)+ww,y),TN.C.walk);
+        TN.quad(L.curb,v(u0,hw(u0)-0.3,y+0.002),v(u1,hw(u1)-0.3,y+0.002),v(u1,hw(u1),y+0.002),v(u0,hw(u0),y+0.002),TN.C.curbtop);
+        TN.quad(L.curb,v(u0,hw(u0)-0.3,0.03),v(u1,hw(u1)-0.3,0.03),v(u1,hw(u1)-0.3,y),v(u0,hw(u0)-0.3,y),TN.C.post);
+      }
+    }
+  }
+};
+/* painted parking spaces along parking aisles, only where the space lies inside a mapped parking lot */
+TN.Net.prototype.drawStalls=function(L,w,runs){
+  if(!this.parkings||w.br||w.hs) return;
+  const P=w.pts,hw=TN.width(w)/2,lots=[];
+  for(const pk of this.parkings.values()){const b=pk.bb;if(b[1]<w.bb[0]||b[0]>w.bb[1]||b[3]<w.bb[2]||b[2]>w.bb[3]) continue;lots.push(pk);}
+  if(!lots.length) return;
+  const inLot=(x,z)=>lots.some(pk=>x>=pk.bb[0]&&x<=pk.bb[1]&&z>=pk.bb[2]&&z<=pk.bb[3]&&TN.pip(x,z,pk.pts));
+  const step=2.7,depth=5,half=0.06,y=0.05;
+  for(const [a,b] of runs) for(let i=a;i<b;i++){
+    const A=P[i],B=P[i+1],len=Math.hypot(B[0]-A[0],B[1]-A[1]);if(len<step*2) continue;
+    const ux=(B[0]-A[0])/len,uz=(B[1]-A[1])/len,nx=uz,nz=-ux;
+    for(let s=step;s<=len-step+0.01;s+=step){
+      const x=A[0]+ux*s,z=A[1]+uz*s;
+      for(const sd of [1,-1]){
+        const mx=x+nx*sd*(hw+depth/2),mz=z+nz*sd*(hw+depth/2);
+        if(!inLot(mx,mz)||this.nearOther(w,mx,mz,0.5)) continue;
+        const o0=hw+0.3,o1=hw+depth;
+        TN.quad(L.mark,[x+nx*sd*o0+ux*half,y,z+nz*sd*o0+uz*half],[x+nx*sd*o1+ux*half,y,z+nz*sd*o1+uz*half],
+                       [x+nx*sd*o1-ux*half,y,z+nz*sd*o1-uz*half],[x+nx*sd*o0-ux*half,y,z+nz*sd*o0-uz*half],TN.C.white);
+      }
+    }
+  }
+};
+/* the ground road a mapped point lies on: by its vertex when it is one of the road's points, otherwise nearest */
+TN.Net.prototype.roadAt=function(m){
+  const hits=(this.keys.get(m.key)||[]).filter(h=>!h[0].br&&!h[0].tun);
+  if(hits.length===1||(hits.length>1&&m.kind==='c')) return {w:hits[0][0],i:hits[0][1],exact:true};
+  if(hits.length>1){
+    /* a sign on a junction point: the smaller street is the one that stops */
+    const rank={motorway:6,trunk:5,primary:4,secondary:3,tertiary:2,minor:1,service:0};
+    hits.sort((p,q)=>(rank[p[0].cls]||0)-(rank[q[0].cls]||0));return {w:hits[0][0],i:hits[0][1],exact:true,atJ:true};
+  }
+  let best=null;
+  this.near(m.x,m.z,8,(w,i)=>{if(w.br||w.tun) return;const r=TN.seg(w,i,m.x,m.z);if(r.d<TN.width(w)/2+8&&(!best||r.d<best.d)) best={w:w,i:i,u:r.u,d:r.d};});
+  return best;
+};
+TN.Net.prototype.drawCrosswalk=function(L,m){
+  const r=this.roadAt(m);if(!r||r.w.ramp||TN.width(r.w)>30) return;
+  const w=r.w,P=w.pts,i=Math.min(r.i,P.length-2),A=P[Math.max(0,i===r.i?i:i)],B=P[i+1];
+  const len=Math.hypot(B[0]-A[0],B[1]-A[1])||1,ux=(B[0]-A[0])/len,uz=(B[1]-A[1])/len,nx=uz,nz=-ux;
+  const cx=r.exact?P[r.i][0]:m.x,cz=r.exact?P[r.i][1]:m.z,hw=TN.width(w)/2,y=0.07,along=1.5;
+  /* zebra stripes: 0.5 m wide, 0.5 m apart, running along the road, across its whole width */
+  for(let o=-hw+0.4;o<=hw-0.4;o+=1.0){
+    const ox=cx+nx*o,oz=cz+nz*o;
+    TN.quad(L.mark,[ox-ux*along,y,oz-uz*along],[ox+ux*along,y,oz+uz*along],[ox+ux*along+nx*0.5,y,oz+uz*along+nz*0.5],[ox-ux*along+nx*0.5,y,oz-uz*along+nz*0.5],TN.C.white);
+  }
+};
+/* where a stop or yield sign goes: at the corner of the junction it belongs to, on the right side of the road for
+   the traffic it is meant for, facing that traffic; returns null when no junction is close enough */
+TN.Net.prototype.signPlace=function(m){
+  const r=this.roadAt(m);if(!r||!r.w) return null;
+  const w=r.w,P=w.pts;
+  let i0=r.exact?r.i:(r.u>0.5?r.i+1:r.i);
+  const deg=j=>(this.keys.get(w.keys[j])||[]).filter(h=>!h[0].tun).length;
+  const findJ=dir=>{let d=0;for(let j=i0;j>=0&&j<P.length;j+=dir){
+      if(j!==i0) d+=Math.hypot(P[j][0]-P[j-dir][0],P[j][1]-P[j-dir][1]);
+      if(d>(m.kind==='y'?90:45)) return null;if(deg(j)>1&&(j!==i0||r.atJ)) return {j:j,d:d};}
+    return null;};
+  let dir=m.dir==='f'?1:m.dir==='b'?-1:0,J=null;
+  if(m.kind==='y'&&w.ramp){
+    const k=Math.max(0,Math.min(P.length-2,i0>=P.length-1?P.length-2:i0)),dd=dir||(w.ow===-1?-1:1);
+    let dx=(P[k+1][0]-P[k][0])*dd,dz=(P[k+1][1]-P[k][1])*dd;const l=Math.hypot(dx,dz)||1;dx/=l;dz/=l;
+    const rx=-dz,rz=dx,hw=TN.width(w)/2,bx=r.exact?P[i0][0]:m.x,bz=r.exact?P[i0][1]:m.z;
+    for(const [db,ds] of [[0,0],[3,0],[0,1.5],[6,0]]){const x=bx-dx*db+rx*(hw+1.5+ds),z=bz-dz*db+rz*(hw+1.5+ds);
+      if(this.nearOther(null,x,z,0.4)) continue;
+      return {x:x,z:z,dx:dx,dz:dz,rx:rx,rz:rz,lx:bx,lz:bz,hw:hw,ow:w.ow,way:w};}
+    return null;
+  }
+  if(dir) J=findJ(dir);
+  else{const f=findJ(1),b=findJ(-1);if(f&&(!b||f.d<=b.d)){J=f;dir=1;}else if(b){J=b;dir=-1;}}
+  if(!J) return null;
+  /* driving direction towards the junction, at the junction */
+  const j=J.j,jp=Math.max(0,Math.min(P.length-1,j-dir));
+  let dx=P[j][0]-P[jp][0],dz=P[j][1]-P[jp][1];const dl=Math.hypot(dx,dz)||1;dx/=dl;dz/=dl;
+  if(j===jp){return null;}
+  /* the widest other road at the junction decides how far back the corner is */
+  let ow=0;for(const h of this.keys.get(w.keys[j])||[]) if(h[0]!==w&&!h[0].tun) ow=Math.max(ow,TN.width(h[0])/2);
+  const back=ow+2.6,hw=TN.width(w)/2;
+  const rx=-dz,rz=dx;                              /* right of the driving direction */
+  const inRoad=(x,z)=>this.nearOther(null,x,z,0.4);
+  for(const [db,ds] of [[0,0],[2,0],[0,1],[4,0],[2,1],[6,0.5],[-1.5,0.8]]){
+    const bk=back+db,sd=hw+1.2+ds,x=P[j][0]-dx*bk+rx*sd,z=P[j][1]-dz*bk+rz*sd;
+    if(inRoad(x,z)) continue;
+    return {x:x,z:z,dx:dx,dz:dz,rx:rx,rz:rz,lx:P[j][0]-dx*(bk-0.8),lz:P[j][1]-dz*(bk-0.8),hw:hw,ow:w.ow,way:w};
+  }
+  return null;
+};
+TN.Net.prototype.drawSign=function(L,m){
+  const S=this.signPlace(m);if(!S) return;
+  const G=L.road,post=TN.C.post;
+  /* post */
+  TN.box(G,S.x,S.z,S.dx,S.dz,0.08,0.08,0,2.2,post);
+  /* plate faces the traffic coming towards it (facing -d), both sides drawn */
+  const cx=S.x-S.dx*0.06,cz=S.z-S.dz*0.06,cy=2.05;
+  const plate=(pts,col)=>{const c=[cx,cy,cz];for(let k=0;k<pts.length;k++){const a=pts[k],b=pts[(k+1)%pts.length];
+      const A=[cx+S.rx*a[0],cy+a[1],cz+S.rz*a[0]],B=[cx+S.rx*b[0],cy+b[1],cz+S.rz*b[0]];
+      for(const tri of [[c,A,B],[c,B,A]]){const base=G.n;for(const v of tri){G.p.push(v[0],v[1],v[2]);G.c.push(col[0],col[1],col[2]);}G.i.push(base,base+1,base+2);G.n+=3;}}};
+  if(m.kind==='s'){
+    const oct=[];for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4;oct.push([Math.cos(a)*0.4,Math.sin(a)*0.4]);}
+    plate(oct,TN.C.stopred);
+    /* stop line across the lanes going into the junction */
+    const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw;
+    const p=(o,a)=>[S.lx+S.rx*o+S.dx*a,y,S.lz+S.rz*o+S.dz*a];
+    TN.quad(L.mark,p(o0,-0.2),p(o1,-0.2),p(o1,0.2),p(o0,0.2),TN.C.white);
+  }else{
+    plate([[-0.45,0.26],[0.45,0.26],[0,-0.52]],TN.C.stopred);
+    const c=[cx-S.dx*0.01,cz-S.dz*0.01];
+    const inner=[[-0.3,0.17],[0.3,0.17],[0,-0.35]];
+    const G2=G;const col=TN.C.signw;
+    for(const tri of [[0,1,2],[0,2,1]]){const base=G2.n;for(const k of tri){const a=inner[k];G2.p.push(c[0]+S.rx*a[0]-S.dx*0.005,cy+a[1],c[1]+S.rz*a[0]-S.dz*0.005);G2.c.push(col[0],col[1],col[2]);}G2.i.push(base,base+1,base+2);G2.n+=3;}
+  }
 };
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
