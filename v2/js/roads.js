@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -63,6 +63,15 @@ TN.Net.prototype.addPack=function(key,P,later){
     if(r[1]==='rail'||r[1]==='transit') continue;
     rec.ids.add(r[0]);if(!this.ways.has(r[0])){const w=this.makeWay(r,true);if(w) this.ways.set(w.id,w);}
   }
+  /* parking lots (outlines), from road tiles v3 */
+  rec.pk=new Set();this.parkings=this.parkings||new Map();
+  for(const r of P.pk||[]){
+    rec.pk.add(r[0]);if(this.parkings.has(r[0])) continue;
+    const f=r[1],pts=[];for(let i=0;i<f.length;i+=2) pts.push(TN.toLocal(f[i],f[i+1]));
+    if(pts.length<3) continue;
+    let cx=0,cz=0;for(const q of pts){cx+=q[0];cz+=q[1];}
+    this.parkings.set(r[0],{pts:pts,c:[cx/pts.length,cz/pts.length]});
+  }
   this.packs.set(key,rec);
   if(!later) this.rebuildIndex();
   return true;
@@ -72,6 +81,8 @@ TN.Net.prototype.dropPack=function(key,later){
   this.packs.delete(key);
   const keep=new Set();for(const r of this.packs.values()) for(const id of r.ids) keep.add(id);
   for(const id of rec.ids) if(!keep.has(id)) this.ways.delete(id);
+  if(rec.pk&&this.parkings){const kp=new Set();for(const r of this.packs.values()) if(r.pk) for(const id of r.pk) kp.add(id);
+    for(const id of rec.pk) if(!kp.has(id)) this.parkings.delete(id);}
   if(!later) this.rebuildIndex();
 };
 /* the network is rebuilt in small steps (a few ms per frame) so driving never freezes; the new index and heights
@@ -578,6 +589,13 @@ TN.Net.prototype.buildCell=function(tx,ty){
   const inCell=(x,z)=>{const ll=TN.fromLocal(x,z);return Math.floor(ll[0]/TN.CELL)===tx&&Math.floor(ll[1]/TN.CELL)===ty;};
   const x0=TN.toLocal(tx*TN.CELL,(ty+1)*TN.CELL),x1=TN.toLocal((tx+1)*TN.CELL,ty*TN.CELL);
   const cb=[Math.min(x0[0],x1[0]),Math.max(x0[0],x1[0]),Math.min(x0[1],x1[1]),Math.max(x0[1],x1[1])];
+  if(this.parkings) for(const pk of this.parkings.values()){
+    if(!inCell(pk.c[0],pk.c[1])) continue;
+    const tri=TN.earcut(pk.pts);
+    for(const t of tri){const base=L.curb.n;
+      for(const k of t){const q=pk.pts[k];L.curb.p.push(q[0],0.012,q[1]);L.curb.c.push(TN.C.park[0],TN.C.park[1],TN.C.park[2]);}
+      L.curb.i.push(base,base+1,base+2);L.curb.n+=3;}
+  }
   for(const w of this.ways.values()){
     if(w.tun) continue;
     if(w.bb[1]<cb[0]||w.bb[0]>cb[1]||w.bb[3]<cb[2]||w.bb[2]>cb[3]) continue;
@@ -718,6 +736,28 @@ TN.Net.prototype.rampPiers=function(L,w,a,b){
     this.near(x,z,0,(v,k)=>{if(v===w||v.tun) return;const r=TN.seg(v,k,x,z),vh=v.hs?v.hs[k]:(v.br?v.H:0);if(r.d<TN.width(v)/2+1.2&&vh<h-2){onRoad=true;return true;}});
     if(!onRoad) TN.box(L.road,x,z,ux,uz,1.3,Math.min(W*0.5,6),0,h-1.2,TN.C.pier);
   }
+};
+/* triangles of a simple polygon (ear clipping); returns index triples */
+TN.earcut=function(P){
+  const n=P.length;if(n<3) return [];
+  let a=0;for(let i=0;i<n;i++){const p=P[i],q=P[(i+1)%n];a+=p[0]*q[1]-q[0]*p[1];}
+  const idx=[];for(let i=0;i<n;i++) idx.push(a>0?i:n-1-i);
+  const out=[],cross=(o,p,q)=>(p[0]-o[0])*(q[1]-o[1])-(p[1]-o[1])*(q[0]-o[0]);
+  const inside=(p,a2,b2,c2)=>cross(a2,b2,p)>=0&&cross(b2,c2,p)>=0&&cross(c2,a2,p)>=0;
+  let guard=0;
+  while(idx.length>3&&guard++<n*n){
+    let cut=false;
+    for(let i=0;i<idx.length;i++){
+      const i0=idx[(i+idx.length-1)%idx.length],i1=idx[i],i2=idx[(i+1)%idx.length],A=P[i0],B=P[i1],C=P[i2];
+      if(cross(A,B,C)<=0) continue;
+      let ok=true;for(const j of idx){if(j===i0||j===i1||j===i2) continue;if(inside(P[j],A,B,C)){ok=false;break;}}
+      if(!ok) continue;
+      out.push([i0,i1,i2]);idx.splice(i,1);cut=true;break;
+    }
+    if(!cut) break;
+  }
+  if(idx.length===3) out.push([idx[0],idx[1],idx[2]]);
+  return out;
 };
 TN.box=function(G,x,z,ux,uz,a,c,y0,y1,col){
   const vx=-uz,vz=ux,A=a/2,B=c/2,P=(sa,sb,y)=>[x+ux*A*sa+vx*B*sb,y,z+uz*A*sa+vz*B*sb];
