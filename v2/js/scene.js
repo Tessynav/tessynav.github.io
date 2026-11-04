@@ -34,7 +34,7 @@ TN.Scene.prototype.layer=function(){
         const inv=T.camera.projectionMatrix.clone().invert();
         TN.CUTU.cutCam.value.set(0,0,-1).applyMatrix4(inv);
         const c=S.car3d;
-        if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=9;}
+        if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=4.5;}
         else TN.CUTU.cutR.value=0;
       }catch(e){}
       T.renderer.resetState();
@@ -156,7 +156,7 @@ TN.Scene.prototype.carMat=function(md){
    soft blue-grey silhouette, so you always see where you are. Drawn after the city but before the car itself. */
 TN.Scene.prototype.addSilhouette=function(body){ /* replaced by the see-through circle around the car (TN.CUT) */ };
 /* ---------- see-through circle around the car (like Codriver) ----------
-   Buildings and trees between the camera and the car fade out (fine dither) inside a circle around the car,
+   Buildings and trees between the camera and the car fade out (fine dither) inside a cone from the camera to the car,
    so Tessy always stays solid and clear; outside the circle everything looks normal. */
 TN.CUTU={cutCam:{value:new THREE.Vector3()},cutCar:{value:new THREE.Vector3(0,-1e6,0)},cutR:{value:0}};
 TN.CUTGLSL=[
@@ -167,7 +167,9 @@ TN.CUTGLSL=[
   '  float t=dot(vCutW-cutCam,d)/dd;',
   '  if(t<=0.0||t>1.0-2.5/sqrt(dd)) return false;',
   '  float r=length(vCutW-(cutCam+d*t));',
-  '  float k=0.82*(1.0-smoothstep(cutR*0.55,cutR,r));',
+  /* a cone from the camera to the car: only what covers the car on screen fades (nothing beside the car) */
+  '  float rad=cutR*t;',
+  '  float k=0.85*(1.0-smoothstep(rad*0.6,rad,r));',
   '  if(k<=0.0) return false;',
   '  return fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)<k;',
   '}'].join('\n');
