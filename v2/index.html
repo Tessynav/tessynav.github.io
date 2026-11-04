@@ -9,7 +9,9 @@
 <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 <style>
 html,body,#map{margin:0;height:100%;background:#e9ece6}
-.hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px;z-index:5}
+.hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px;z-index:5;transition:opacity .6s}
+body.tn-intro .hud:not(#panel){opacity:0;pointer-events:none}
+#tn-boot{position:absolute;left:0;top:0;width:100%;height:100%;background:#080e1a;z-index:49;transition:opacity .35s}
 button.hud{border:0;cursor:pointer}
 #status{top:12px;left:12px;font-size:15px}
 #tag{top:12px;right:12px;font-size:13px;opacity:.85}
@@ -26,6 +28,17 @@ button.hud{border:0;cursor:pointer}
 </style>
 </head>
 <body>
+<div id="tn-boot"></div>
+<script>
+/* the opening animation starts dark from the first moment (no blank screen); skipped after an update or with ?intro=0 */
+(function(){let on=true;try{if(/[?&]intro=0/.test(location.search)||/[?&]r=\d/.test(location.search)||sessionStorage.getItem('tn2_target')) on=false;}catch(e){}
+  const b=document.getElementById('tn-boot');
+  if(!on){b.parentNode.removeChild(b);return;}
+  document.body.classList.add('tn-intro');
+  /* safety: never stay dark for long if anything goes wrong */
+  setTimeout(()=>{const x=document.getElementById('tn-boot');if(x) x.parentNode.removeChild(x);document.body.classList.remove('tn-intro');},9000);
+})();
+</script>
 <div id="map"></div>
 <div id="status" class="hud">Tap Start to follow Tessy</div>
 <div id="tag" class="hud">TessyNav v2 · test</div>
@@ -43,9 +56,9 @@ button.hud{border:0;cursor:pointer}
 <script src="js/scene.js?v=11"></script>
 <script src="js/trees.js?v=4"></script>
 <script src="js/buildings.js?v=1"></script>
-<script src="js/intro.js?v=1"></script>
+<script src="js/intro.js?v=2"></script>
 <script src="js/rec.js?v=2"></script>
-<script src="js/app.js?v=22"></script>
+<script src="js/app.js?v=23"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
