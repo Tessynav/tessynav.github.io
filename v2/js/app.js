@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=26;
+TN.APPBUILD=27;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -142,7 +142,17 @@ TN.APPBUILD=26;
       d.innerHTML='<div class="t">Updating TessyNav</div><div class="bar"><div class="fill"></div></div><div class="s">Getting the new version… 0%</div>';
       document.body.appendChild(d);requestAnimationFrame(()=>{d.style.opacity='1';});
     }
-    setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);
+    /* a snapshot of the map just before reloading, shown faded behind the progress bar on the new page */
+    let gone=false;const go=()=>{if(gone) return;gone=true;location.replace(location.pathname+'?r='+Date.now());};
+    try{
+      map.once('render',()=>{
+        try{const c=map.getCanvas(),t=document.createElement('canvas'),k=Math.min(1,1000/Math.max(1,c.width));
+          t.width=Math.round(c.width*k);t.height=Math.round(c.height*k);t.getContext('2d').drawImage(c,0,0,t.width,t.height);
+          sessionStorage.setItem('tn2_shot',t.toDataURL('image/jpeg',0.6));}catch(e){}
+        setTimeout(go,300);});
+      map.triggerRepaint();
+    }catch(e){}
+    setTimeout(go,1200);
   }
   $('ver').onclick=async()=>{
     panel('Checking GitHub…',[]);
