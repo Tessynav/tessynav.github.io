@@ -129,11 +129,17 @@ TN.Scene.prototype.loadCar=async function(){
 };
 TN.Scene.prototype.carMat=function(md){
   const pbr=md.pbrMetallicRoughness||{},c=pbr.baseColorFactor||[0.5,0.5,0.5,1],name=md.name||'';
-  if(name==='paint') return new THREE.MeshStandardMaterial({color:0x3a3d42,metalness:0.55,roughness:0.32,side:THREE.DoubleSide});
+  /* Tessy's real colour: Stealth Grey, a medium blue-grey with a soft metallic shine */
+  if(name==='paint') return new THREE.MeshStandardMaterial({color:0x60656c,metalness:0.5,roughness:0.34,side:THREE.DoubleSide});
   if(name==='glass') return new THREE.MeshStandardMaterial({color:0x0b0d10,metalness:0.2,roughness:0.08,side:THREE.DoubleSide});
-  if(name==='tail') return new THREE.MeshStandardMaterial({color:0x7a0d10,emissive:0x5a0000,roughness:0.3});
+  if(name==='tail'){const m=new THREE.MeshStandardMaterial({color:0x7a0d10,emissive:0x5a0000,roughness:0.3});(this.tails=this.tails||[]).push(m);return m;}
   return new THREE.MeshStandardMaterial({color:new THREE.Color(c[0],c[1],c[2]),metalness:pbr.metallicFactor!=null?pbr.metallicFactor:0.2,
     roughness:pbr.roughnessFactor!=null?pbr.roughnessFactor:0.6,side:THREE.DoubleSide});
+};
+/* brake lights: 0 = normal tail lights, 1 = braking (bright red glow) */
+TN.Scene.prototype.setBrake=function(k){
+  if(!this.tails||this.brakeK===k) return;this.brakeK=k;
+  for(const m of this.tails){m.emissive.setRGB(0.35+0.65*k,0.02*(1-k),0.02*(1-k));m.emissiveIntensity=1+1.6*k;m.color.setRGB(0.48+0.5*k,0.05,0.06);}
 };
 TN.Scene.prototype.placeCar=function(x,z,y,hd){
   if(!this.car3d) return;

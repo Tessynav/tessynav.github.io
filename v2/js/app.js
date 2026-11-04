@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=19;
+TN.APPBUILD=20;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -12,7 +12,9 @@ TN.APPBUILD=19;
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   const trees=TN.Trees?new TN.Trees(scene,net):null;
+  const buildings=TN.Buildings?new TN.Buildings(scene):null;
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
+  const brk={t:0,v:0,d:0,k:0,moved:0};
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
   /* ---------- panel ---------- */
@@ -172,7 +174,7 @@ TN.APPBUILD=19;
   function night(){
     const c=map.getCenter(),alt=TN.sunAlt(new Date(),c.lat,c.lng);
     const nt=Math.min(1,Math.max(0,(6-alt)/12));
-    if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);}
+    if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);}
   }
   setInterval(night,60000);
 
@@ -239,6 +241,13 @@ TN.APPBUILD=19;
       const ac=follow?{lng:ll[0],lat:ll[1]}:map.getCenter();
       scene.update(ac.lng,ac.lat);
       if(trees){try{trees.update(ac.lng,ac.lat,lastFps);}catch(e){}}
+      if(buildings){try{buildings.update(ac.lng,ac.lat,lastFps);}catch(e){}}
+      /* brake lights: on while slowing down clearly, and while stopped after driving (like a held brake) */
+      {const L=track.last;if(L&&L.t!==brk.t){
+        if(brk.t){const dts=(L.t-brk.t)/1000;if(dts>0.05&&dts<2){const a=(brk.v-L.v)/dts;brk.d+=(a-brk.d)*Math.min(1,dts*3);}}
+        brk.t=L.t;brk.v=L.v;if(L.v>3) brk.moved=Date.now();}
+       const on=(brk.d>1.1&&track.last&&track.last.v>0.5)||(track.last&&track.last.v<0.5&&Date.now()-brk.moved<600000);
+       brk.k+=((on?1:0)-brk.k)*Math.min(1,dt*(on?12:5));try{scene.setBrake(Math.round(brk.k*20)/20);}catch(e){}}
       if(rec.rec&&Date.now()-lastRec>=500){
         lastRec=Date.now();rec.frame(car,map.getZoom(),follow);
         /* something looks wrong: take a snapshot right away */
@@ -254,6 +263,7 @@ TN.APPBUILD=19;
     }else{
       const c=map.getCenter();scene.update(c.lng,c.lat);
       if(trees){try{trees.update(c.lng,c.lat,lastFps);}catch(e){}}
+      if(buildings){try{buildings.update(c.lng,c.lat,lastFps);}catch(e){}}
     }
   }
   requestAnimationFrame(loop);
