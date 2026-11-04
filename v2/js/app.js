@@ -1,6 +1,8 @@
 /* TessyNav v2 — app.js: buttons, GPS, road loading and the main loop */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
+/* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
+TN.APPBUILD=17;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -77,6 +79,14 @@ TN.VERSION='v2 step 1';
   $('zin').onclick=()=>{userZoom=Math.min(3,userZoom+0.5);if(!follow) map.easeTo({zoom:map.getZoom()+0.5,duration:300});};
   $('zout').onclick=()=>{userZoom=Math.max(-4,userZoom-0.5);if(!follow) map.easeTo({zoom:map.getZoom()-0.5,duration:300});};
   map.on('dragstart',e=>{if(e.originalEvent) follow=false;});
+  /* touching the map (finger or mouse) pauses following right away, so you can drag, pinch, rotate and tilt freely;
+     Recenter brings the following back. (Waiting for the map's own gesture events did not work while the camera was
+     being moved every frame.) The + and - buttons keep following. */
+  const pauseFollow=()=>{if(follow){follow=false;$('btn').textContent='Recenter';}};
+  const cv=map.getCanvasContainer();
+  cv.addEventListener('pointerdown',pauseFollow,{passive:true});
+  cv.addEventListener('touchstart',pauseFollow,{passive:true});
+  cv.addEventListener('wheel',pauseFollow,{passive:true});
   map.on('rotatestart',e=>{if(e.originalEvent) follow=false;});
   map.on('pitchstart',e=>{if(e.originalEvent) follow=false;});
 
@@ -131,7 +141,7 @@ TN.VERSION='v2 step 1';
       if(now.join('|')!==mine.join('|')){
         const changed=now.filter(x=>mine.indexOf(x)<0).map(label).join(', ');
         panel('Update available: <b>'+changed+'</b><br><br>Running now: '+mine.map(label).join(', '),[['Update now',()=>update(now)],['Later',hide]]);
-      }else panel('TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><br>You have the latest version.',[['Close',hide]]);
+      }else panel('TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><small>(app.js file inside: build '+TN.APPBUILD+')</small><br><br>You have the latest version.',[['Close',hide]]);
     }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
   /* after "Update now": did the new files arrive? */
