@@ -174,7 +174,7 @@ TN.Net.prototype.heights=function*(){
       keyH.set(k,Math.max(keyH.get(k)||0,H));
     }
   }
-  const gnd=ways.filter(w=>!w._br);
+  let gnd=ways.filter(w=>!w._br);
   /* 2. ramps: from every raised point, ground roads rise toward it (searched along the network, up to the ramp length) */
   const val=(H,d)=>H*TN.smooth(1-d/TN.rampLen(H));
   const best=new Map(); /* way id -> per-vertex height */
@@ -203,6 +203,17 @@ TN.Net.prototype.heights=function*(){
     }
   }
   for(const [w,a] of best){if(a.some(h=>h>0.05)) w._hs=Array.from(a);}
+  /* a bridge piece that sits on the climb toward a higher bridge (its ends are higher than its own height) becomes
+     part of that climb: it slopes like the road around it instead of making a step */
+  const keyRamp=k=>{let m=0;for(const [w,i] of (this.keys.get(k)||[])){if(w._br) continue;const a=best.get(w);if(a&&a[i]>m) m=a[i];}return m;};
+  for(const b of brs){
+    if(!(b._H>0)) continue;
+    const hA=keyRamp(b.keys[0]),hB=keyRamp(b.keys[b.keys.length-1]);
+    if(Math.max(hA,hB)<=b._H+0.5) continue;
+    const A=Math.max(b._H,hA),B=Math.max(b._H,hB);
+    b._br=false;b._hs=b.cum.map(c=>A+(B-A)*(c/(b.L||1)));
+  }
+  gnd=ways.filter(w=>!w._br);
   /* 3. roads side by side rise together (lane joining/leaving, carriageway split in pieces), then slopes are smoothed */
   for(let pass=0;pass<3;pass++){
     const RG=new Map();
@@ -257,9 +268,40 @@ TN.Net.prototype.heights=function*(){
       }
     }
     yield;
+    /* no dips between two raised parts less than 200 m apart, also when the dip spans several road pieces */
+    for(const w of gnd) if(w._hs&&this.valleyAcross(w)) changed=true;
     for(const w of gnd) if(w._hs) TN.slope(w);
     if(!changed) break;
   }
+};
+/* highest height within 200 m beyond one end of a road piece, on the pieces that continue it */
+TN.Net.prototype.beyond=function(w,atEnd){
+  const k=atEnd?w.keys[w.keys.length-1]:w.keys[0],l=this.keys.get(k);if(!l) return 0;
+  const P=w.pts,n=P.length,i=atEnd?n-1:0,j=atEnd?n-2:1;
+  const tx=(P[i][0]-P[j][0]),tz=(P[i][1]-P[j][1]),tl=Math.hypot(tx,tz)||1;
+  let m=0;
+  for(const [v,vi] of l){
+    if(v===w||v.tun) continue;
+    const vn=v.pts.length;if(vi!==0&&vi!==vn-1) continue;
+    const vj=vi===0?1:vn-2,ux=v.pts[vj][0]-v.pts[vi][0],uz=v.pts[vj][1]-v.pts[vi][1],ul=Math.hypot(ux,uz)||1;
+    if((tx*ux+tz*uz)/(tl*ul)<0.8) continue;   /* only pieces that carry on in the same direction */
+    if(v._br){m=Math.max(m,v._H||0);continue;}
+    if(!v._hs) continue;
+    for(let q=0;q<vn;q++){const d=vi===0?v.cum[q]:v.L-v.cum[q];if(d<200&&v._hs[q]>m) m=v._hs[q];}
+  }
+  return m;
+};
+TN.Net.prototype.valleyAcross=function(w){
+  const hs=w._hs,c=w.cum,L=w.L,a=this.beyond(w,false),b=this.beyond(w,true);
+  if(a<0.3||b<0.3) return false;
+  let ch=false;
+  for(let j=0;j<hs.length;j++){
+    let l=c[j]<200?a:0,r=L-c[j]<200?b:0;
+    for(let q=j-1;q>=0&&c[j]-c[q]<200;q--) if(hs[q]>l) l=hs[q];
+    for(let q=j+1;q<hs.length&&c[q]-c[j]<200;q++) if(hs[q]>r) r=hs[q];
+    const f=Math.min(l,r);if(f>hs[j]+0.05){hs[j]=f;ch=true;}
+  }
+  return ch;
 };
 TN.slope=function(w){
   const hs=w._hs,c=w.cum,k=0.06;
@@ -335,6 +377,11 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     TN.quad(G,p(i,o1(i)),p(i+1,o1(i+1)),p(i+1,o2(i+1)),p(i,o2(i)),col);}};
   const wall=(G,a,b,o,top,bot,col)=>{for(let i=a;i<b;i++){
     const t0=H(i)+top,t1=H(i+1)+top,b0=bot(i),b1=bot(i+1);if(t0-b0<0.05&&t1-b1<0.05) continue;
+    /* where another road is right beside this edge at about the same height (a ramp joining or leaving the
+       highway), there is no wall: you can drive across there */
+    {const oi=o(i),oj=o(i+1),sg=Math.sign(oi+oj)||1,mx=(P[i][0]+P[i+1][0])/2+(N[i][0]+N[i+1][0])/2*((oi+oj)/2+sg*1.5),
+      mz=(P[i][1]+P[i+1][1])/2+(N[i][1]+N[i+1][1])/2*((oi+oj)/2+sg*1.5);
+     if(net.onOther(w,mx,mz,(H(i)+H(i+1))/2)) continue;}
     const p=(j,h)=>[P[j][0]+N[j][0]*o(j),h,P[j][1]+N[j][1]*o(j)];
     TN.quad(G,p(i,b0),p(i+1,b1),p(i+1,t1),p(i,t0),col);}};
   const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
