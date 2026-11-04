@@ -45,6 +45,11 @@ TN.Scene.prototype.layer=function(){
 /* ---------- road areas ---------- */
 TN.Scene.prototype.mat=function(k){
   if(this.mats[k]) return this.mats[k];
+  if(k==='lot'){
+    /* parking lots: drawn first and not hiding anything, so they never flicker against aisles and curbs */
+    const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,depthWrite:false});
+    this.mats[k]=m;return m;
+  }
   if(k==='glow'){
     /* lamps and pools of light: added light, invisible by day, fading in at dusk */
     const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:this.glowOp||0,
@@ -56,15 +61,16 @@ TN.Scene.prototype.mat=function(k){
     polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
   this.mats[k]=m;return m;
 };
-TN.Scene.prototype.cellMesh=function(tx,ty){
-  const L=this.net.buildCell(tx,ty),grp=new THREE.Group();let any=false;
-  for(const k of ['curb','road','mark','glow']){
+TN.Scene.prototype.cellMesh=function(tx,ty){return this.meshOf(this.net.buildCell(tx,ty));};
+TN.Scene.prototype.meshOf=function(L){
+  const grp=new THREE.Group();let any=false;
+  for(const k of ['lot','curb','road','mark','glow']){
     const G=L[k];if(!G||!G.n) continue;any=true;
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
     g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
     g.setIndex(G.i);
-    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={curb:1,road:2,mark:3,glow:4}[k];
+    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,mark:3,glow:4}[k];
     grp.add(mesh);
   }
   return any?grp:null;
@@ -76,24 +82,42 @@ TN.Scene.prototype.freeCell=function(k){
 };
 TN.Scene.prototype.update=function(lng,lat){
   if(!this.three) return;
-  const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL);
-  if(this.net.ver!==this.netVer){this.netVer=this.net.ver;for(const e of this.cells.values()) e.old=true;}
+  const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),net=this.net;
+  /* new road data: only the areas around the packs that changed are rebuilt (not every area around you) */
+  if(net.ver!==this.netVer){
+    this.netVer=net.ver;const ch=net.changed||[];net.changed=[];
+    const P=net.PACK||4;
+    if(!ch.length){for(const e of this.cells.values()) e.old=true;}
+    else for(const [k,e] of this.cells){const [x,y]=k.split(',').map(Number),px=Math.floor(x/P),py=Math.floor(y/P);
+      if(ch.some(c=>{const [a,b]=c.split('_').map(Number);return Math.abs(a-px)<=1&&Math.abs(b-py)<=1;})) e.old=true;}
+  }
   for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>3||Math.abs(y-cy)>3) this.freeCell(k);}
-  const now=performance.now();if(now-this.lastBuild<250) return;
-  /* nearest area that is missing or out of date, one per step */
+  const t0=performance.now();
+  /* keep building the current area, a few milliseconds per frame (no stutter) */
+  if(this.job){
+    let r;net._sg=this.job.sg||null;
+    do{r=this.job.g.next();}while(!r.done&&performance.now()-t0<5);
+    net._sg=null;
+    if(r.done){
+      const J=this.job;this.job=null;
+      const grp=this.meshOf(r.value);this.freeCell(J.k);
+      if(grp) this.three.scene.add(grp);
+      this.cells.set(J.k,{grp:grp});
+    }
+    TN.prof('roads',performance.now()-t0);
+    return;
+  }
+  /* nearest area that is missing or out of date */
   let best=null;
   for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){
     const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k);
     if(e&&!e.old) continue;
     const d=dx*dx+dy*dy;if(!best||d<best.d) best={k:k,x:cx+dx,y:cy+dy,d:d};
   }
-  if(!best||!this.net.ways.size) return;
-  this.lastBuild=now;
-  const t0=performance.now();
-  const grp=this.cellMesh(best.x,best.y);
-  this.freeCell(best.k);
-  if(grp) this.three.scene.add(grp);
-  this.cells.set(best.k,{grp:grp});
+  if(!best||!net.ways.size) return;
+  const e=this.cells.get(best.k);if(e) e.old=false;   /* (an old area stays visible until its new version is ready) */
+  if(e) e.old=false;
+  this.job={k:best.k,g:net.buildCellJob(best.x,best.y)};
   TN.prof('roads',performance.now()-t0);
 };
 TN.Scene.prototype.setNight=function(nt){
@@ -248,8 +272,8 @@ TN.Scene.prototype.styleMap=function(){
   }
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,
-      paint:{'fill-extrusion-color':TN.farBuildingColor(0),'fill-extrusion-height':['max',['coalesce',['get','render_height'],8],['+',['coalesce',['feature-state','lift'],0],2]],
-        'fill-extrusion-base':['max',['coalesce',['get','render_min_height'],0],['coalesce',['feature-state','lift'],0]],'fill-extrusion-opacity':1}});
+      paint:{'fill-extrusion-color':TN.farBuildingColor(0),'fill-extrusion-height':['case',['boolean',['feature-state','hide'],false],0,['max',['coalesce',['get','render_height'],8],['+',['coalesce',['feature-state','lift'],0],2]]],
+        'fill-extrusion-base':['case',['boolean',['feature-state','hide'],false],0,['max',['coalesce',['get','render_min_height'],0],['coalesce',['feature-state','lift'],0]]],'fill-extrusion-opacity':1}});
   }
   for(const l of map.getStyle().layers) if(l.type==='fill-extrusion'&&l.id!=='tn-buildings') map.setLayoutProperty(l.id,'visibility','none');
   map.addSource('tn-night',{type:'geojson',data:{type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}}});

@@ -83,13 +83,13 @@ TN.Net.prototype.addPack=function(key,P,later){
   rec.mk=new Set();this.marks=this.marks||new Map();
   for(const m of P.n||[]){const k=m[0]+','+m[1]+','+m[2];rec.mk.add(k);if(this.marks.has(k)) continue;
     const q=TN.toLocal(m[0],m[1]);this.marks.set(k,{x:q[0],z:q[1],kind:m[2],dir:m[3]||'',key:TN.vkey(m[0],m[1])});}
-  this.packs.set(key,rec);
+  this.packs.set(key,rec);(this.changed=this.changed||[]).push(key);
   if(!later) this.rebuildIndex();
   return true;
 };
 TN.Net.prototype.dropPack=function(key,later){
   const rec=this.packs.get(key);if(!rec) return;
-  this.packs.delete(key);
+  this.packs.delete(key);(this.changed=this.changed||[]).push(key);
   const keep=new Set();for(const r of this.packs.values()) for(const id of r.ids) keep.add(id);
   for(const id of rec.ids) if(!keep.has(id)) this.ways.delete(id);
   if(rec.rm&&this.rem){const kr=new Set();for(const r of this.packs.values()) if(r.rm) for(const id of r.rm) kr.add(id);
@@ -590,6 +590,14 @@ TN.normals=function(pts){
 };
 /* is a point on another road at about the same height? (then markings are left out there) */
 TN.Net.prototype.onOther=function(way,x,z,h){
+  const G=this._sg;
+  if(G){
+    const gx=Math.floor(x/10),gz=Math.floor(z/10),l=G.get(gx*1e6+gz);if(!l) return false;
+    for(const e of l){const w=e[0],i=e[1];if(w===way||w.tun) continue;
+      const r=TN.seg(w,i,x,z);if(r.d>=TN.width(w)/2-0.2) continue;
+      const wh=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);if(Math.abs(wh-h)<1) return true;}
+    return false;
+  }
   let hit=false;
   this.near(x,z,0,(w,i)=>{
     if(w===way||w.tun) return;
@@ -598,19 +606,24 @@ TN.Net.prototype.onOther=function(way,x,z,h){
   });
   return hit;
 };
-TN.Net.prototype.buildCell=function(tx,ty){
-  const L={curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo()};
-  const net=this;
+TN.Net.prototype.buildCell=function(tx,ty){const g=this.buildCellJob(tx,ty);let r;do{r=g.next();}while(!r.done);return r.value;};
+TN.Net.prototype.buildCellJob=function*(tx,ty){
+  const L={lot:TN.geo(),curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo()};
+  const net=this;let nn=0,SG=null;
+  /* pause point: the fast road lookup belongs to this job only, so it is switched off while paused */
+  const pause=function*(){net._sg=null;yield;net._sg=SG;};
   const inCell=(x,z)=>{const ll=TN.fromLocal(x,z);return Math.floor(ll[0]/TN.CELL)===tx&&Math.floor(ll[1]/TN.CELL)===ty;};
   const x0=TN.toLocal(tx*TN.CELL,(ty+1)*TN.CELL),x1=TN.toLocal((tx+1)*TN.CELL,ty*TN.CELL);
   const cb=[Math.min(x0[0],x1[0]),Math.max(x0[0],x1[0]),Math.min(x0[1],x1[1]),Math.max(x0[1],x1[1])];
-  this._sg=this.segGrid(cb);
+  SG=this.segGrid(cb);this._sg=SG;
+  /* parking lots: their own layer, drawn first and never hiding anything (no flicker with the aisles) */
   if(this.parkings) for(const pk of this.parkings.values()){
     if(!inCell(pk.c[0],pk.c[1])) continue;
     const tri=TN.earcut(pk.pts);
-    for(const t of tri){const base=L.curb.n;
-      for(const k of t){const q=pk.pts[k];L.curb.p.push(q[0],0.012,q[1]);L.curb.c.push(TN.C.park[0],TN.C.park[1],TN.C.park[2]);}
-      L.curb.i.push(base,base+1,base+2);L.curb.n+=3;}
+    for(const t of tri){const base=L.lot.n;
+      for(const k of t){const q=pk.pts[k];L.lot.p.push(q[0],0.01,q[1]);L.lot.c.push(TN.C.park[0],TN.C.park[1],TN.C.park[2]);}
+      L.lot.i.push(base,base+1,base+2);L.lot.n+=3;}
+    yield* pause();
   }
   for(const w of this.ways.values()){
     if(w.tun) continue;
@@ -621,7 +634,7 @@ TN.Net.prototype.buildCell=function(tx,ty){
       if(ins&&a<0) a=i;if(!ins&&a>=0){runs.push([a,i]);a=-1;}
     }
     if(a>=0) runs.push([a,P.length-1]);
-    if(runs.length){this.drawWay(L,w,runs);this.drawWalks(L,w,runs);if(w.pa) this.drawStalls(L,w,runs);this.drawLights(L,w,runs);}
+    if(runs.length){this.drawWay(L,w,runs);this.drawWalks(L,w,runs);if(w.pa) this.drawStalls(L,w,runs);this.drawLights(L,w,runs);yield* pause();}
   }
   {const T=TN.toLocal(TN.CHAMPLAIN.lng,TN.CHAMPLAIN.lat);if(inCell(T[0],T[1])) this.champlainTower(L);}
   if(this.rem) for(const w of this.rem.values()){
@@ -630,10 +643,12 @@ TN.Net.prototype.buildCell=function(tx,ty){
     for(let i=0;i<P.length-1;i++){const ins=inCell((P[i][0]+P[i+1][0])/2,(P[i][1]+P[i+1][1])/2);
       if(ins&&a<0) a=i;if(!ins&&a>=0){this.drawRem(L,w,a,i);a=-1;}}
     if(a>=0) this.drawRem(L,w,a,P.length-1);
+    yield* pause();
   }
   if(this.marks) for(const m of this.marks.values()){
     if(!inCell(m.x,m.z)) continue;
     if(m.kind==='c') this.drawCrosswalk(L,m);else if(m.kind==='s'||m.kind==='y') this.drawSign(L,m);
+    yield* pause();
   }
   this._sg=null;
   return L;
@@ -648,7 +663,7 @@ TN.Net.prototype.nearOther=function(way,x,z,pad){
     const gx=Math.floor(x/10),gz=Math.floor(z/10);
     for(let ax=gx-1;ax<=gx+1;ax++) for(let az=gz-1;az<=gz+1;az++){
       const l=G.get(ax*1e6+az);if(!l) continue;
-      for(const e of l){const w=e[0];if(w===way) continue;const r=TN.seg(w,e[1],x,z);if(r.d<TN.width(w)/2+pad) return true;}
+      for(const e of l){const w=e[0];if(w===way||w.br) continue;const r=TN.seg(w,e[1],x,z);if(r.d<TN.width(w)/2+pad) return true;}
     }
     return false;
   }
@@ -662,7 +677,7 @@ TN.Net.prototype.segGrid=function(cb){
   for(let ix=Math.floor((cb[0]-30)/100);ix<=Math.floor((cb[1]+30)/100);ix++)
     for(let iz=Math.floor((cb[2]-30)/100);iz<=Math.floor((cb[3]+30)/100);iz++){const l=this.idx.get(ix*1e6+iz);if(l) for(const w of l) cand.add(w);}
   for(const w of cand){
-    if(w.tun||w.br) continue;if(w.bb[1]<cb[0]-30||w.bb[0]>cb[1]+30||w.bb[3]<cb[2]-30||w.bb[2]>cb[3]+30) continue;
+    if(w.tun) continue;if(w.bb[1]<cb[0]-30||w.bb[0]>cb[1]+30||w.bb[3]<cb[2]-30||w.bb[2]>cb[3]+30) continue;
     const P=w.pts,h=TN.width(w)/2+2;
     for(let i=0;i<P.length-1;i++){
       const a=P[i],c=P[i+1];
@@ -851,7 +866,7 @@ TN.Net.prototype.champlainTower=function(L){
   const cc=TN.C.cable;
   for(const d of D){
     const w=d.w,s0=w.cum[d.i]+d.u*(w.cum[d.i+1]-w.cum[d.i]);
-    const side=Math.sign((d.x-cx)*nx+(d.z-cz)*nz)||1,lx=cx+nx*side*4.5,lz=cz+nz*side*4.5;
+    const side=Math.sign((d.x-cx)*nx+(d.z-cz)*nz)||1,lx=cx+nx*side*3.5,lz=cz+nz*side*3.5;
     /* this deck's own drawing direction relative to east */
     const q0=w.pts[d.i],q1=w.pts[d.i+1],dirE=Math.sign((q1[0]-q0[0])*ax*east+(q1[1]-q0[1])*az*east)||1;
     /* harp: every cable on a side has the same slope (parallel lines); anchors climb the tower evenly */
@@ -859,7 +874,8 @@ TN.Net.prototype.champlainTower=function(L){
       const rise=20+k*8.5,sa=s0+dirE*span*rise/slope;if(sa<0||sa>w.L) continue;
       let i=0;while(i<w.pts.length-2&&w.cum[i+1]<sa) i++;
       const sg=w.cum[i+1]-w.cum[i]||1,t=Math.max(0,Math.min(1,(sa-w.cum[i])/sg));
-      const bx=w.pts[i][0]+(w.pts[i+1][0]-w.pts[i][0])*t,bz=w.pts[i][1]+(w.pts[i+1][1]-w.pts[i][1])*t,by=TN.heightAt(w,sa)+0.5;
+      let bx=w.pts[i][0]+(w.pts[i+1][0]-w.pts[i][0])*t,bz=w.pts[i][1]+(w.pts[i+1][1]-w.pts[i][1])*t;const by=TN.heightAt(w,sa)+1.0;
+      {const toT=Math.sign((cx-bx)*nx+(cz-bz)*nz)||1,hw2=TN.width(w)/2+0.3;bx+=nx*toT*hw2;bz+=nz*toT*hw2;}
       const ay=deck+rise;
       TN.quad(G,[lx,ay,lz],[bx,by,bz],[bx,by+0.3,bz],[lx,ay+0.3,lz],cc);
     }
@@ -1046,6 +1062,8 @@ TN.Net.prototype.drawWay=function(L,w,runs){
         const A=pt(u0),B=pt(u1),um=(u0+u1)/2,o=oo(um),mx=(A[0]+B[0])/2+ux*o,mz=(A[1]+B[1])/2+uz*o;
         if(net.onOther(w,mx,mz,hh(um)-0.06)) continue;
         if(edgeOut&&net.onOther(w,mx+ux*edgeOut,mz+uz*edgeOut,hh(um)-0.06)) continue;
+        if(edgeOut&&net.onOther(w,mx+ux*edgeOut*2,mz+uz*edgeOut*2,hh(um)-0.06)) continue;
+        if(edgeOut&&nearJoin(s0+(d0+d1)/2-s0)) continue;
         const o0=oo(u0),o1=oo(u1);
         TN.quad(G,[A[0]+ux*(o0+half),hh(u0),A[1]+uz*(o0+half)],[B[0]+ux*(o1+half),hh(u1),B[1]+uz*(o1+half)],
                   [B[0]+ux*(o1-half),hh(u1),B[1]+uz*(o1-half)],[A[0]+ux*(o0-half),hh(u0),A[1]+uz*(o0-half)],col);
@@ -1053,6 +1071,10 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     }
   };
   const major=['motorway','trunk','primary','secondary'].indexOf(w.cls)>=0;
+  /* a ramp's own edge lines stop 35 m before the point where it joins (or leaves) another road, so no white line
+     runs across the place where it merges into the highway */
+  const joinsAt=j=>(this.keys.get(w.keys[j])||[]).length>1;
+  const nearJoin=w.ramp?(s0=>(joinsAt(0)&&s0<35)||(joinsAt(P.length-1)&&s0>w.L-35)):()=>false;
   for(const [a,b] of runs){
     if(!w.br) strip(L.curb,a,b,j=>hwJ(j)+0.3,j=>-hwJ(j)-0.3,0.02,TN.C.curb);
     strip(L.road,a,b,j=>hwJ(j),j=>-hwJ(j),0.04,TN.C.road);

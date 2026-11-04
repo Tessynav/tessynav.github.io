@@ -57,12 +57,7 @@ TN.Buildings.prototype.collect=function(ck){
       /* each building belongs to the area its middle is in (no doubles) */
       if(Math.floor(sx/TN.CELL)!==cx||Math.floor(sy/TN.CELL)!==cy) continue;
       const key=r[0][0].toFixed(6)+','+r[0][1].toFixed(6)+','+H;if(seen.has(key)) continue;seen.add(key);
-      const ring=r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1]));let Bx=B;
-      /* a building whose footprint crosses a street (a skybridge, a building over a road): there must be room to
-         drive underneath, so it starts high up, also in the map's own building layer further away */
-      if(this.crossesRoad(ring)){Bx=Math.max(B,H>=8?5.5:H*0.55);
-        if(f.id!=null&&B<Bx){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:f.id},{lift:Bx});}catch(e){}}}
-      out.push({ring:ring,H:Math.max(H,Bx+2),B:Bx});
+      out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B,id:f.id});
     }
   }
   return out;
@@ -74,7 +69,7 @@ TN.Buildings.prototype.crossesRoad=function(ring){
   let cx=0,cz=0,r=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=ring.length;cz/=ring.length;
   for(const p of ring) r=Math.max(r,Math.hypot(p[0]-cx,p[1]-cz));if(r>150) return false;
   let hit=false;
-  net.near(cx,cz,r,(w,i)=>{
+  const test=(w,i)=>{
     if(w.tun||w.br||w.pa) return;
     const a=w.pts[i],b=w.pts[i+1];
     /* the street's line runs through the footprint: it crosses an edge, or its middle lies inside */
@@ -84,7 +79,15 @@ TN.Buildings.prototype.crossesRoad=function(ring){
     if(inside){hit=true;return true;}
     let n=0;for(let k=0;k<ring.length;k++) if(TN.segX(a,b,ring[k],ring[(k+1)%ring.length])) n++;
     if(n>=2){hit=true;return true;}
-  });
+  };
+  const G=net._sg;
+  if(G){let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+    const seen=new Set();
+    for(let gx=Math.floor(x0/10);gx<=Math.floor(x1/10);gx++) for(let gz=Math.floor(z0/10);gz<=Math.floor(z1/10);gz++){
+      const l=G.get(gx*1e6+gz);if(!l) continue;
+      for(const e of l){const k=e[0].id+':'+e[1];if(seen.has(k)) continue;seen.add(k);if(test(e[0],e[1])) return true;}}
+    return false;}
+  net.near(cx,cz,r,test);
   return hit;
 };
 TN.Buildings.prototype.palette=function(H,seed){
@@ -93,15 +96,21 @@ TN.Buildings.prototype.palette=function(H,seed){
   if(H<=32) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
   return pick(['#9fb0bf','#b7c3cd','#8e9eae','#a9b3bb']);
 };
-TN.Buildings.prototype.addBuilding=function(G,b){
+TN.Buildings.prototype.addBuilding=function(G,b,J){
   let ring=b.ring;const n=ring.length;if(n<3) return;
+  const map=this.scene.map,fs=b.id!=null?{source:'openmaptiles',sourceLayer:'building',id:b.id}:null;
+  /* a building whose footprint crosses a street (a skybridge, a building over a road): room to drive underneath */
+  if(this.crossesRoad(ring)){const Bx=Math.max(b.B,b.H>=8?5.5:b.H*0.55);b={ring:ring,H:Math.max(b.H,Bx+2),B:Bx,id:b.id};
+    if(fs){try{map.setFeatureState(fs,{lift:Bx});}catch(e){}}}
+  /* the map's own plain copy of this building is flattened while the detailed one is shown */
+  if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}
   /* clockwise rings in local x/z (z points south) give outward walls with this winding */
   let area=0;for(let i=0;i<n;i++){const a=ring[i],c=ring[(i+1)%n];area+=a[0]*c[1]-c[0]*a[1];}
   if(area<0) ring=ring.slice().reverse();area=Math.abs(area)/2;
   if(area<12) return;
   const seed=Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;
   const col=TN.hex(this.palette(b.H,seed));
-  const top=b.H,bot=b.B,ex=0.15;   /* slightly outside the map's own building, so it is covered */
+  const top=b.H,bot=b.B,ex=0.3;   /* slightly outside the map's own building, so it is covered */
   let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
   const out=ring.map(p=>{const dx=p[0]-cx,dz=p[1]-cz,l=Math.hypot(dx,dz)||1;return [p[0]+dx/l*ex,p[1]+dz/l*ex];});
   const V=(x,y,z,nx,ny,nz,u,v,s,c)=>{G.p.push(x,y,z);G.n.push(nx,ny,nz);G.c.push(c[0],c[1],c[2]);G.w.push(u,v,s);return G.cnt++;};
@@ -155,6 +164,7 @@ TN.Buildings.prototype.finish=function(G){
 TN.Buildings.prototype.free=function(k){
   const e=this.cells.get(k);if(!e) return;
   if(e.mesh){this.scene.three.scene.remove(e.mesh);e.mesh.geometry.dispose();}
+  if(e.ids){const map=this.scene.map;for(const id of e.ids){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}}}
   this.cells.delete(k);
 };
 TN.Buildings.prototype.update=function(lng,lat,fps){
@@ -169,10 +179,12 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   /* keep building the current area: a few hundred buildings per frame */
   if(this.job){
     const t0=performance.now(),J=this.job;
-    while(J.i<J.list.length&&performance.now()-t0<5){this.addBuilding(J.G,J.list[J.i++]);}
+    this.net&&(this.net._sg=J.sg);
+    while(J.i<J.list.length&&performance.now()-t0<5){this.addBuilding(J.G,J.list[J.i++],J);}
+    this.net&&(this.net._sg=null);
     if(J.i>=J.list.length){
       const mesh=this.finish(J.G);if(mesh) this.scene.three.scene.add(mesh);
-      this.cells.set(J.k,{mesh:mesh,n:J.list.length,t:now,tries:J.tries});this.job=null;
+      this.cells.set(J.k,{mesh:mesh,n:J.list.length,t:now,tries:J.tries,ids:J.ids});this.job=null;
     }
     TN.prof('buildings',performance.now()-t0);
     return;
@@ -185,6 +197,8 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   }
   if(!best) return;
   const t0=performance.now(),list=this.collect(best.k);
-  this.job={k:best.k,list:list,i:0,tries:best.tries,G:{p:[],n:[],c:[],w:[],i:[],cnt:0}};
+  let sg=null;if(this.net&&list.length){const [x,y]=best.k.split(',').map(Number),a=TN.toLocal(x*TN.CELL,(y+1)*TN.CELL),b=TN.toLocal((x+1)*TN.CELL,y*TN.CELL);
+    sg=this.net.segGrid([Math.min(a[0],b[0])-20,Math.max(a[0],b[0])+20,Math.min(a[1],b[1])-20,Math.max(a[1],b[1])+20]);}
+  this.job={k:best.k,list:list,i:0,tries:best.tries,G:{p:[],n:[],c:[],w:[],i:[],cnt:0},ids:[],sg:sg};
   TN.prof('buildings',performance.now()-t0);
 };

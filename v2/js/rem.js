@@ -37,7 +37,7 @@ TN.Rem.prototype.setNight=function(nt){
 };
 TN.Rem.prototype.spawn=function(cx,cz){
   const net=this.net,c=[];
-  for(const w of net.rem.values()){if(w.L<60) continue;const b=w.bb;if(cx<b[0]-1500||cx>b[1]+1500||cz<b[2]-1500||cz>b[3]+1500) continue;c.push(w);}
+  for(const w of net.rem.values()){if(w.L<60) continue;const b=w.bb;if(cx<b[0]-900||cx>b[1]+900||cz<b[2]-900||cz>b[3]+900) continue;c.push(w);}
   if(!c.length) return;
   const w=c[Math.floor(Math.random()*c.length)];
   const g=new THREE.Group();
@@ -63,7 +63,7 @@ TN.Rem.prototype.update=function(dt,cx,cz){
   this.build();
   /* keep up to 3 trains around you */
   this.spawnT-=dt;
-  if(this.trains.length<3&&this.spawnT<=0){this.spawnT=2;this.spawn(cx,cz);}
+  if(this.trains.length<4&&this.spawnT<=0){this.spawnT=1.5;this.spawn(cx,cz);}
   for(let k=this.trains.length-1;k>=0;k--){
     const t=this.trains[k];
     if(!net.rem.has(t.w.id)){this.free(t);this.trains.splice(k,1);continue;}
