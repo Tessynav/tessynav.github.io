@@ -1,4 +1,4 @@
-/* TessyNav v2 — settings.js
+/* TessyNav v2 — settings.js (v2: test update for the update dot)
    The settings menu (gear button): switch looks on and off, choose the time of day (auto, day, night), set how dark
    night gets, the opening animation, the Record button, and the version/update check.
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
