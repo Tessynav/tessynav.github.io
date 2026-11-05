@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=54;
+TN.APPBUILD=55;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -24,6 +24,9 @@ TN.APPBUILD=54;
     gps:()=>track.last?{x:track.last.x,z:track.last.z,v:track.last.v,hd:track.hd,t:track.last.t}:null,gpsHd:()=>track.hd,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);},
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
+  /* road incidents with Rocco (TomTom) */
+  const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
+  if(incidents){try{incidents.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */
   const weather=TN.Weather?new TN.Weather(scene,season):null;
   if(weather&&TN.settings&&TN.settings.weather===false) weather.setOn(false);
@@ -38,7 +41,7 @@ TN.APPBUILD=54;
    cv.addEventListener('touchstart',down,{passive:true});cv.addEventListener('touchmove',move,{passive:true});cv.addEventListener('touchend',up);
    cv.addEventListener('mousedown',down);cv.addEventListener('mousemove',move);cv.addEventListener('mouseup',up);}catch(e){}
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  const brk={t:0,v:0,d:0,k:0,moved:0};let lastFollowT=null,dispHd=null,dispX=null,dispZ=null,mvX=null,mvZ=null,mvHd=null,dX=null,dZ=null,dH=null,dV=0;
+  const brk={t:0,v:0,d:0,k:0,moved:0};let lastFollowT=null,incT=0,dispHd=null,dispX=null,dispZ=null,mvX=null,mvZ=null,mvHd=null,dX=null,dZ=null,dH=null,dV=0;
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
   /* ---------- panel ---------- */
@@ -382,6 +385,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(nav&&!nav.active){try{const rc=track.car;nav.showLimit(rc&&rc.w&&rc.snapped?(rc.w.lim||null):null,(track.last?track.last.v:0)*3.6);}catch(e){}}
       /* live traffic lines when browsing the map or looking at a route overview (not while following the car) */
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
+      if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
       if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);
       if(follow){
