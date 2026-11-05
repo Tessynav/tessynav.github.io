@@ -31,6 +31,11 @@ TN.Nav.prototype.build=function(){
    '#tn-ov{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:18px;padding:14px 18px;font-size:16px}'+
    '#tn-ov small{color:#9fb3c8;font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
    '#tn-ov .go{background:#1fa596;color:#fff}#tn-ov .cancel,#tn-ov .stop{background:#3a4352;color:#e8f1fa}'+
+   '#tn-ov{flex-wrap:wrap;max-width:min(94vw,640px)}#tn-ov .btns{display:flex;gap:10px;align-items:center}#tn-ov.tripbox{flex-direction:column;align-items:stretch}'+
+   '#tn-ov .trip{margin-top:8px;display:flex;flex-direction:column;gap:4px}#tn-ov .row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border-radius:10px;padding:4px 6px}'+
+   '#tn-ov .row .num{width:26px;height:26px;border-radius:50%;background:#f59e0b;color:#111;font:700 13px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;flex-shrink:0}#tn-ov .row .num.fin{background:transparent;font-size:18px}'+
+   '#tn-ov .row .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}'+
+   '#tn-ov .row button{border:0;border-radius:8px;padding:6px 10px;font:600 15px system-ui,sans-serif;background:#3a4352;color:#e8f1fa;cursor:pointer}#tn-ov .row button:disabled{opacity:.3}'+
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
@@ -64,6 +69,7 @@ TN.Nav.prototype.build=function(){
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&this.results&&this.results[0]) this.pick(this.results[0]);if(e.key==='Escape') this.closeSearch();});
   x.onclick=()=>{inp.value='';x.style.display='none';this.showRecent();inp.focus();};
   this.endBtn.onclick=()=>this.end();
+  this.bar.querySelector('.eta').style.cursor='pointer';this.bar.querySelector('.eta').onclick=()=>this.openTrip();
   document.addEventListener('pointerdown',e=>{if(!this.box.contains(e.target)&&!this.res.contains(e.target)) this.res.style.display='none';},true);
 };
 TN.Nav.prototype.closeSearch=function(){this.res.style.display='none';this.input.blur();this.syncX();if(!this.addingStop) this.input.placeholder='Search a place or address';};
@@ -462,11 +468,43 @@ TN.Nav.prototype.overview=function(){
   }catch(e){}
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
-  this.ov.innerHTML='<div><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+(this.stops.length?'<br>via '+this.stops.map(p=>TN.esc(p.name)).join(', '):'')+'</small></div><button class="go">Go</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button>';
+  this.ov.innerHTML='<div style="min-width:0;flex:1"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+'</small>'+
+    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
+  this.tripButtons(this.ov);
 };
+/* the trip in order: stops numbered 1, 2, 3..., the destination last; arrows to reorder, x to remove */
+TN.Nav.prototype.tripList=function(){
+  const all=this.stops.concat([this.dest]),n=all.length;
+  return '<div class="trip">'+all.map((p,i)=>'<div class="row"><span class="num'+(i===n-1?' fin':'')+'">'+(i===n-1?'\uD83C\uDFC1':(i+1))+'</span>'+
+    '<span class="nm">'+TN.esc(p.name)+'</span>'+
+    '<button data-a="up" data-i="'+i+'"'+(i===0?' disabled':'')+'>\u2191</button><button data-a="down" data-i="'+i+'"'+(i===n-1?' disabled':'')+'>\u2193</button>'+
+    (n>1?'<button data-a="del" data-i="'+i+'">\u2715</button>':'')+'</div>').join('')+'</div>';
+};
+TN.Nav.prototype.tripButtons=function(box,driving){
+  box.querySelectorAll('.trip button').forEach(b=>b.onclick=ev=>{ev.stopPropagation();
+    const all=this.stops.concat([this.dest]),i=+b.dataset.i,a=b.dataset.a;
+    if(a==='up'&&i>0) [all[i-1],all[i]]=[all[i],all[i-1]];
+    else if(a==='down'&&i<all.length-1) [all[i+1],all[i]]=[all[i],all[i+1]];
+    else if(a==='del') all.splice(i,1);
+    else return;
+    this.dest=all.pop();this.stops=all;this.stopPins();
+    if(this.pin){try{this.pin.setLngLat([this.dest.lng,this.dest.lat]);}catch(e){}}
+    if(driving){this.openTrip();this.plan(true);}   /* redraw the whole panel (all its buttons connected) */
+    else this.plan(false);   /* a new overview with the new order */
+  });
+};
+/* while driving: tap the arrival time in the top bar to see and rearrange the stops */
+TN.Nav.prototype.tripPanelHtml=function(){return '<b>Your trip</b>'+this.tripList()+'<div class="btns"><button class="stop">+ Stop</button><button class="cancel">Close</button></div>';};
+TN.Nav.prototype.openTrip=function(){
+  if(!this.active) return;const box=this.ov;box.style.display='flex';box.classList.add('tripbox');
+  box.innerHTML=this.tripPanelHtml();this.tripButtons(box,true);
+  box.querySelector('.stop').onclick=()=>{this.closeTrip();this.addStop();};
+  box.querySelector('.cancel').onclick=()=>this.closeTrip();
+};
+TN.Nav.prototype.closeTrip=function(){this.ov.style.display='none';this.ov.classList.remove('tripbox');};
 TN.Nav.prototype.go=function(){
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
