@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=35;
+TN.APPBUILD=36;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -198,23 +198,29 @@ TN.APPBUILD=35;
     try{const now=await latest();
       if(now&&now.length&&now.join('|')!==mine.join('|')){pendingUpd=now;
         const g=document.getElementById('tn-gear');if(g) g.classList.add('upd');
-        const r=document.getElementById('tn-setver');if(r){r.textContent='Update available \u203a';r.style.color='#5fe0b0';}}
+        const r=document.getElementById('tn-setver');if(r){r.textContent='Update available \u203a';r.style.color='#5fe0b0';}
+        try{window.TN_updTick&&window.TN_updTick();}catch(e){}}
     }catch(e){}
   }
-  setTimeout(bgCheck,20000);setInterval(bgCheck,600000);
+  setTimeout(bgCheck,5000);setInterval(bgCheck,180000);   /* first check 5 s after opening, then every 3 minutes */
   try{const st=document.createElement('style');
    st.textContent='#tn-gear.upd:after{content:"";position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:#ff5a4f;box-shadow:0 0 0 2px rgba(10,18,32,.9)}'+
      '#tn-updbar{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:none;align-items:center;gap:12px;padding:8px 10px 8px 16px;border-radius:14px;background:rgba(10,18,32,.95);color:#e8f1fa;font:15px sans-serif}'+
-     '#tn-updbar button{border:0;border-radius:9px;padding:7px 12px;font:600 14px sans-serif;cursor:pointer}#tn-updbar .u{background:#1fa596;color:#fff}#tn-updbar .l{background:#3a4352;color:#e8f1fa}';
+     '#tn-updbar button{border:0;border-radius:9px;padding:7px 12px;font:600 14px sans-serif;cursor:pointer}#tn-updbar .u{background:#1fa596;color:#fff}#tn-updbar .l{background:#3a4352;color:#e8f1fa}'+
+     '#tn-updbar .i{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#1fa596;color:#fff;font-size:15px}'+
+     '#tn-updpill{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:none;padding:6px 14px;border-radius:999px;background:rgba(10,18,32,.85);color:#9fe0d4;font:13px sans-serif}';
    document.head.appendChild(st);
-   const bar=document.createElement('div');bar.id='tn-updbar';bar.innerHTML='<span>Update available</span><button class="u">Update now</button><button class="l">Later</button>';document.body.appendChild(bar);
+   const bar=document.createElement('div');bar.id='tn-updbar';bar.innerHTML='<span class="i">\u2B07</span><span class="m">New update arrived</span><button class="u">Update now</button><button class="l">Later</button>';document.body.appendChild(bar);
+   /* while driving: a quiet note without buttons */
+   const pill=document.createElement('div');pill.id='tn-updpill';pill.textContent='New update ready \u00b7 it will be offered when you stop';document.body.appendChild(pill);
    bar.querySelector('.u').onclick=()=>{bar.style.display='none';if(pendingUpd) update(pendingUpd);};
    bar.querySelector('.l').onclick=()=>{bar.style.display='none';updDismissed=pendingUpd.join('|');try{sessionStorage.setItem('tn2_upd_later',updDismissed);}catch(e){}};
-   setInterval(()=>{
-     if(!pendingUpd||updDismissed===pendingUpd.join('|')){bar.style.display='none';return;}
+   const tick=()=>{
+     if(!pendingUpd||updDismissed===pendingUpd.join('|')){bar.style.display='none';pill.style.display='none';return;}
      const L=track.last,stopped=!follow||!L||L.v<1.4;
-     bar.style.display=stopped?'flex':'none';
-   },2000);}catch(e){}
+     bar.style.display=stopped?'flex':'none';pill.style.display=stopped?'none':'block';
+   };
+   setInterval(tick,2000);window.TN_updTick=tick;}catch(e){}
   /* after "Update now": did the new files arrive? */
   (function(){
     let target=null,tries=0,prev=null;
