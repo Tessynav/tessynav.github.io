@@ -120,6 +120,10 @@ TN.Nav.prototype.setRoute=function(rt){
   for(let i=0;i<C.length;i++){const q=TN.toLocal(C[i][0],C[i][1]);
     if(i){const p=pts[pts.length-1],d=Math.hypot(q[0]-p[0],q[1]-p[1]),n=Math.floor(d/5);for(let k=1;k<n;k++) pts.push([p[0]+(q[0]-p[0])*k/n,p[1]+(q[1]-p[1])*k/n]);}
     pts.push(q);}
+  /* round the corners like a real turn (two smoothing passes; the ends stay put) */
+  for(let pass=0;pass<3;pass++){if(pts.length<3) break;const q=[pts[0]];
+    for(let i=0;i<pts.length-1;i++){const A=pts[i],B=pts[i+1];q.push([A[0]*0.75+B[0]*0.25,A[1]*0.75+B[1]*0.25],[A[0]*0.25+B[0]*0.75,A[1]*0.25+B[1]*0.75]);}
+    q.push(pts[pts.length-1]);pts.length=0;for(const p of q) pts.push(p);}
   const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
   const steps=[];for(const lg of rt.legs) for(const s of lg.steps){const q=TN.toLocal(s.maneuver.location[0],s.maneuver.location[1]);
     let bi=0,bd=1e18;for(let i=0;i<pts.length;i++){const d=(pts[i][0]-q[0])**2+(pts[i][1]-q[1])**2;if(d<bd){bd=d;bi=i;}}
@@ -213,6 +217,49 @@ TN.Nav.prototype.end=function(){
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   this.clearMapLine();this.input.value='';this.api.setFollow(true);
 };
+/* ---------- the car on the route (like Google Maps, Waze, Codriver) ----------
+   While navigating and near the route, the car is drawn ON the route path (rounded corners): it glides forward at
+   the current speed between GPS readings and is gently pulled towards where each reading says it is. Its heading
+   is the direction of the path, so a turn is a smooth curve. Off the route (over 25 m), normal following takes over. */
+TN.Nav.prototype.place=function(base,L,now,dt){
+  const R=this.route;if(!R||!this.active||!L||!base||base.x==null) return null;
+  /* where the GPS is along the route (searching around the last place) */
+  let bi=this.pi||this.idx||0,bd=1e18;
+  for(let i=Math.max(0,bi-60);i<Math.min(R.pts.length,bi+200);i++){const d=(R.pts[i][0]-L.x)**2+(R.pts[i][1]-L.z)**2;if(d<bd){bd=d;bi=i;}}
+  const gd=Math.sqrt(bd);
+  /* clearly not on the route (missed a turn): show where the car really is, at once */
+  {const P0=R.pts[Math.max(0,bi-2)],P1=R.pts[Math.min(R.pts.length-1,bi+2)];
+   const rh=(Math.atan2(P1[0]-P0[0],-(P1[1]-P0[1]))*180/Math.PI+360)%360;
+   const off=Math.abs(((base.hd-rh+540)%360)-180);
+   /* (a different direction must last a moment: during a normal turn the two briefly differ) */
+   if(gd>8&&off>55&&L.v>2) this.relT=(this.relT||0)+dt;else this.relT=0;
+   if(gd>12||this.relT>0.6||this.rerouting){this.ps=null;return null;}}
+  this.pi=bi;
+  /* projection on the segment for a precise distance */
+  const i0=Math.max(0,Math.min(R.pts.length-2,bi-(bi>0&&bi===R.pts.length-1?1:0)));
+  const A=R.pts[i0],B=R.pts[i0+1],dx=B[0]-A[0],dz=B[1]-A[1],l2=dx*dx+dz*dz||1;
+  const u=Math.max(0,Math.min(1,((L.x-A[0])*dx+(L.z-A[1])*dz)/l2));
+  const age=Math.min(1,Math.max(0,(now-L.t)/1000));
+  const sGps=R.cum[i0]+u*Math.sqrt(l2)+L.v*age*0.5;
+  if(this.ps==null) this.ps=sGps;
+  /* glide at the current speed, and correct a part of the gap each second (never backwards when moving) */
+  const v=L.v<0.5?0:L.v;
+  let ns=this.ps+v*dt+(sGps-this.ps)*Math.min(1,dt*1.5);
+  if(v>0.5&&ns<this.ps) ns=this.ps;
+  this.ps=Math.max(0,Math.min(R.L,ns));
+  /* point and direction on the path at that distance */
+  let j=Math.max(0,Math.min(R.pts.length-2,this.pi));while(j>0&&R.cum[j]>this.ps) j--;while(j<R.pts.length-2&&R.cum[j+1]<this.ps) j++;
+  const P=R.pts[j],Q=R.pts[j+1],sg=R.cum[j+1]-R.cum[j]||1,t=(this.ps-R.cum[j])/sg;
+  const px=P[0]+(Q[0]-P[0])*t,pz=P[1]+(Q[1]-P[1])*t;
+  /* direction from a little behind to a little ahead: smooth through the curve */
+  const at=sd=>{let k=j;sd=Math.max(0,Math.min(R.L,sd));while(k>0&&R.cum[k]>sd) k--;while(k<R.pts.length-2&&R.cum[k+1]<sd) k++;
+    const a=R.pts[k],b=R.pts[k+1],g=R.cum[k+1]-R.cum[k]||1,tt=(sd-R.cum[k])/g;return [a[0]+(b[0]-a[0])*tt,a[1]+(b[1]-a[1])*tt];};
+  const p1=at(this.ps-3),p2=at(this.ps+3);
+  const hd=(Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]))*180/Math.PI+360)%360;
+  const lo=R.lane?R.lane[j]+(R.lane[j+1]-R.lane[j])*t:0,ux=Math.sin(hd*Math.PI/180),uz=-Math.cos(hd*Math.PI/180);
+  const y=R.hy?R.hy[j]+(R.hy[j+1]-R.hy[j])*t:(base.y||0);
+  return Object.assign({},base,{x:px-uz*lo,z:pz+ux*lo,hd:hd,y:y,onRoute:true});
+};
 /* ---------- while driving ---------- */
 TN.Nav.prototype.instr=function(s){
   const m=s.mod,side=m.indexOf('left')>=0?'left':m.indexOf('right')>=0?'right':'';
@@ -234,6 +281,15 @@ TN.Nav.prototype.instr=function(s){
   const where=s.type==='off ramp'||s.type==='on ramp'?(s.dest||s.ref||s.name):(s.name||s.ref);
   return {a:a,t:t,where:where};
 };
+/* recalculate from where the car is now: the old line fades, the top bar says so, the new route replaces it */
+TN.Nav.prototype.reroute=async function(){
+  this.rerouting=true;this.lastReroute=Date.now();this.offT=0;
+  this.bar.querySelector('.dist').textContent='Recalculating\u2026';this.bar.querySelector('.ins').textContent='';
+  if(this.mat) this.mat.opacity=0.25;
+  try{await this.plan(true);}catch(e){}
+  if(this.mat) this.mat.opacity=0.85;
+  this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;
+};
 TN.Nav.prototype.update=function(dt){
   if(!this.route||!this.active) return;
   const R=this.route,c=this.api.getCar();if(!c||c.x==null) return;
@@ -242,6 +298,7 @@ TN.Nav.prototype.update=function(dt){
   for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length,this.idx+400);i++){const d=(R.pts[i][0]-c.x)**2+(R.pts[i][1]-c.z)**2;if(d<bd){bd=d;bi=i;}}
   const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;
   if(bi-this.drawn>8) this.draw(Math.max(0,bi-2));
+  if(this.rerouting) return;
   /* next step ahead */
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
@@ -257,7 +314,11 @@ TN.Nav.prototype.update=function(dt){
     if(this.arriveT>12) this.end();return;}
   /* left the route: find a new one (at most every 15 s) */
   const v=c.v!=null?c.v:5;
-  if(off>40&&v>2) this.offT+=dt;else this.offT=Math.max(0,this.offT-dt);
-  if(this.offT>5&&Date.now()-this.lastReroute>15000){this.lastReroute=Date.now();this.offT=0;
-    this.bar.querySelector('.ins').textContent='Finding a new route\u2026';this.plan(true);}
+  /* off the route: far from it, or away from it in a clearly different direction */
+  const P0=R.pts[Math.max(0,bi-2)],P1=R.pts[Math.min(R.pts.length-1,bi+2)];
+  const rh=(Math.atan2(P1[0]-P0[0],-(P1[1]-P0[1]))*180/Math.PI+360)%360,hoff=Math.abs(((c.hd-rh+540)%360)-180);
+  const away=v>1.5&&(off>18||(off>10&&hoff>50));
+  if(away) this.offT+=dt;else this.offT=Math.max(0,this.offT-dt*2);
+  const need=off>10&&hoff>50?1.5:2;
+  if(this.offT>need&&!this.rerouting&&Date.now()-this.lastReroute>5000){this.reroute();}
 };
