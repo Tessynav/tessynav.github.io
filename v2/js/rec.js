@@ -12,6 +12,8 @@ TN.Rec.prototype.start=function(){
   this.timer=setInterval(()=>this.save(),20000);
 };
 TN.Rec.prototype.t=function(){return Math.round(Date.now()-this.t0);};
+/* navigation log: what the navigation did and when (route started, recalculations, arrival, route ended and why) */
+TN.Rec.prototype.note=function(kind,data,shot){if(!this.rec) return;const R=this.rec;R.n=R.n||[];if(R.n.length<4000) R.n.push([this.t(),kind,data||null]);if(shot) this.wantShot('nav: '+kind);};
 /* snapshots: a small picture of the screen every 10 s, and right away when something looks wrong (the car jumps,
    changes height fast, loses the road, or the screen gets slow). They are uploaded with the trip so I can see
    what you saw. */

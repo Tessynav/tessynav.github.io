@@ -1285,7 +1285,13 @@ TN.Net.prototype.drawWay=function(L,w,runs){
   const joinsAt=j=>(this.keys.get(w.keys[j])||[]).length>1;
   const nearJoin=w.ramp?(s0=>(joinsAt(0)&&s0<35)||(joinsAt(P.length-1)&&s0>w.L-35)):()=>false;
   for(const [a,b] of runs){
-    if(!w.br) strip(L.curb,a,b,j=>hwJ(j)+0.3,j=>-hwJ(j)-0.3,0.02,TN.C.curb);
+    /* curb strip: only at ground level, and not where it would lie across another road (merges and splits) */
+    if(!w.br){let i0=-1;const flush=e=>{if(i0>=0&&e>i0) strip(L.curb,i0,e,j=>hwJ(j)+0.3,j=>-hwJ(j)-0.3,0.02,TN.C.curb);i0=-1;};
+      for(let i=a;i<b;i++){const hh=w.hs?Math.max(w.hs[i],w.hs[i+1]):0;
+        const mx=(P[i][0]+P[i+1][0])/2,mz=(P[i][1]+P[i+1][1])/2,nx=(N[i][0]+N[i+1][0])/2,nz=(N[i][1]+N[i+1][1])/2,o=(hwJ(i)+hwJ(i+1))/2+0.15;
+        const ok=hh<0.3&&!net.onOther(w,mx+nx*o,mz+nz*o,0)&&!net.onOther(w,mx-nx*o,mz-nz*o,0);
+        if(ok){if(i0<0) i0=i;}else flush(i);}
+      flush(b);}
     strip(L.road,a,b,j=>hwJ(j),j=>-hwJ(j),0.04,TN.C.road);
     if(w.ow){
       const n=w.lanes||Math.max(1,Math.round(W/3.4));

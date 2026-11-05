@@ -60,8 +60,14 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
     }
   }
   const fx=this.kf.x.p,fz=this.kf.z.p,v=Math.hypot(this.kf.x.v,this.kf.z.v);
+  const hPrev=this.hd,tPrev=this.hdT;
   if(v>1.5) this.hd=(Math.atan2(this.kf.x.v,-this.kf.z.v)/TN.R+360)%360;
   else if(heading!=null&&!isNaN(heading)&&sp>1) this.hd=heading;
+  /* how fast the direction is turning (degrees per second, smoothed): lets the car continue along the curve */
+  this.hdT=t;
+  if(hPrev!=null&&this.hd!=null&&tPrev&&t>tPrev&&v>1.5){const r=(((this.hd-hPrev+540)%360)-180)/((t-tPrev)/1000);
+    this.hdRate=(this.hdRate||0)+(Math.max(-60,Math.min(60,r))-(this.hdRate||0))*0.5;}
+  else if(v<=1.5) this.hdRate=0;
   this.last={t:t,x:fx,z:fz,v:sp!=null?sp:v,acc:acc||5,rx:x,rz:z};
   this.match();
   return this.last;
@@ -256,10 +262,18 @@ TN.Track.prototype.frame=function(now,dt){
     const off=TN.angDiff(this.hd,h.hd);
     turning=nearJ&&(off>15||(this.turnMode&&off>8));
   }
-  this.turnMode=turning;
+  this.wasTurning=this.turnMode;this.turnMode=turning;
+  if(!turning) this.turnOff=null;
   if(turning){
-    const hd=this.hd;
-    const tx=L.x+Math.sin(hd*TN.R)*L.v*age,tz=L.z-Math.cos(hd*TN.R)*L.v*age;
+    /* follow the curve: from the last reading, keep turning at the current rate (an arc), not a straight line */
+    const rate=this.hdRate||0,a1=Math.min(age,1.2),hdNow=this.hd+rate*a1;
+    let tx=L.x,tz=L.z;const n=6;for(let i=0;i<n;i++){const hh=(this.hd+rate*a1*(i+0.5)/n)*TN.R;tx+=Math.sin(hh)*L.v*a1/n;tz-=Math.cos(hh)*L.v*a1/n;}
+    const hd=(hdNow+360)%360;
+    /* entering turn mode: keep the car where it was drawn (its lane) and let that offset fade over ~2 s,
+       instead of jumping to the raw GPS position */
+    if(!this.wasTurning&&car&&car.x!=null&&Math.hypot(car.x-tx,car.z-tz)<15) this.turnOff=[car.x-tx,car.z-tz];
+    if(!this.turnOff) this.turnOff=[0,0];
+    const dec=Math.exp(-dt*0.7);this.turnOff[0]*=dec;this.turnOff[1]*=dec;tx+=this.turnOff[0];tz+=this.turnOff[1];
     if(!car||car.x==null||Math.hypot(car.x-tx,car.z-tz)>30) car={x:tx,z:tz,hd:hd,v:L.v,y:car?car.y:0};
     else car={x:car.x,z:car.z,hd:car.hd,v:L.v,y:car.y||0};
     const k=1-Math.exp(-dt*3);car.x+=(tx-car.x)*k;car.z+=(tz-car.z)*k;

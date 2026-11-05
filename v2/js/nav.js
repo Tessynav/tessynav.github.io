@@ -8,6 +8,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.Nav=function(api){
+  this.note=(k,d,sh)=>{try{api.note&&api.note(k,d,sh);}catch(e){}};
   this.api=api;this.route=null;this.mesh=null;this.mat=null;this.idx=0;this.offT=0;this.lastReroute=0;this.arriveT=0;
   this.recent=[];try{this.recent=JSON.parse(localStorage.getItem('tn2_recent')||'[]')||[];}catch(e){}
 };
@@ -30,6 +31,8 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
    '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
+   '@media (max-width:760px){#tn-search{top:72px;left:16px;right:16px;width:auto;transform:none}#tn-res{top:132px;left:16px;right:16px;width:auto;transform:none}'+
+     '#status{max-width:calc(100vw - 100px)}#rec{top:132px}#trips{top:132px}#tn-bar{right:16px;top:72px}#tn-ov{left:16px;right:16px;transform:none;flex-wrap:wrap}}'+
    'body.tn-routing #status,body.tn-routing #tn-search{display:none}body.tn-routing #rec{top:auto;bottom:228px;left:16px}body.tn-routing #trips{top:auto;bottom:228px;left:132px}';
   document.head.appendChild(st);
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
@@ -111,6 +114,7 @@ TN.Nav.prototype.plan=async function(reroute){
     const rt=await this.fetchRoute(from,to);this.setRoute(rt);
     if(!reroute) this.overview();
   }catch(e){
+    this.note('route failed',{reroute:!!reroute,err:String(e&&e.message||e)},true);
     if(!reroute){this.ov.innerHTML='<div>Could not find a route</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};}
   }
 };
@@ -139,14 +143,17 @@ TN.Nav.prototype.heights=function(){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     let best=null;
     net.near(p[0],p[1],12,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,p[0],p[1]);if(r.d>TN.width(w)/2+6) return;
-      const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20;if(!best||sc<best.sc){const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
+      const h0=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
+      /* stay on the same level as the previous point: never drop to a road passing underneath */
+      const prevH=hs.length?hs[hs.length-1]:null;
+      const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20+(prevH==null?0:Math.abs(h0-prevH)*4);if(!best||sc<best.sc){const h=h0;
         /* two-way street: the driving lane is the right half (to the right of the travel direction) */
         const lane=w.ow?0:TN.width(w)/4;best={sc:sc,h:h,lane:lane};}});
     hs.push(best?best.h:(hs.length?hs[hs.length-1]:0));lanes.push(best?best.lane:0);
   }
   R.hy=hs;
   /* smooth the lane offset so the line doesn't jump where streets change */
-  R.lane=lanes.map((v,i)=>{let a=0,n=0;for(let k=Math.max(0,i-4);k<=Math.min(lanes.length-1,i+4);k++){a+=lanes[k];n++;}return a/n;});
+  R.lane=lanes.map((v,i)=>{let a=0,n=0;for(let k=i;k>=0&&R.cum[i]-R.cum[k]<50;k--){a+=lanes[k];n++;}for(let k=i+1;k<lanes.length&&R.cum[k]-R.cum[i]<50;k++){a+=lanes[k];n++;}return a/n;});
 };
 TN.Nav.prototype.draw=function(from){
   const R=this.route;if(!R) return;
@@ -154,7 +161,8 @@ TN.Nav.prototype.draw=function(from){
   if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-16});}
   const pos=[],idx=[],hw=1.3;let n=0;
   const a0=Math.max(0,from|0);
-  for(let i=a0;i<R.pts.length;i++){
+  let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
+  for(let i=a0;i<=a1;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     const y=(R.hy?R.hy[i]:0)+0.16,lo=R.lane?R.lane[i]:0,cx=p[0]-uz*lo,cz=p[1]+ux*lo;
     pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
@@ -202,16 +210,18 @@ TN.Nav.prototype.overview=function(){
   this.ov.style.display='flex';
   this.ov.innerHTML='<div><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+'</small></div><button class="go">Go</button><button class="cancel">Cancel</button>';
   this.ov.querySelector('.go').onclick=()=>this.go();
-  this.ov.querySelector('.cancel').onclick=()=>this.end();
+  this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
 };
 TN.Nav.prototype.go=function(){
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
   this.ov.style.display='none';this.active=true;document.body.classList.add('tn-routing');
+  if(this.route) this.note('go',{dest:this.dest&&this.dest.name,km:+(this.route.L/1000).toFixed(2),pts:this.route.pts.length},true);
   this.bar.style.display='flex';this.endBtn.style.display='block';this.roadName.style.display='block';
   this.api.setFollow(true);
 };
-TN.Nav.prototype.end=function(){
+TN.Nav.prototype.end=function(why){
+  this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
   this.active=false;this.route=null;document.body.classList.remove('tn-routing');
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
@@ -233,7 +243,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
    const off=Math.abs(((base.hd-rh+540)%360)-180);
    /* (a different direction must last a moment: during a normal turn the two briefly differ) */
    if(gd>8&&off>55&&L.v>2) this.relT=(this.relT||0)+dt;else this.relT=0;
-   if(gd>12||this.relT>0.6||this.rerouting){this.ps=null;return null;}}
+   if(gd>12||this.relT>0.6||this.rerouting){if(this.ps!=null) this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.ps=null;return null;}}
   this.pi=bi;
   /* projection on the segment for a precise distance */
   const i0=Math.max(0,Math.min(R.pts.length-2,bi-(bi>0&&bi===R.pts.length-1?1:0)));
@@ -257,7 +267,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   const p1=at(this.ps-3),p2=at(this.ps+3);
   const hd=(Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]))*180/Math.PI+360)%360;
   const lo=R.lane?R.lane[j]+(R.lane[j+1]-R.lane[j])*t:0,ux=Math.sin(hd*Math.PI/180),uz=-Math.cos(hd*Math.PI/180);
-  const y=R.hy?R.hy[j]+(R.hy[j+1]-R.hy[j])*t:(base.y||0);
+  const y=base.y!=null?base.y:(R.hy?R.hy[j]+(R.hy[j+1]-R.hy[j])*t:0);
   return Object.assign({},base,{x:px-uz*lo,z:pz+ux*lo,hd:hd,y:y,onRoute:true});
 };
 /* ---------- while driving ---------- */
@@ -286,7 +296,10 @@ TN.Nav.prototype.reroute=async function(){
   this.rerouting=true;this.lastReroute=Date.now();this.offT=0;
   this.bar.querySelector('.dist').textContent='Recalculating\u2026';this.bar.querySelector('.ins').textContent='';
   if(this.mat) this.mat.opacity=0.25;
+  this.note('reroute',{off:Math.round(this.lastOff||0)},true);
+  const L0=this.route?this.route.L:0;
   try{await this.plan(true);}catch(e){}
+  this.note('rerouted',{ok:!!this.route&&this.route.L!==L0,km:this.route?+(this.route.L/1000).toFixed(2):null});
   if(this.mat) this.mat.opacity=0.85;
   this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;
 };
@@ -296,8 +309,9 @@ TN.Nav.prototype.update=function(dt){
   /* where the car is along the route (searching a little ahead of the last place) */
   let bi=this.idx,bd=1e18;
   for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length,this.idx+400);i++){const d=(R.pts[i][0]-c.x)**2+(R.pts[i][1]-c.z)**2;if(d<bd){bd=d;bi=i;}}
-  const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;
-  if(bi-this.drawn>8) this.draw(Math.max(0,bi-2));
+  const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;this.lastOff=off;
+  this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,drawn:this.drawn});}
+  if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn) this.draw(Math.max(0,bi-4));
   if(this.rerouting) return;
   /* next step ahead */
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
@@ -311,7 +325,7 @@ TN.Nav.prototype.update=function(dt){
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
   /* arrived */
   if(left<30||(nx.type==='arrive'&&dNext<25)){this.arriveT+=dt;if(this.arriveT>3){this.bar.querySelector('.dist').textContent='You have arrived';this.bar.querySelector('.ins').textContent=TN.esc(this.dest.name);}
-    if(this.arriveT>12) this.end();return;}
+    if(this.arriveT>12) this.end('arrived');return;}
   /* left the route: find a new one (at most every 15 s) */
   const v=c.v!=null?c.v:5;
   /* off the route: far from it, or away from it in a clearly different direction */

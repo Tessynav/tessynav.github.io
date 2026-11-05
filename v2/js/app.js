@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=41;
+TN.APPBUILD=43;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -20,11 +20,11 @@ TN.APPBUILD=41;
   const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,night:()=>night()}):null;
   if(settings){try{settings.build();}catch(e){}}
   /* navigation: search, route, directions */
-  const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
+  const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);},
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  const brk={t:0,v:0,d:0,k:0,moved:0};let dispHd=null;
+  const brk={t:0,v:0,d:0,k:0,moved:0};let dispHd=null,dispX=null,dispZ=null;
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
   /* ---------- panel ---------- */
@@ -323,12 +323,20 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     /* a few milliseconds per frame for the road network rebuild, so it never freezes the view */
     if(net.job){const tn=performance.now();net.step(6);TN.prof('network',performance.now()-tn);}
     const t0=performance.now();
-    const car=track.frame(Date.now(),dt);
+    let car=track.frame(Date.now(),dt);
     TN.prof('track',performance.now()-t0);
     if(car&&car.x!=null){
+      /* navigating: the car is drawn on the route path (smooth turns like Google Maps / Waze) */
+      if(nav){try{const pc=nav.place(car,track.last,Date.now(),dt);if(pc){car=pc;}}catch(e){}}
+      /* any sudden hop of the drawn car (switching between on-route and normal following, a re-found road) glides over */
+      {if(dispX==null||Math.hypot(car.x-dispX,car.z-dispZ)>40){dispX=car.x;dispZ=car.z;}
+       const gap=Math.hypot(car.x-dispX,car.z-dispZ);
+       if(gap>0.6){const k=Math.min(1,dt*5);dispX+=(car.x-dispX)*k;dispZ+=(car.z-dispZ)*k;car=Object.assign({},car,{x:dispX,z:dispZ});}
+       else{dispX=car.x;dispZ=car.z;}}
       /* the car's visible heading turns smoothly (no sudden swing at intersections) */
       {if(dispHd==null) dispHd=car.hd;let dh=((car.hd-dispHd)%360+540)%360-180;
-       const maxStep=Math.max(30,Math.min(90,(track.last?track.last.v:0)*4+30))*dt;
+       /* turning rate on screen: natural at driving speed, very gentle at walking pace (unreliable GPS direction) */
+       const vv=track.last?track.last.v:0,maxStep=(vv<3?Math.max(4,vv*10):Math.max(30,Math.min(90,vv*4+30)))*dt;
        dh=Math.max(-maxStep,Math.min(maxStep,dh*Math.min(1,dt*7)));dispHd=(dispHd+dh+360)%360;}
       scene.placeCar(car.x,car.z,car.y||0,dispHd);
       try{scene.updateBeam(car);}catch(e){}
