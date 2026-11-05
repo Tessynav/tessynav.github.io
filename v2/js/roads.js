@@ -960,7 +960,7 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       TN.quad(G,[hx-rx*0.28-ux*0.13,top-0.37,hz-rz*0.28-uz*0.13],[hx+rx*0.28-ux*0.13,top-0.37,hz+rz*0.28-uz*0.13],
                 [hx+rx*0.28+ux*0.13,top-0.37,hz+rz*0.28+uz*0.13],[hx-rx*0.28+ux*0.13,top-0.37,hz-rz*0.28+uz*0.13],[0.9,0.66,0.38]);
       /* a wide pool of light (about 13 m) with a smooth fade, so neighbouring lamps blend into a lit street */
-      TN.glowDisc(G,x+rx*2.4,y0+0.1,z+rz*2.4,15,[0.26,0.2,0.11,0.04,0],[0,0.25,0.5,0.78,1],gc,'flat',ux,uz);
+      TN.glowDisc(G,x+rx*2.4,y0+0.22,z+rz*2.4,15,[0.26,0.2,0.11,0.04,0],[0,0.25,0.5,0.78,1],gc,'flat',ux,uz);
       /* the lamp itself shines: a soft halo around the head, seen from any side */
       TN.glowDisc(G,hx,top-0.3,hz,0.8,[0.72,0.36,0.08,0],[0,0.25,0.6,1],[1,0.72,0.4],'ball',ux,uz);
     }
@@ -1108,9 +1108,26 @@ TN.Net.prototype.approachPlace=function(w,j,dir){
   for(const [db,ds] of [[0,0],[2,0],[0,1],[4,0],[2,1],[6,0.5],[-1.5,0.8]]){
     const bk=back+db,sd=hw+1.2+ds,x=P[j][0]-dx*bk+rx*sd,z=P[j][1]-dz*bk+rz*sd;
     if(inRoad(x,z)) continue;
-    return {x:x,z:z,dx:dx,dz:dz,rx:rx,rz:rz,lx:P[j][0]-dx*(bk-0.8),lz:P[j][1]-dz*(bk-0.8),hw:hw,ow:w.ow,way:w};
+    return {x:x,z:z,dx:dx,dz:dz,rx:rx,rz:rz,lx:P[j][0]-dx*(bk-0.8),lz:P[j][1]-dz*(bk-0.8),jx:P[j][0],jz:P[j][1],hw:hw,ow:w.ow,way:w};
   }
   return null;
+};
+/* where the stop line goes for an approach: just before the crosswalk at that corner if there is one,
+   otherwise at the corner itself */
+TN.Net.prototype.stopLineAt=function(S){
+  if(S.jx==null||!this.marks) return [S.lx,S.lz];
+  let best=null;
+  for(const m of this.marks.values()){
+    if(m.kind!=='c') continue;const vx=m.x-S.jx,vz=m.z-S.jz;if(Math.abs(vx)>40||Math.abs(vz)>40) continue;
+    const al=vx*S.dx+vz*S.dz,lat=vx*S.rx+vz*S.rz;
+    if(al<-30||al>-1||Math.abs(lat)>S.hw+3) continue;
+    if(!best||al>best) best=al;
+  }
+  if(best==null) return [S.lx,S.lz];
+  const a=best-2.6,x=S.jx+S.dx*a,z=S.jz+S.dz*a;
+  /* only if that spot is clear of other streets (otherwise keep the corner position) */
+  let bad=false;this.near(x,z,0,(w,i)=>{if(w===S.way||w.tun||w.br) return;const r=TN.seg(w,i,x,z);if(r.d<TN.width(w)/2-0.5){bad=true;return true;}});
+  return bad?[S.lx,S.lz]:[x,z];
 };
 /* traffic lights: at a mapped light on a junction point, one for every road arriving there; at a light mapped
    before the junction, one for that approach. A pole on the right corner with an arm over the lanes, signal heads
@@ -1158,9 +1175,9 @@ TN.Net.prototype.drawSignal=function(L,m,done){
     const n=S.hw>5&&!S.ow?1:(S.hw>5?2:1);
     for(let k=0;k<n;k++){const o=side-mid-(n===1?0:(k===0?-S.hw*0.35:S.hw*0.35));const hx=S.x-S.rx*o,hz=S.z-S.rz*o;head(hx,hz,top-1.05,1);}
     head(S.x-S.dx*0.2,S.z-S.dz*0.2,2.6,0.8);
-    /* stop line across the lanes going into the junction */
-    const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw;
-    const p=(o,a)=>[S.lx+S.rx*o+S.dx*a,y,S.lz+S.rz*o+S.dz*a];
+    /* stop line across the lanes going into the junction (just before the crosswalk) */
+    const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw,SL=this.stopLineAt(S);
+    const p=(o,a)=>[SL[0]+S.rx*o+S.dx*a,y,SL[1]+S.rz*o+S.dz*a];
     TN.quad(L.mark,p(o0,-0.2),p(o1,-0.2),p(o1,0.2),p(o0,0.2),TN.C.white);
   }
 };
@@ -1205,8 +1222,8 @@ TN.Net.prototype.drawSign=function(L,m){
       if(c===3){seg(ox+0.15*lw,v0+lh+0.025,ox+0.5*lw,v0+lh+0.05);seg(ox+0.5*lw,v0+lh+0.05,ox+0.85*lw,v0+lh+0.025);}
     }
     /* stop line across the lanes going into the junction */
-    const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw;
-    const p=(o,a)=>[S.lx+S.rx*o+S.dx*a,y,S.lz+S.rz*o+S.dz*a];
+    const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw,SL=this.stopLineAt(S);
+    const p=(o,a)=>[SL[0]+S.rx*o+S.dx*a,y,SL[1]+S.rz*o+S.dz*a];
     TN.quad(L.mark,p(o0,-0.2),p(o1,-0.2),p(o1,0.2),p(o0,0.2),TN.C.white);
   }else{
     plate([[-0.45,0.26],[0.45,0.26],[0,-0.52]],TN.C.stopred);

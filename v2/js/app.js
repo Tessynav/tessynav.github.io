@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=39;
+TN.APPBUILD=40;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -24,7 +24,7 @@ TN.APPBUILD=39;
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  const brk={t:0,v:0,d:0,k:0,moved:0};
+  const brk={t:0,v:0,d:0,k:0,moved:0};let dispHd=null;
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
   /* ---------- panel ---------- */
@@ -298,7 +298,11 @@ TN.APPBUILD=39;
     const car=track.frame(Date.now(),dt);
     TN.prof('track',performance.now()-t0);
     if(car&&car.x!=null){
-      scene.placeCar(car.x,car.z,car.y||0,car.hd);
+      /* the car's visible heading turns smoothly (no sudden swing at intersections) */
+      {if(dispHd==null) dispHd=car.hd;let dh=((car.hd-dispHd)%360+540)%360-180;
+       const maxStep=Math.max(30,Math.min(90,(track.last?track.last.v:0)*4+30))*dt;
+       dh=Math.max(-maxStep,Math.min(maxStep,dh*Math.min(1,dt*7)));dispHd=(dispHd+dh+360)%360;}
+      scene.placeCar(car.x,car.z,car.y||0,dispHd);
       try{scene.updateBeam(car);}catch(e){}
       if(nav){try{nav.update(dt);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);

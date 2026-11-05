@@ -30,7 +30,7 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
    '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
-   'body.tn-routing #status,body.tn-routing #tn-search,body.tn-routing #rec{display:none}';
+   'body.tn-routing #status,body.tn-routing #tn-search{display:none}body.tn-routing #rec{top:auto;bottom:228px;left:16px}';
   document.head.appendChild(st);
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
   this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>');
@@ -130,26 +130,30 @@ TN.Nav.prototype.setRoute=function(rt){
 };
 /* height of the route at each point: the road it runs on (bridges and ramps included) */
 TN.Nav.prototype.heights=function(){
-  const R=this.route,net=this.api.net,hs=[];
+  const R=this.route,net=this.api.net,hs=[],lanes=[];
   for(let i=0;i<R.pts.length;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     let best=null;
     net.near(p[0],p[1],12,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,p[0],p[1]);if(r.d>TN.width(w)/2+6) return;
-      const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20;if(!best||sc<best.sc){const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);best={sc:sc,h:h};}});
-    hs.push(best?best.h:(hs.length?hs[hs.length-1]:0));
+      const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20;if(!best||sc<best.sc){const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
+        /* two-way street: the driving lane is the right half (to the right of the travel direction) */
+        const lane=w.ow?0:TN.width(w)/4;best={sc:sc,h:h,lane:lane};}});
+    hs.push(best?best.h:(hs.length?hs[hs.length-1]:0));lanes.push(best?best.lane:0);
   }
   R.hy=hs;
+  /* smooth the lane offset so the line doesn't jump where streets change */
+  R.lane=lanes.map((v,i)=>{let a=0,n=0;for(let k=Math.max(0,i-4);k<=Math.min(lanes.length-1,i+4);k++){a+=lanes[k];n++;}return a/n;});
 };
 TN.Nav.prototype.draw=function(from){
   const R=this.route;if(!R) return;
   const S=this.api.scene;if(!S.three) return;
   if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-16});}
-  const pos=[],idx=[],hw=1.6;let n=0;
+  const pos=[],idx=[],hw=1.3;let n=0;
   const a0=Math.max(0,from|0);
   for(let i=a0;i<R.pts.length;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
-    const y=(R.hy?R.hy[i]:0)+0.14;
-    pos.push(p[0]-uz*hw,y,p[1]+ux*hw,p[0]+uz*hw,y,p[1]-ux*hw);
+    const y=(R.hy?R.hy[i]:0)+0.16,lo=R.lane?R.lane[i]:0,cx=p[0]-uz*lo,cz=p[1]+ux*lo;
+    pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
     if(i>a0) idx.push(n-2,n-1,n+1,n-2,n+1,n);
     n+=2;
   }
@@ -177,8 +181,19 @@ TN.Nav.prototype.clearMapLine=function(){
 };
 TN.Nav.prototype.overview=function(){
   const R=this.route,api=this.api;api.setFollow(false);
+  try{for(const id of ['tn-route-casing','tn-route-line']) if(api.map.getLayer(id)) api.map.setLayoutProperty(id,'visibility','visible');}catch(e){}
   let a=[1e9,1e9],b=[-1e9,-1e9];for(let i=0;i<R.pts.length;i+=4){const ll=TN.fromLocal(R.pts[i][0],R.pts[i][1]);a=[Math.min(a[0],ll[0]),Math.min(a[1],ll[1])];b=[Math.max(b[0],ll[0]),Math.max(b[1],ll[1])];}
-  try{api.map.fitBounds([a,b],{padding:{top:110,bottom:150,left:80,right:80},pitch:0,bearing:0,duration:900});}catch(e){}
+  /* the overview position, worked out directly: the middle of the route, and the zoom at which the route fills
+     the screen between the top and bottom panels (the map's own fit function gets this wrong with a tilted camera) */
+  try{
+    const cv=api.map.getCanvas(),W=Math.max(300,cv.clientWidth-160),H=Math.max(200,cv.clientHeight-260);
+    const midLat=(a[1]+b[1])/2,mx=(b[0]-a[0])*111320*Math.cos(midLat*Math.PI/180),my=(b[1]-a[1])*111320;
+    const mpp=Math.max(mx/W,my/H,0.5);
+    let z=Math.log2(156543.03*Math.cos(midLat*Math.PI/180)/mpp)-1;
+    z=Math.max(10,Math.min(18,z-0.15));
+    /* (clear the following camera's large top margin first, or the route is squeezed into a small strip) */
+    api.map.easeTo({center:[(a[0]+b[0])/2,(a[1]+b[1])/2],zoom:z,pitch:0,bearing:0,padding:{top:0,bottom:0,left:0,right:0},offset:[0,-30],duration:900});
+  }catch(e){}
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
   this.ov.innerHTML='<div><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+'</small></div><button class="go">Go</button><button class="cancel">Cancel</button>';
@@ -186,6 +201,8 @@ TN.Nav.prototype.overview=function(){
   this.ov.querySelector('.cancel').onclick=()=>this.end();
 };
 TN.Nav.prototype.go=function(){
+  /* while driving, the 3D line shows the route; the flat map line was only for the overview */
+  try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
   this.ov.style.display='none';this.active=true;document.body.classList.add('tn-routing');
   this.bar.style.display='flex';this.endBtn.style.display='block';this.roadName.style.display='block';
   this.api.setFollow(true);

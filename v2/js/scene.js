@@ -233,7 +233,7 @@ TN.Scene.prototype.addBrakeGlow=function(body){
       const sp=new THREE.Sprite(m);sp.scale.set(0.9,0.6,1);sp.position.set(c.x+sx*size.x*0.42,c.y,c.z+back*0.15);body.add(sp);this.glows.push(m);
     }
     const gm=new THREE.MeshBasicMaterial({map:tex,color:0xff1e1e,transparent:true,opacity:0,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
-    const plane=new THREE.Mesh(new THREE.PlaneGeometry(3.0,3.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.06,c.z+back*1.8);
+    const plane=new THREE.Mesh(new THREE.PlaneGeometry(3.0,3.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.24,c.z+back*1.8);   /* above sidewalks: no flicker */
     body.add(plane);this.glows.push(gm);this.glowGround=gm;
     /* the headlamps themselves glow at night (the light on the road is the beam, see updateBeam) */
     const full=new THREE.Box3().setFromObject(body),fz=back>0?full.min.z:full.max.z;
@@ -417,7 +417,7 @@ TN.Scene.prototype.updateBeam=function(car){
   const pts=this.beamPath(car),xs=this.beamXs,pa=this.beam.geometry.attributes.position;
   for(let k=0;k<pts.length;k++){const p=pts[k];
     TN.BEAMU.beamP.value[k].set(p[0],p[1],p[2]);TN.BEAMU.beamR.value[k].set(p[3],0,p[4]);
-    for(let c=0;c<xs.length;c++){const o=(k*xs.length+c)*3;pa.array[o]=p[0]+p[3]*xs[c];pa.array[o+1]=p[1]+0.09;pa.array[o+2]=p[2]+p[4]*xs[c];}}
+    for(let c=0;c<xs.length;c++){const o=(k*xs.length+c)*3;pa.array[o]=p[0]+p[3]*xs[c];pa.array[o+1]=p[1]+0.22;pa.array[o+2]=p[2]+p[4]*xs[c];}}
   pa.needsUpdate=true;
 };
 /* the moon: position and phase (low-precision, good to about a degree) */
