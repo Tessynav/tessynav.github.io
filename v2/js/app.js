@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=34;
+TN.APPBUILD=35;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -73,17 +73,29 @@ TN.APPBUILD=34;
     if(c.accuracy<100){try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
     wantPacks(c.longitude,c.latitude);
   }
+  let gpsStartT=0,gpsGoodT=0,gpsLastAcc=1e9,gpsRestarts=0;
   function startFollow(){
     follow=true;userZoom=0;$('btn').textContent='Recenter';
-    if(watchId===null) watchId=navigator.geolocation.watchPosition(p=>{try{localStorage.setItem('tn2_gpsok','1');}catch(e){}onPos(p);},
-      ()=>{$('status').textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+    if(watchId===null){gpsStartT=Date.now();
+      watchId=navigator.geolocation.watchPosition(p=>{try{localStorage.setItem('tn2_gpsok','1');}catch(e){}
+          gpsLastAcc=p.coords.accuracy;if(gpsLastAcc<100) gpsGoodT=Date.now();onPos(p);},
+        ()=>{$('status').textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});}
   }
-  $('btn').onclick=startFollow;
+  function restartGps(){try{if(watchId!==null) navigator.geolocation.clearWatch(watchId);}catch(e){}watchId=null;startFollow();}
+  /* GPS watchdog: if the position stays rough (a network guess over 1 km) for more than 8 s, ask again;
+     that makes the browser switch to the car's precise GPS */
+  setInterval(()=>{
+    if(watchId===null) return;const now=Date.now();
+    if(now-gpsStartT>8000&&now-gpsGoodT>10000&&gpsLastAcc>1000&&gpsRestarts<5){gpsRestarts++;restartGps();}
+  },4000);
+  $('btn').onclick=()=>{if(watchId!==null&&gpsLastAcc>1000) restartGps();else startFollow();};
   /* start following Tessy by itself when location is already allowed (no Start tap needed);
      the first time on a new device, the Start button asks for permission as before */
   (function autoStart(){
     let ok=false;try{ok=localStorage.getItem('tn2_gpsok')==='1';}catch(e){}
-    const go=()=>{if(watchId===null){$('status').textContent='Finding Tessy…';startFollow();}};
+    /* start once the map has loaded, plus a moment (like a natural tap on Start), so the GPS answers precisely */
+    const go=()=>{$('status').textContent='Finding Tessy…';const st=()=>setTimeout(()=>{if(watchId===null) startFollow();},1500);
+      if(ready) st();else map.once('load',st);};
     if(navigator.permissions&&navigator.permissions.query){
       navigator.permissions.query({name:'geolocation'}).then(r=>{if(r.state==='granted'||(ok&&r.state!=='denied')) go();}).catch(()=>{if(ok) go();});
     }else if(ok) go();
