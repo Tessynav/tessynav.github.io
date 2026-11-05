@@ -317,17 +317,25 @@ TN.Scene.prototype.applyGround=function(nt){
   if(!this.dayPaint||Math.abs((this.lastNt==null?-1:this.lastNt)-nt)<=0.01) return;this.lastNt=nt;
   for(const [id,prop,d,n] of this.dayPaint){try{this.map.setPaintProperty(id,prop,TN.mix(d,n,nt));}catch(e){}}
 };
+TN.Scene.prototype.reapplyNight=function(){if(this.wxNt!=null) this.applyNight(this.wxNt);};
 TN.Scene.prototype.applyNight=function(nt){
+  this.wxNt=nt;
   /* during the opening animation only the sky waits (the intro uses it); the ground goes to night right away */
   if(this.introActive){this.pendingNt=nt;this.setNight(nt);this.applyGround(nt);return;}
   /* a sky above the horizon: blue by day, deep night blue at night */
   try{
-    if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':TN.mix('#5d8fd1','#0d1830',nt),'horizon-color':TN.mix('#cfe0f2','#2a3a5c',nt),
-      'fog-color':TN.mix('#dfe8ef','#1c2638',nt),'sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.85,'atmosphere-blend':0});
+    /* the real weather: clouds grey the sky, rain darkens it, fog brings the haze in close */
+    const W=this.weather||{cloud:0,rain:0,fog:0},cl=Math.min(1,W.cloud*0.85+W.rain*0.3),fg=Math.max(W.fog,W.rain*0.5);
+    const sky=TN.mix(TN.mix('#5d8fd1','#9aa4ae',cl),TN.mix('#0d1830','#141920',cl),nt);
+    const hor=TN.mix(TN.mix('#cfe0f2','#c3c9cf',cl),TN.mix('#2a3a5c','#232a33',cl),nt);
+    const fogc=TN.mix(TN.mix('#dfe8ef','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);
+    if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':sky,'horizon-color':hor,
+      'fog-color':fogc,'sky-horizon-blend':0.6,'horizon-fog-blend':0.5+0.4*fg,'fog-ground-blend':0.85-0.6*fg,'atmosphere-blend':0});
   }catch(e){}
   try{
     this.map.setPaintProperty('tn-night','fill-opacity',this.extraDark||0);   /* the 'darker' end of the night brightness setting */
     this.applyGround(nt);
+    {const wet=(this.weather&&this.weather.rain)||0;for(const k of ['road','curb']) if(this.mats[k]){this.tintMat(k,this.mats[k]);if(wet>0) this.mats[k].color.multiplyScalar(1-0.22*Math.min(1,wet+0.3));}}
     this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.farBuildingColor(nt));
   }catch(e){}
   this.setNight(nt);

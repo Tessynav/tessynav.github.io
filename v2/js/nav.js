@@ -54,11 +54,15 @@ TN.Nav.prototype.here=function(){const c=this.api.getCar();if(c&&c.x!=null) retu
 const fmtDist=m=>m<950?(m<100?Math.max(10,Math.round(m/10)*10):Math.round(m/50)*50)+' m':(m/1000).toFixed(m<9500?1:0)+' km';
 TN.Nav.prototype.list=function(items,msg){
   this.results=items;const R=this.res;R.style.display='block';
-  if(!items.length){R.innerHTML='<div class="msg">'+(msg||'No results')+'</div>';return;}
+  const q=(this.input&&this.input.value||'').trim();
+  const allRow=q.length>=3&&!(items[0]&&items[0].recent)?'<div class="r all" style="color:#7fd3c8">'+TN.ICON('pin',24)+'<div>Show all nearby on map<small>Every \u201c'+TN.esc(q)+'\u201d around you</small></div></div>':'';
+  if(!items.length){R.innerHTML=allRow+'<div class="msg">'+(msg||'No results')+'</div>';const ar=R.querySelector('.all');if(ar) ar.onclick=()=>this.showAll(q);return;}
   const h=this.here();
   R.innerHTML=items.map((it,i)=>{const d=TN.distLL(h,[it.lng,it.lat]);
     return '<div class="r" data-i="'+i+'"><span>'+(it.recent?TN.ICON('recent',22,'#9fb3c8'):TN.ICON('pin',24))+'</span><div>'+TN.esc(it.name)+'<small>'+TN.esc(it.sub||'')+'</small></div><span class="d">'+fmtDist(d)+'</span></div>';}).join('');
-  R.querySelectorAll('.r').forEach(r=>r.onclick=()=>this.pick(items[+r.dataset.i]));
+  if(allRow) R.innerHTML=allRow+R.innerHTML;
+  R.querySelectorAll('.r[data-i]').forEach(r=>r.onclick=()=>this.pick(items[+r.dataset.i]));
+  const ar=R.querySelector('.all');if(ar) ar.onclick=()=>this.showAll(q);
 };
 /* icons as small drawings (some car browsers lack symbol fonts) */
 TN.ICON=(name,size,color)=>{const c=color||'currentColor',z=size||22,P={
@@ -100,6 +104,68 @@ TN.Nav.prototype.pick=function(it){
   this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
   try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
   this.dest=it;this.plan(false);
+};
+/* ---------- every nearby place with a name (McDonald's, Tim Hortons...) as pins on the map ---------- */
+TN.Nav.prototype.showAll=async function(q){
+  this.closeSearch();this.clearPins();
+  const h=this.here(),api=this.api;
+  this.ov.style.display='flex';this.ov.innerHTML='<div>Looking for \u201c'+TN.esc(q)+'\u201d nearby\u2026</div>';
+  let items=[];
+  try{
+    const rx=q.replace(/[.*+?^${}()|[\]\\"]/g,'.').replace(/['\u2019]/g,'.?');
+    const ql='[out:json][timeout:12];(nwr["name"~"'+rx+'",i](around:12000,'+h[1].toFixed(5)+','+h[0].toFixed(5)+');nwr["brand"~"'+rx+'",i](around:12000,'+h[1].toFixed(5)+','+h[0].toFixed(5)+'););out center 80;';
+    const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql));
+    if(r.ok){const j=await r.json();const seen=new Set();
+      for(const e of j.elements||[]){const lat=e.lat||(e.center&&e.center.lat),lng=e.lon||(e.center&&e.center.lon);if(lat==null) continue;
+        const t=e.tags||{},key=lat.toFixed(4)+','+lng.toFixed(4);if(seen.has(key)) continue;seen.add(key);
+        items.push({name:t.name||t.brand||q,sub:[[t['addr:housenumber'],t['addr:street']].filter(Boolean).join(' '),t['addr:city']].filter(Boolean).join(' \u00b7 '),lng:lng,lat:lat});}}
+  }catch(e){}
+  /* if that service is busy, the normal search with more results */
+  if(!items.length){try{const r=await fetch('https://photon.komoot.io/api/?q='+encodeURIComponent(q)+'&lat='+h[1].toFixed(4)+'&lon='+h[0].toFixed(4)+'&limit=30&lang=en');
+    if(r.ok){const j=await r.json();items=(j.features||[]).map(f=>({name:f.properties.name||q,sub:[f.properties.street,f.properties.city].filter(Boolean).join(' \u00b7 '),lng:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]})).filter(it=>TN.distLL(h,[it.lng,it.lat])<30000);}}catch(e){}}
+  items.sort((a,b)=>TN.distLL(h,[a.lng,a.lat])-TN.distLL(h,[b.lng,b.lat]));items=items.slice(0,40);
+  if(!items.length){this.ov.innerHTML='<div>Nothing called \u201c'+TN.esc(q)+'\u201d nearby</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};return;}
+  /* pins, and a view that shows them all (the nearest first) */
+  api.setFollow(false);this.pins=[];
+  for(const it of items){const el=document.createElement('div');el.innerHTML=TN.ICON('pin',34);el.style.cursor='pointer';el.style.transform='translateY(-14px)';
+    el.onclick=ev=>{ev.stopPropagation();this.pinCard(it,items.length,q);};
+    if(typeof maplibregl!=='undefined') this.pins.push(new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([it.lng,it.lat]).addTo(api.map));}
+  const near=items.slice(0,Math.min(items.length,12)).concat([{lng:h[0],lat:h[1]}]);
+  this.fitView(near.map(it=>[it.lng,it.lat]));
+  this.ov.innerHTML='<div><b>'+items.length+' \u00d7 \u201c'+TN.esc(q)+'\u201d</b><br><small>Tap a pin to choose</small></div><button class="cancel">Close</button>';
+  this.ov.querySelector('.cancel').onclick=()=>{this.clearPins();this.ov.style.display='none';api.setFollow(true);};
+};
+TN.Nav.prototype.pinCard=function(it,count,q){
+  const d=TN.distLL(this.here(),[it.lng,it.lat]);
+  this.ov.style.display='flex';
+  this.ov.innerHTML='<div><b>'+TN.esc(it.name)+'</b><br><small>'+(it.sub?TN.esc(it.sub)+' \u00b7 ':'')+fmtDist(d)+' away</small></div><button class="go">Go</button>'+(count?'<button class="cancel">Back</button>':'<button class="cancel">Cancel</button>');
+  this.ov.querySelector('.go').onclick=()=>{this.clearPins();this.dest=it;
+    this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
+    try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
+    this.plan(false);};
+  this.ov.querySelector('.cancel').onclick=()=>{if(count){this.ov.innerHTML='<div><b>'+count+' \u00d7 \u201c'+TN.esc(q)+'\u201d</b><br><small>Tap a pin to choose</small></div><button class="cancel">Close</button>';
+      this.ov.querySelector('.cancel').onclick=()=>{this.clearPins();this.ov.style.display='none';this.api.setFollow(true);};}
+    else{this.clearPins();this.ov.style.display='none';this.api.setFollow(true);}};
+};
+TN.Nav.prototype.clearPins=function(){if(this.pins) for(const m of this.pins){try{m.remove();}catch(e){}}this.pins=null;if(this.dropPin){try{this.dropPin.remove();}catch(e){}this.dropPin=null;}};
+/* a view showing a set of points from above (also used by the route overview) */
+TN.Nav.prototype.fitView=function(pts){
+  const api=this.api;let a=[1e9,1e9],b=[-1e9,-1e9];for(const p of pts){a=[Math.min(a[0],p[0]),Math.min(a[1],p[1])];b=[Math.max(b[0],p[0]),Math.max(b[1],p[1])];}
+  try{const cv=api.map.getCanvas(),W=Math.max(300,cv.clientWidth-160),H=Math.max(200,cv.clientHeight-260);
+    const midLat=(a[1]+b[1])/2,mx=(b[0]-a[0])*111320*Math.cos(midLat*Math.PI/180),my=(b[1]-a[1])*111320,mpp=Math.max(mx/W,my/H,0.5);
+    let z=Math.log2(156543.03*Math.cos(midLat*Math.PI/180)/mpp)-1;z=Math.max(10,Math.min(17,z-0.2));
+    api.map.easeTo({center:[(a[0]+b[0])/2,(a[1]+b[1])/2],zoom:z,pitch:0,bearing:0,padding:{top:0,bottom:0,left:0,right:0},offset:[0,-30],duration:900});}catch(e){}
+};
+/* long-press anywhere on the map: drop a pin there, then Go */
+TN.Nav.prototype.dropAt=async function(lng,lat){
+  if(this.active) return;this.clearPins();
+  const el=document.createElement('div');el.innerHTML=TN.ICON('pin',40);el.style.transform='translateY(-18px)';
+  if(typeof maplibregl!=='undefined') this.dropPin=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([lng,lat]).addTo(this.api.map);
+  const it={name:'Dropped pin',sub:'',lng:lng,lat:lat};this.pinCard(it,0,'');
+  try{const r=await fetch('https://photon.komoot.io/reverse?lat='+lat.toFixed(6)+'&lon='+lng.toFixed(6)+'&lang=en');
+    if(r.ok){const j=await r.json(),p=(j.features&&j.features[0]&&j.features[0].properties)||{};
+      it.name=p.name||[p.housenumber,p.street].filter(Boolean).join(' ')||'Dropped pin';it.sub=[p.name?[p.housenumber,p.street].filter(Boolean).join(' '):'',p.city].filter(Boolean).join(' \u00b7 ');
+      if(this.dropPin) this.pinCard(it,0,'');}}catch(e){}
 };
 /* ---------- route ---------- */
 TN.Nav.prototype.fetchRoute=async function(from,to){

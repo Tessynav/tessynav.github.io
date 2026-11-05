@@ -1169,7 +1169,10 @@ TN.Net.prototype.drawSignal=function(L,m,done){
           const C=[fx,cy,fz],A=[fx+S.rx*p[0],cy+p[1],fz+S.rz*p[0]],B=[fx+S.rx*q[0],cy+q[1],fz+S.rz*q[0]];
           for(const tri of [[C,A,B],[C,B,A]]){const b=G.n;for(const v2 of tri){G.p.push(v2[0],v2[1],v2[2]);G.c.push(c[0],c[1],c[2]);}G.i.push(b,b+1,b+2);G.n+=3;}
           if(GL){const C2=[fx-S.dx*0.01,cy,fz-S.dz*0.01],A2=[A[0]-S.dx*0.01,A[1],A[2]-S.dz*0.01],B2=[B[0]-S.dx*0.01,B[1],B[2]-S.dz*0.01];
-            for(const tri of [[C2,A2,B2],[C2,B2,A2]]){const b=GL.n;for(const v2 of tri){GL.p.push(v2[0],v2[1],v2[2]);GL.c.push(c[0]*0.6,c[1]*0.6,c[2]*0.6);}GL.i.push(b,b+1,b+2);GL.n+=3;}}}
+            for(const tri of [[C2,A2,B2],[C2,B2,A2]]){const b=GL.n;for(const v2 of tri){GL.p.push(v2[0],v2[1],v2[2]);GL.c.push(c[0]*1.7,c[1]*1.7,c[2]*1.7);}GL.i.push(b,b+1,b+2);GL.n+=3;}
+            /* at night: a soft halo around each lamp, so the lights stay clearly visible */
+            const A3=[fx-S.dx*0.02+S.rx*p[0]*2.4,cy+p[1]*2.4,fz-S.dz*0.02+S.rz*p[0]*2.4],B3=[fx-S.dx*0.02+S.rx*q[0]*2.4,cy+q[1]*2.4,fz-S.dz*0.02+S.rz*q[0]*2.4],C3=[fx-S.dx*0.02,cy,fz-S.dz*0.02];
+            for(const tri of [[C3,A3,B3],[C3,B3,A3]]){const b=GL.n;tri.forEach((v2,ii)=>{GL.p.push(v2[0],v2[1],v2[2]);const f=ii===0?0.55:0;GL.c.push(c[0]*f,c[1]*f,c[2]*f);});GL.i.push(b,b+1,b+2);GL.n+=3;}}}
       });
     };
     const n=S.hw>5&&!S.ow?1:(S.hw>5?2:1);

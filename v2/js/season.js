@@ -11,7 +11,7 @@ TN.Season=function(scene,trees){
   const m=new Date().getMonth()+1,d=new Date().getDate();
   this.mode=/[?&]leaves=0/.test(q)?null:/[?&]leaves=snow/.test(q)?'snow':/[?&]leaves=autumn/.test(q)?'leaves':
     ((m===9&&d>=15)||m===10||m===11)?'leaves':(m===12||m<=3)?'snow':null;
-  this.t=0;this.night=0;
+  this.calMode=this.mode;this.t=0;this.night=0;
 };
 TN.Season.prototype.build=function(){
   if(this.mesh||!this.mode||!this.scene.three) return;
@@ -29,6 +29,12 @@ TN.Season.prototype.build=function(){
   this.scene.three.scene.add(this.mesh);
   this.o=new THREE.Object3D();
   this.setNight(this.night);   /* start in the right shade at night */
+};
+/* switch between falling leaves, snow and nothing (the real weather decides snow) */
+TN.Season.prototype.setMode=function(mode){
+  if(mode===this.mode) return;
+  if(this.mesh&&this.scene.three){this.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();}
+  this.mesh=null;this.parts=[];this.mode=mode;if(mode) this.build();
 };
 TN.Season.prototype.setNight=function(nt){this.night=nt;if(this.mat) this.mat.color.set(TN.mix('#ffffff','#5a6070',nt*0.85));};
 /* how many trees are near: leaves fall mostly where trees are */
