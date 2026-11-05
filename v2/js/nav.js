@@ -448,7 +448,7 @@ TN.Nav.prototype.go=function(){
 };
 TN.Nav.prototype.end=function(why){
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
-  this.active=false;this.route=null;this.bird=0;document.body.classList.remove('tn-routing');if(this.limit) this.limit.style.display='none';
+  this.active=false;this.route=null;this.bird=0;document.body.classList.remove('tn-routing');
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);
@@ -500,6 +500,15 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   let y=base.y!=null?base.y:mi(3);
   {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
   return Object.assign({},base,{x:px+mi(1)-uz*lo,z:pz+mi(2)+ux*lo,hd:hd,y:y,onRoute:true});
+};
+/* the speed limit sign next to your speed (null hides it); red and pulsing when more than 3 km/h over */
+TN.Nav.prototype.showLimit=function(lim,kmh){
+  const el=this.limit;if(!el) return;
+  if(TN.settings&&TN.settings.limits===false) lim=null;
+  if(!lim){if(el.style.display!=='none') el.style.display='none';return;}
+  el.style.display='flex';const sp=document.getElementById('speed');if(sp) el.style.left=(sp.offsetLeft+sp.offsetWidth+12)+'px';
+  const b=el.querySelector('b');if(b.textContent!==String(lim)) b.textContent=lim;
+  el.classList.toggle('over',kmh>lim+3);
 };
 /* ---------- while driving ---------- */
 TN.Nav.prototype.instr=function(s){
@@ -582,11 +591,8 @@ TN.Nav.prototype.update=function(dt){
        if(cur) stops.push(cur+' '+(st*100).toFixed(1)+'%',cur+' 100%');}
      else stops.push('#3b82f6 '+(f*100).toFixed(1)+'%','#3b82f6 100%');
      pb.style.background='linear-gradient(90deg,'+stops.join(',')+')';}}
-  /* speed limit here (from the route); the sign turns red when more than 3 km/h over */
-  {const lim=R.lim?R.lim[bi]:null,el=this.limit;
-   if(lim){el.style.display='flex';const sp=document.getElementById('speed');if(sp) el.style.left=(sp.offsetLeft+sp.offsetWidth+12)+'px';const b=el.querySelector('b');if(b.textContent!==String(lim)) b.textContent=lim;
-     const kmh=(G&&G.v!=null?G.v:(c.v||0))*3.6;el.classList.toggle('over',kmh>lim+3);}
-   else el.style.display='none';}
+  /* speed limit here: from the route, otherwise from the road the car is on */
+  {const lim=(R.lim&&R.lim[bi])||(c.w&&c.w.lim)||null;this.showLimit(lim,(G&&G.v!=null?G.v:(c.v||0))*3.6);}
   const remain=R.dur*(left/Math.max(1,R.L)),arr=new Date(Date.now()+remain*1000);
   this.bar.querySelector('.eta').innerHTML='<b>'+arr.toTimeString().slice(0,5)+'</b>'+Math.max(1,Math.round(remain/60))+' min \u00b7 '+fmtDist(left);
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';

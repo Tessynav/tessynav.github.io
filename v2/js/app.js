@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=53;
+TN.APPBUILD=54;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -378,6 +378,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       scene.placeCar(car.x,car.z,car.y||0,dispHd);
       try{scene.updateBeam(car);}catch(e){}
       if(nav){try{nav.update(dt);}catch(e){}}
+      /* without a route: the speed limit of the road the car is on (from the road tiles) */
+      if(nav&&!nav.active){try{const rc=track.car;nav.showLimit(rc&&rc.w&&rc.snapped?(rc.w.lim||null):null,(track.last?track.last.v:0)*3.6);}catch(e){}}
       /* live traffic lines when browsing the map or looking at a route overview (not while following the car) */
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
       if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}

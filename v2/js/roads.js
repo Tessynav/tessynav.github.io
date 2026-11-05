@@ -50,8 +50,8 @@ TN.Net.prototype.makeWay=function(r,isBridge){
   const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
   const w={id:r[0],cls:r[1],ow:r[2]||0,w:r[3]||7,lanes:r[7]||0,name:r[4]||'',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],
     br:false,tun:false,layer:0,H:0,hs:null};
-  if(isBridge){w.layer=r[9]||0;w.ramp=!!r[10];if(r[12]==='t') w.tun=true;else w.br=true;}
-  else{w.ramp=!!r[9];w.pa=!!r[10];}
+  if(isBridge){w.layer=r[9]||0;w.ramp=!!r[10];if(r[12]==='t') w.tun=true;else w.br=true;w.lim=r[13]||0;}
+  else{w.ramp=!!r[9];w.pa=!!r[10];w.lim=r[11]||0;}   /* lim: posted speed limit in km/h (0 = not recorded; tiles v6+) */
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of pts){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
   const pad=w.w/2+3;w.bb=[x0-pad,x1+pad,z0-pad,z1+pad];
   return w;
