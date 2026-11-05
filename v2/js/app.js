@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=46;
+TN.APPBUILD=47;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -20,7 +20,8 @@ TN.APPBUILD=46;
   const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,night:()=>night()}):null;
   if(settings){try{settings.build();}catch(e){}}
   /* navigation: search, route, directions */
-  const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);},
+  const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
+    gps:()=>track.last?{x:track.last.x,z:track.last.z,v:track.last.v,hd:track.hd,t:track.last.t}:null,gpsHd:()=>track.hd,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);},
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */

@@ -31,7 +31,8 @@ TN.Nav.prototype.build=function(){
    '#tn-ov .go{background:#1fa596;color:#fff}#tn-ov .cancel{background:#3a4352;color:#e8f1fa}'+
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
-   '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
+   '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+   '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
    '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
    '@media (max-width:760px){#tn-search{top:72px;left:16px;right:16px;width:auto;transform:none}#tn-res{top:132px;left:16px;right:16px;width:auto;transform:none}'+
@@ -261,8 +262,9 @@ TN.Nav.prototype.traffic=function(show){
 /* ---------- route ---------- */
 TN.Nav.prototype.fetchRoute=async function(from,to){
   if(TN.MBX){try{
+    const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60;':'';
     const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+from[0].toFixed(6)+','+from[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+
-      '?geometries=geojson&overview=full&steps=true&annotations=congestion&language=en&access_token='+TN.MBX;
+      '?geometries=geojson&overview=full&steps=true&annotations=congestion&language=en'+brg+'&access_token='+TN.MBX;
     const r=await fetch(u);if(r.ok){const j=await r.json();if(j.routes&&j.routes[0]){j.routes[0].traffic=true;return j.routes[0];}}
   }catch(e){}}
   return this.fetchRouteFree(from,to);
@@ -296,7 +298,7 @@ TN.Nav.prototype.setRoute=function(rt){
   const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
   const steps=[];for(const lg of rt.legs) for(const s of lg.steps){const q=TN.toLocal(s.maneuver.location[0],s.maneuver.location[1]);
     let bi=0,bd=1e18;for(let i=0;i<pts.length;i++){const d=(pts[i][0]-q[0])**2+(pts[i][1]-q[1])**2;if(d<bd){bd=d;bi=i;}}
-    steps.push({at:cum[bi],type:s.maneuver.type,mod:s.maneuver.modifier||'',exit:s.maneuver.exit,name:s.name||'',ref:s.ref||'',dest:s.destinations||''});}
+    steps.push({at:cum[bi],type:s.maneuver.type,mod:s.maneuver.modifier||'',exit:s.maneuver.exit,name:s.name||'',ref:s.ref||'',dest:s.destinations||'',exits:s.exits||''});}
   this.route={pts:pts,cum:cum,L:cum[cum.length-1],dur:rt.duration,dist:rt.distance,steps:steps,hy:null,traffic:!!rt.traffic};
   /* traffic per stretch (from the route's congestion levels), placed along the line by distance */
   {const cong=[];for(const lg of rt.legs||[]) if(lg.annotation&&lg.annotation.congestion) cong.push(...lg.annotation.congestion);
@@ -416,13 +418,16 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   let bi=this.pi||this.idx||0,bd=1e18;
   for(let i=Math.max(0,bi-60);i<Math.min(R.pts.length,bi+200);i++){const d=(R.pts[i][0]-L.x)**2+(R.pts[i][1]-L.z)**2;if(d<bd){bd=d;bi=i;}}
   const gd=Math.sqrt(bd);
-  /* clearly not on the route (missed a turn): show where the car really is, at once */
+  /* clearly not on the route (missed a turn): show where the car really is, at once.
+     Judged from the real GPS direction, not the matched car (which can briefly sit on a wrong street). */
   {const P0=R.pts[Math.max(0,bi-2)],P1=R.pts[Math.min(R.pts.length-1,bi+2)];
    const rh=(Math.atan2(P1[0]-P0[0],-(P1[1]-P0[1]))*180/Math.PI+360)%360;
-   const off=Math.abs(((base.hd-rh+540)%360)-180);
+   const gh=this.api.gpsHd?this.api.gpsHd():null,hdUse=gh!=null?gh:base.hd;
+   const off=Math.abs(((hdUse-rh+540)%360)-180);
    /* (a different direction must last a moment: during a normal turn the two briefly differ) */
-   if(gd>8&&off>55&&L.v>2) this.relT=(this.relT||0)+dt;else this.relT=0;
-   if(gd>12||this.relT>0.6||this.rerouting){if(this.ps!=null) this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.ps=null;return null;}}
+   const fresh=now-L.t<3000;   /* only judge from a recent GPS reading (not one frozen during a pause) */
+   if(fresh&&gd>8&&off>55&&L.v>2) this.relT=(this.relT||0)+dt;else this.relT=0;
+   if(gd>18||this.relT>0.6||this.rerouting){if(this.ps!=null) this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.ps=null;return null;}}
   this.pi=bi;
   /* projection on the segment for a precise distance */
   const i0=Math.max(0,Math.min(R.pts.length-2,bi-(bi>0&&bi===R.pts.length-1?1:0)));
@@ -485,9 +490,11 @@ TN.Nav.prototype.reroute=async function(){
 TN.Nav.prototype.update=function(dt){
   if(!this.route||!this.active) return;
   const R=this.route,c=this.api.getCar();if(!c||c.x==null) return;
-  /* where the car is along the route (searching a little ahead of the last place) */
+  /* where the car is along the route: from the real GPS position when there is one (the matched car can
+     briefly sit on a wrong street), searching a little ahead of the last place */
+  const G=this.api.gps?this.api.gps():null,px=G&&G.x!=null?G.x:c.x,pz=G&&G.x!=null?G.z:c.z;
   let bi=this.idx,bd=1e18;
-  for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length,this.idx+400);i++){const d=(R.pts[i][0]-c.x)**2+(R.pts[i][1]-c.z)**2;if(d<bd){bd=d;bi=i;}}
+  for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length,this.idx+400);i++){const d=(R.pts[i][0]-px)**2+(R.pts[i][1]-pz)**2;if(d<bd){bd=d;bi=i;}}
   const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;this.lastOff=off;
   this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,drawn:this.drawn});}
   if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn) this.draw(Math.max(0,bi-4));
@@ -498,7 +505,9 @@ TN.Nav.prototype.update=function(dt){
   const I=this.instr(nx),dNext=Math.max(0,nx.at-s);
   if(this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'#ffffff');this.lastIcon=I.a;}
   this.bar.querySelector('.dist').textContent=nx.type==='arrive'&&dNext<30?'Arriving':fmtDist(dNext);
-  this.bar.querySelector('.ins').textContent=I.t+(I.where?' \u00b7 '+I.where:'');
+  /* the exit number as a green highway exit sign (where the map has one) */
+  const exn=(nx.type==='off ramp'||nx.type==='fork')&&nx.exits?String(nx.exits).split(';')[0]:'';
+  this.bar.querySelector('.ins').innerHTML=(exn?'<span class="exit">EXIT '+TN.esc(exn)+'</span>':'')+TN.esc(I.t+(I.where?' \u00b7 '+I.where:''));
   const remain=R.dur*(left/Math.max(1,R.L)),arr=new Date(Date.now()+remain*1000);
   this.bar.querySelector('.eta').innerHTML='<b>'+arr.toTimeString().slice(0,5)+'</b>'+Math.max(1,Math.round(remain/60))+' min \u00b7 '+fmtDist(left);
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
@@ -509,8 +518,10 @@ TN.Nav.prototype.update=function(dt){
   const v=c.v!=null?c.v:5;
   /* off the route: far from it, or away from it in a clearly different direction */
   const P0=R.pts[Math.max(0,bi-2)],P1=R.pts[Math.min(R.pts.length-1,bi+2)];
-  const rh=(Math.atan2(P1[0]-P0[0],-(P1[1]-P0[1]))*180/Math.PI+360)%360,hoff=Math.abs(((c.hd-rh+540)%360)-180);
-  const away=v>1.5&&(off>18||(off>10&&hoff>50));
+  const gh=G&&G.hd!=null?G.hd:c.hd;
+  const rh=(Math.atan2(P1[0]-P0[0],-(P1[1]-P0[1]))*180/Math.PI+360)%360,hoff=Math.abs(((gh-rh+540)%360)-180);
+  const fresh=!G||G.t==null||Date.now()-G.t<3000;
+  const away=fresh&&v>1.5&&(off>22||(off>12&&hoff>50));
   if(away) this.offT+=dt;else this.offT=Math.max(0,this.offT-dt*2);
   const need=off>10&&hoff>50?1.5:2;
   if(this.offT>need&&!this.rerouting&&Date.now()-this.lastReroute>5000){this.reroute();}
