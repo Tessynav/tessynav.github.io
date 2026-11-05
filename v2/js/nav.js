@@ -483,7 +483,7 @@ TN.Nav.prototype.overview=function(){
   }catch(e){}
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
-  this.ov.innerHTML='<div style="min-width:0;flex:1"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+'</small>'+
+  this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+'</small>'+
     (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
@@ -618,7 +618,17 @@ TN.Nav.prototype.place=function(base,L,now,dt){
    if(this.latS!=null) lo=this.latS;}
   let y=base.y!=null?base.y:mi(3);
   {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
-  return Object.assign({},base,{x:px+mi(1)-uz*lo,z:pz+mi(2)+ux*lo,hd:hd,y:y,onRoute:true});
+  let ox=px+mi(1)-uz*lo,oz=pz+mi(2)+ux*lo,oh=hd;
+  /* city turns: the route's corners sit in the middle of the intersection, while a driver starts turning earlier;
+     near a turn at city speed, when the real direction clearly differs from the route line's, the car follows the
+     real path (the GPS) through the turn, blended in smoothly, and goes back onto the route line after */
+  {const gh=L.hd!=null&&L.v>2?L.hd:(this.api.gpsHd?this.api.gpsHd():null);
+   let nearTurn=false;if(R.steps&&gh!=null&&L.v<14&&now-L.t<2500){const sNow=R.cum[j]||0;
+     for(const st of R.steps){const dd=st.at-sNow;if(dd>-30&&dd<35&&st.type!=='depart'&&st.type!=='arrive'&&!/straight/.test(st.mod||'')){nearTurn=true;break;}}}
+   let w=0;if(nearTurn){const dif=Math.abs(((gh-hd+540)%360)-180);w=Math.max(0,Math.min(1,(dif-8)/30));}
+   this.turnW=(this.turnW||0)+(w-(this.turnW||0))*Math.min(1,dt*(w>(this.turnW||0)?6:2));
+   if(this.turnW>0.01){const tw=this.turnW;ox+=(L.x-ox)*tw;oz+=(L.z-oz)*tw;oh=(oh+(((gh-oh+540)%360)-180)*tw+360)%360;}}
+  return Object.assign({},base,{x:ox,z:oz,hd:oh,y:y,onRoute:true});
 };
 /* the speed limit sign next to your speed (null hides it); red and pulsing when more than 3 km/h over */
 TN.Nav.prototype.showLimit=function(lim,kmh){
