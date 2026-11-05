@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=55;
+TN.APPBUILD=56;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -25,7 +25,7 @@ TN.APPBUILD=55;
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   /* road incidents with Rocco (TomTom) */
-  const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
+  const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,getCar:()=>track.car,note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
   if(incidents){try{incidents.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */
   const weather=TN.Weather?new TN.Weather(scene,season):null;

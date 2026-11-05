@@ -8,10 +8,12 @@
    The key is restricted to tessynav.github.io. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.TT='SFsP1S1bN56sxYRuHDYyJpLTgg5Pva1k';
+/* Firebase (driver reports). These web settings are meant to be public; the database rules decide what is allowed. */
+TN.FB={apiKey:'AIzaSyCBRR9gPPRnhNALC2V5uHmbtr7pR0R7EA8',projectId:'tessynav-958f3'};
 
 /* ---------- Rocco ---------- */
 TN.ROCCO_KIND={1:'accident',2:'fog',3:'hazard',4:'rain',5:'ice',7:'lane',8:'closed',9:'works',10:'wind',11:'flood',14:'breakdown'};
-TN.ROCCO_TITLE={accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
+TN.ROCCO_TITLE={pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
   wind:'Strong wind',flood:'Flooding',breakdown:'Stopped vehicle',police:'Police',unknown:'Incident'};
 TN.ROCCO_JOKES={
   accident:['Oops! Someone kissed a bumper.','Fender-bender ahead. Rocco is taking notes.','Bumper cars, but not the fun kind.'],
@@ -26,6 +28,7 @@ TN.ROCCO_JOKES={
   wind:['Hold on to your tuque!','Windy! Rocco\u2019s tail is everywhere.'],
   hazard:['Something on the road. Eyes open!','Rocco spotted trouble ahead.'],
   police:['Smile, you\u2019re on camera!','Rocco says: speed limit, my friend.'],
+  pothole:['Hi! Mind my house.','Rocco\u2019s swimming pool. Go around.','Montreal\u2019s famous craters.'],
   unknown:['Something\u2019s up ahead.']};
 /* Rocco as a drawing: the head with his mask, plus an accessory for each kind of incident */
 TN.ROCCO=function(kind,size,night){
@@ -55,6 +58,8 @@ TN.ROCCO=function(kind,size,night){
     case 'flood':face=eyes+smile;extra='<ellipse cx="0" cy="44" rx="58" ry="12" fill="#3b82f6" opacity=".8"/><circle cx="-50" cy="36" r="10" fill="none" stroke="#f28c1c" stroke-width="7"/>';break;
     case 'rain':extra='<path d="M-52 -46 Q0 -86 52 -46Z" fill="#1fa596"/><path d="M0 -46 v-14" stroke="#555" stroke-width="3"/><path d="M-60 -20 l-4 10 M60 -20 l4 10 M-48 0 l-4 10 M48 0 l4 10" stroke="#7fb2e5" stroke-width="3"/>';break;
     case 'wind':face=wide+oh;extra='<path d="M-74 -30 Q-50 -36 -40 -26 M-76 -6 Q-56 -12 -46 -2 M46 -24 Q60 -30 74 -22" stroke="#cfd6dd" stroke-width="5" fill="none" stroke-linecap="round"/>';break;
+    case 'pothole':return '<svg width="'+z+'" height="'+z+'" viewBox="-80 -80 160 160" aria-hidden="true"><ellipse cx="0" cy="40" rx="74" ry="24" fill="#45494f"/><ellipse cx="0" cy="40" rx="60" ry="16" fill="#17191c"/>'+
+      '<g transform="translate(0,6) scale(.8)">'+head+eyes+smile+'</g><path d="M-74 40 Q0 74 74 40 L74 80 L-74 80Z" fill="#45494f"/></svg>';
     case 'hazard':face=wide+oh;extra='<path d="M50 34 L62 6 L74 34Z" fill="#f2c21c" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M62 15 v9 M62 28 v1" stroke="#111" stroke-width="3" stroke-linecap="round"/>';break;
   }
   return '<svg width="'+z+'" height="'+z+'" viewBox="-80 -80 160 160" aria-hidden="true">'+head+face+extra+'</svg>';
@@ -62,7 +67,7 @@ TN.ROCCO=function(kind,size,night){
 
 /* ---------- the incidents ---------- */
 TN.Incidents=function(api){
-  this.api=api;this.list=[];this.markers=new Map();this.lastFetch=0;this.lastPos=null;this.alertFor=null;this.on=true;
+  this.api=api;this.list=[];this.tt=[];this.reports=new TN.Reports(this);this.repFetch=0;this.markers=new Map();this.lastFetch=0;this.lastPos=null;this.alertFor=null;this.on=true;
 };
 TN.Incidents.prototype.build=function(){
   const st=document.createElement('style');
@@ -70,9 +75,18 @@ TN.Incidents.prototype.build=function(){
     '.tn-inc.works,.tn-inc.lane{border-color:#f28c1c}.tn-inc.ice,.tn-inc.fog,.tn-inc.flood,.tn-inc.rain,.tn-inc.wind{border-color:#3b82f6}'+
     '#tn-alert{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:14px;padding:10px 18px 10px 12px;max-width:min(92vw,620px);z-index:8}'+
     '#tn-alert b{font-size:22px;display:block}#tn-alert small{color:#9fb3c8;font-size:14px;display:block;margin-top:2px}#tn-alert .joke{color:#fcd34d}'+
-    'body.tn-routing #tn-alert{bottom:96px}';
+    'body.tn-routing #tn-alert{bottom:96px}'+
+    '#tn-alert .v{border:0;border-radius:10px;padding:10px 14px;font:600 15px system-ui,sans-serif;cursor:pointer;margin-left:6px}#tn-alert .up{background:#1fa596;color:#fff}#tn-alert .down{background:#3a4352;color:#e8f1fa}'+
+    '.tn-inc.user{border-style:dashed}'+
+    '#tn-report{right:16px;bottom:356px;display:flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border:0;font:600 16px system-ui,sans-serif;color:#fcd34d;cursor:pointer}'+
+    '#tn-repgrid{left:50%;top:50%;transform:translate(-50%,-50%);display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px;z-index:10;width:min(92vw,460px)}'+
+    '#tn-repgrid button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:0;border-radius:12px;background:rgba(255,255,255,.06);color:#e8f1fa;font:600 14px system-ui,sans-serif;cursor:pointer}'+
+    '#tn-repgrid button.x{justify-content:center;color:#9fb3c8}';
   document.head.appendChild(st);
   this.card=document.createElement('div');this.card.id='tn-alert';this.card.className='hud';document.body.appendChild(this.card);
+  this.btn=document.createElement('button');this.btn.id='tn-report';this.btn.className='hud';this.btn.innerHTML=TN.ROCCO('hazard',30)+'<span>Report</span>';document.body.appendChild(this.btn);
+  this.btn.onclick=()=>this.openReport();
+  this.grid=document.createElement('div');this.grid.id='tn-repgrid';this.grid.className='hud';document.body.appendChild(this.grid);
 };
 /* fetch the incidents around the car (every 2 minutes, or after moving 3 km) */
 TN.Incidents.prototype.fetch=async function(lng,lat){
@@ -89,17 +103,18 @@ TN.Incidents.prototype.fetch=async function(lng,lat){
       out.push({id:p.id||(kind+c[0].join(',')),kind:kind,pts:pts,ll:c[0],desc:(p.events&&p.events[0]&&p.events[0].description)||'',
         from:p.from||'',to:p.to||'',road:(p.roadNumbers||[]).join(', '),mag:p.magnitudeOfDelay||0,delay:p.delay||0});
     }
-    this.list=out;this.err=null;this.drawMarkers();
+    this.tt=out;this.err=null;this.merge();
     if(this.api.note) this.api.note('incidents',{n:out.length});
   }catch(e){this.err='net';}
 };
+TN.Incidents.prototype.merge=function(){this.list=this.tt.concat(this.reports.list);this.drawMarkers();};
 TN.Incidents.prototype.drawMarkers=function(){
   if(typeof maplibregl==='undefined') return;
   const keep=new Set(this.list.map(i=>i.id));
   for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
   for(const it of this.list){if(this.markers.has(it.id)) continue;
-    const el=document.createElement('div');el.className='tn-inc '+it.kind;el.innerHTML=TN.ROCCO(it.kind,40,night);
+    const el=document.createElement('div');el.className='tn-inc '+it.kind+(it.user?' user':'');el.innerHTML=TN.ROCCO(it.kind,40,night);
     el.title=TN.ROCCO_TITLE[it.kind];el.onclick=e=>{e.stopPropagation();this.show(it,null,true);};
     this.markers.set(it.id,new maplibregl.Marker({element:el}).setLngLat(it.ll).addTo(this.api.map));}
 };
@@ -122,23 +137,99 @@ TN.Incidents.prototype.ahead=function(car){
 };
 TN.Incidents.prototype.fun=function(){return !(TN.settings&&TN.settings.fun===false);};
 TN.Incidents.prototype.show=function(it,d,tapped){
+  const key=it.id+':'+(d==null?'':Math.round(d/50));if(this.cardKey===key&&this.card.style.display==='flex') return;this.cardKey=key;
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
   if(this.alertFor!==it.id){this.joke=(TN.ROCCO_JOKES[it.kind]||TN.ROCCO_JOKES.unknown);this.joke=this.joke[Math.floor(Math.random()*this.joke.length)];this.alertFor=it.id;}
   const dist=d==null?'':' \u00b7 '+(d<950?Math.round(d/50)*50+' m':(d/1000).toFixed(1)+' km');
   const detail=[it.desc,it.road,it.from&&it.to?it.from+' \u2192 '+it.to:it.from].filter(Boolean).join(' \u00b7 ');
-  this.card.innerHTML=(this.fun()?TN.ROCCO(it.kind,64,night):'')+'<div style="min-width:0"><b>'+TN.esc(TN.ROCCO_TITLE[it.kind]+dist)+'</b>'+
-    (detail?'<small>'+TN.esc(detail)+'</small>':'')+(this.fun()?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>';
+  const who=it.user?'Reported by a driver \u00b7 '+Math.max(1,Math.round((Date.now()-it.t)/60000))+' min ago'+(it.up?' \u00b7 '+it.up+' confirmed':''):'';
+  const canVote=it.user&&!it.mine&&!this.reports.voted.has(it.id)&&(d==null||d<500);
+  this.card.innerHTML=(this.fun()?TN.ROCCO(it.kind,64,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc(TN.ROCCO_TITLE[it.kind]+dist)+'</b>'+
+    (detail?'<small>'+TN.esc(detail)+'</small>':'')+(who?'<small>'+TN.esc(who)+'</small>':'')+(this.fun()?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>'+
+    (canVote?'<button class="v up">Still there</button><button class="v down">Gone</button>':'');
+  if(canVote){this.card.querySelector('.up').onclick=()=>{this.reports.vote(it.id,true);this.toast('Thanks! Rocco updated it.');this.hide();};
+    this.card.querySelector('.down').onclick=()=>{this.reports.vote(it.id,false);this.toast('Thanks! Rocco crossed it out.');this.hide();};}
   this.card.style.display='flex';this.shownAt=Date.now();this.tapped=!!tapped;
 };
-TN.Incidents.prototype.hide=function(){if(this.card) this.card.style.display='none';this.alertFor=null;};
+TN.Incidents.prototype.hide=function(){if(this.card) this.card.style.display='none';this.alertFor=null;this.cardKey=null;};
+TN.Incidents.prototype.toast=function(msg){const t=document.createElement('div');t.className='hud';t.style.cssText='left:50%;top:84px;transform:translateX(-50%);z-index:9;font-size:15px;padding:10px 16px';
+  t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{try{t.parentNode&&t.parentNode.removeChild(t);}catch(e){}},3500);};
+/* the Report button and its grid of Rocco buttons */
+TN.Incidents.prototype.openReport=function(){
+  const g=this.grid;g.style.display='grid';
+  g.innerHTML=TN.REPORT_KINDS.map(k=>'<button data-k="'+k+'">'+TN.ROCCO(k,52)+'<span>'+TN.ROCCO_TITLE[k]+'</span></button>').join('')+'<button class="x" data-k="">Cancel</button>';
+  g.querySelectorAll('button').forEach(b=>b.onclick=async()=>{g.style.display='none';const k=b.dataset.k;if(!k) return;
+    const c=this.api.getCar&&this.api.getCar(),ll=c&&c.x!=null?TN.fromLocal(c.x,c.z):null;if(!ll){this.toast('Waiting for GPS\u2026');return;}
+    try{await this.reports.send(k,ll[0],ll[1],c.hd||0);this.toast('Thanks! Rocco will warn other drivers.');this.repFetch=0;
+      if(this.api.note) this.api.note('report sent',{kind:k});}
+    catch(e){this.toast('Could not send the report right now');if(this.api.note) this.api.note('report failed',{err:String(e.message||e)});}});
+};
 TN.Incidents.prototype.update=function(car,lng,lat){
   if(TN.settings&&TN.settings.incidents===false){if(this.markers.size) this.clear();return;}
   const now=Date.now();
   const moved=this.lastPos?TN.distLL(this.lastPos,[lng,lat]):1e9;
   if(now-this.lastFetch>120000||moved>3000){this.lastFetch=now;this.lastPos=[lng,lat];this.fetch(lng,lat);}
+  if(now-this.repFetch>60000){this.repFetch=now;this.reports.fetch(lng,lat).then(()=>this.merge());}
   if(!car||car.x==null) return;
   /* a tapped badge shows its card for 8 s; otherwise the next incident ahead within reach */
   if(this.tapped&&now-this.shownAt<8000) return;
   const a=this.ahead(car);
   if(a) this.show(a.it,a.d,false);else if(this.card&&this.card.style.display!=='none') this.hide();
+};
+
+/* ---------- driver reports (Firebase over the web: anonymous sign-in + the reports database) ---------- */
+TN.Reports=function(inc){this.inc=inc;this.list=[];this.lastFetch=0;this.voted=new Set();};
+TN.REPORT_KINDS=['police','accident','closed','lane','works','pothole','hazard','ice'];
+TN.REPORT_LIFE={police:60,accident:120};   /* minutes a report stays up (default 4 h) */
+TN.Reports.prototype.token=async function(){
+  /* an anonymous identity for this car, kept between drives; its pass is renewed when it expires (1 hour) */
+  let a=null;try{a=JSON.parse(localStorage.getItem('tn2_fb')||'null');}catch(e){}
+  if(a&&a.exp>Date.now()+60000) return a;
+  let r;
+  if(a&&a.refresh){r=await fetch('https://securetoken.googleapis.com/v1/token?key='+TN.FB.apiKey,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(a.refresh)});
+    if(r.ok){const j=await r.json();a={id:j.id_token,refresh:j.refresh_token,uid:j.user_id,exp:Date.now()+(+j.expires_in)*1000};}else a=null;}
+  if(!a){r=await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key='+TN.FB.apiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})});
+    if(!r.ok) throw new Error('sign-in '+r.status);const j=await r.json();a={id:j.idToken,refresh:j.refreshToken,uid:j.localId,exp:Date.now()+(+j.expiresIn)*1000};}
+  try{localStorage.setItem('tn2_fb',JSON.stringify(a));}catch(e){}
+  return a;
+};
+TN.Reports.prototype.base=function(){return 'https://firestore.googleapis.com/v1/projects/'+TN.FB.projectId+'/databases/(default)/documents';};
+/* send a report at the car's position (the time is stamped by the server) */
+TN.Reports.prototype.send=async function(kind,lng,lat,hd){
+  const a=await this.token(),id='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const name='projects/'+TN.FB.projectId+'/databases/(default)/documents/reports/'+id;
+  const body={writes:[{update:{name:name,fields:{uid:{stringValue:a.uid},kind:{stringValue:kind},lat:{doubleValue:lat},lng:{doubleValue:lng},hd:{doubleValue:Math.round(hd||0)},up:{integerValue:'0'},down:{integerValue:'0'}}},
+    currentDocument:{exists:false},updateTransforms:[{fieldPath:'t',setToServerValue:'REQUEST_TIME'},{fieldPath:'last',setToServerValue:'REQUEST_TIME'}]}]};
+  const r=await fetch(this.base()+':commit',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+a.id},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error('report '+r.status);
+  this.lastFetch=0;return id;
+};
+/* "Still there" (+1 up) or "Gone" (+1 down) */
+TN.Reports.prototype.vote=async function(id,up){
+  if(this.voted.has(id)) return;this.voted.add(id);
+  const a=await this.token(),name='projects/'+TN.FB.projectId+'/databases/(default)/documents/reports/'+id;
+  const body={writes:[{transform:{document:name,fieldTransforms:[{fieldPath:up?'up':'down',increment:{integerValue:'1'}},{fieldPath:'last',setToServerValue:'REQUEST_TIME'}]}}]};
+  await fetch(this.base()+':commit',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+a.id},body:JSON.stringify(body)});
+  this.lastFetch=0;
+};
+/* the reports around the car (a band of latitude, then the rest filtered here), every minute */
+TN.Reports.prototype.fetch=async function(lng,lat){
+  try{
+    const a=await this.token();this.me=a.uid;
+    const q={structuredQuery:{from:[{collectionId:'reports'}],where:{compositeFilter:{op:'AND',filters:[
+      {fieldFilter:{field:{fieldPath:'lat'},op:'GREATER_THAN_OR_EQUAL',value:{doubleValue:lat-0.06}}},
+      {fieldFilter:{field:{fieldPath:'lat'},op:'LESS_THAN_OR_EQUAL',value:{doubleValue:lat+0.06}}}]}},limit:300}};
+    const r=await fetch(this.base()+':runQuery',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+a.id},body:JSON.stringify(q)});
+    if(!r.ok){this.err=r.status;return;}
+    const rows=await r.json(),now=Date.now(),out=[];
+    for(const row of rows){const d=row.document;if(!d||!d.fields) continue;const f=d.fields;
+      const g=k=>f[k]?(f[k].doubleValue!=null?+f[k].doubleValue:f[k].integerValue!=null?+f[k].integerValue:f[k].stringValue!=null?f[k].stringValue:f[k].timestampValue||null):null;
+      const kind=g('kind'),t=Date.parse(g('t')||''),last=Date.parse(g('last')||'')||t,up=g('up')||0,down=g('down')||0,rl=g('lat'),rn=g('lng');
+      if(!kind||!t||Math.abs(rn-lng)>0.09) continue;
+      const life=(TN.REPORT_LIFE[kind]||240)*60000;
+      if(now-last>life) continue;            /* expired (a "still there" keeps it alive) */
+      if(down>=2&&down>up) continue;         /* drivers said it's gone */
+      out.push({id:d.name.split('/').pop(),kind:kind,pts:[TN.toLocal(rn,rl)],ll:[rn,rl],desc:'',from:'',to:'',road:'',user:true,t:t,up:up,down:down,mine:g('uid')===(this.me||'')});}
+    this.list=out;this.err=null;
+  }catch(e){this.err='net';}
 };
