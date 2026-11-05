@@ -193,13 +193,16 @@ TN.CUTGLSL=[
   'bool tnCut(){',
   '  if(cutR<=0.0) return false;',
   '  vec3 d=cutCar-cutCam;float dd=dot(d,d);if(dd<1.0) return false;',
+  /* anything right at the camera (the camera inside a building) is simply hidden: no speckles */
+  '  if(length(vCutW-cutCam)<7.0) return true;',
   '  float t=dot(vCutW-cutCam,d)/dd;',
   '  if(t<=0.0||t>1.0-2.5/sqrt(dd)) return false;',
   '  float r=length(vCutW-(cutCam+d*t));',
   /* a cone from the camera to the car: only what covers the car on screen fades (nothing beside the car) */
   '  float rad=cutR*t;',
-  '  float k=0.85*(1.0-smoothstep(rad*0.6,rad,r));',
-  '  if(k<=0.0) return false;',
+  /* fully hidden inside the cone; the soft dot pattern only on its edge */
+  '  float k=1.0-smoothstep(rad*0.6,rad,r);',
+  '  if(k<=0.0) return false;if(k>=0.999) return true;',
   '  return fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)<k;',
   '}'].join('\n');
 TN.CUTVERT='\n#ifdef USE_INSTANCING\nvCutW=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;\n#else\nvCutW=(modelMatrix*vec4(transformed,1.0)).xyz;\n#endif\n';

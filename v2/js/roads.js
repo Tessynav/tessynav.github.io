@@ -764,28 +764,75 @@ TN.Net.prototype.drawStalls=function(L,w,runs){
 /* which REM pieces meet at each point (to follow the line from piece to piece) */
 TN.Net.prototype.remLinks=function(){
   if(this._rlv===this.remVer&&this._rl) return this._rl;
+  this.remBridgeGaps();
   const m=new Map();if(this.rem) for(const w of this.rem.values()){for(const j of [0,w.pts.length-1]){const k=w.keys[j];let l=m.get(k);if(!l){l=[];m.set(k,l);}l.push([w,j]);}}
   this._rl=m;this._rlv=this.remVer;return m;
+};
+/* where the map leaves a short hole in the REM line (two track ends facing each other within 80 m), add a short
+   joining piece so the line and its trains continue */
+TN.Net.prototype.remBridgeGaps=function(){
+  if(!this.rem) return;
+  for(const [id,w] of [...this.rem]) if(w.joiner) this.rem.delete(id);
+  const cnt=new Map(),R=[...this.rem.values()];
+  for(const w of R) for(const j of [0,w.pts.length-1]) cnt.set(w.keys[j],(cnt.get(w.keys[j])||0)+1);
+  const ends=[];for(const w of R) for(const j of [0,w.pts.length-1]) if(cnt.get(w.keys[j])===1) ends.push([w,j]);
+  const used=new Set();let n=0;
+  for(const [w,j] of ends){
+    if(used.has(w.keys[j])) continue;
+    const p=w.pts[j],pp=w.pts[j===0?1:j-1];let ux=p[0]-pp[0],uz=p[1]-pp[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
+    let best=null;
+    for(const [v,k] of ends){if(v===w||used.has(v.keys[k])) continue;const q=v.pts[k],dx=q[0]-p[0],dz=q[1]-p[1],d=Math.hypot(dx,dz);
+      if(d<0.5||d>80||(dx*ux+dz*uz)/d<0.8) continue;
+      const qq=v.pts[k===0?1:k-1];let vx=q[0]-qq[0],vz=q[1]-qq[1];const vl=Math.hypot(vx,vz)||1;if((vx*ux+vz*uz)/vl>-0.6) continue;   /* facing back */
+      if(!best||d<best.d) best={v:v,k:k,d:d};}
+    if(!best) continue;
+    used.add(w.keys[j]);used.add(best.v.keys[best.k]);
+    const q=best.v.pts[best.k],pts=[p,q],id='j'+(n++)+'_'+w.id;
+    this.rem.set(id,{id:id,name:'REM',pts:pts,keys:[w.keys[j],best.v.keys[best.k]],cum:[0,best.d],L:best.d,
+      bb:[Math.min(p[0],q[0]),Math.max(p[0],q[0]),Math.min(p[1],q[1]),Math.max(p[1],q[1])],rem:true,joiner:true,ground:!!(w.ground&&best.v.ground),br:false});
+  }
 };
 /* guideway height at each point: level with a road bridge it runs beside (the Champlain Bridge carries it in the
    middle), otherwise 9 m; coming down to the ground over 150 m where the elevated part ends */
 TN.Net.prototype.remHeights=function(w){
   const v=this.ver+':'+(this.remVer||0);if(w.hv===v&&w.rh) return w.rh;
+  /* each end meets its neighbours at the same height: blend over the last 80 m towards the average there */
+  const raw=this.remRaw(w).slice(),links=this.remLinks(),P=w.pts;
+  for(const [end,dir] of [[0,1],[P.length-1,-1]]){
+    const nb=(links.get(w.keys[end])||[]).filter(l=>l[0]!==w);if(!nb.length) continue;
+    let sum=raw[end],n=1;for(const [o,k] of nb){sum+=this.remRaw(o)[k];n++;}
+    const target=sum/n,delta=target-raw[end];if(Math.abs(delta)<0.05) continue;
+    const BL=Math.min(200,w.L);for(let j=end;j>=0&&j<P.length;j+=dir){const d=Math.abs(w.cum[j]-w.cum[end]);if(d>BL) break;raw[j]+=delta*(1-d/BL);}
+  }
+  w.rh=raw;w.hv=v;return raw;
+};
+TN.Net.prototype.remRaw=function(w){
+  const v=this.ver+':'+(this.remVer||0);if(w.rv===v&&w.rr) return w.rr;
   const links=this.remLinks(),P=w.pts,hs=[];
-  if(w.ground){w.rh=P.map(()=>0);w.hv=v;return w.rh;}
+  if(w.ground){w.rr=P.map(()=>0);w.rv=v;return w.rr;}
+  if(w.joiner){
+    /* a joining piece takes the heights of the two pieces it connects */
+    const L=this.remLinks(),hAt=k=>{for(const [o,j] of (L.get(w.keys[k])||[])) if(o!==w&&!o.joiner) return this.remRaw(o)[j];return 0;};
+    w.rr=[hAt(0),hAt(1)];w.rv=v;return w.rr;
+  }
   for(let j=0;j<P.length;j++){
     let h=-1;const x=P[j][0],z=P[j][1];
-    this.near(x,z,30,(v2,i)=>{if(!v2.br) return;const r=TN.seg(v2,i,x,z);if(r.d<TN.width(v2)/2+30){
+    const ja=Math.max(0,j-1),jb=Math.min(P.length-1,j+1);let ux=P[jb][0]-P[ja][0],uz=P[jb][1]-P[ja][1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
+    /* only road bridges running alongside (the Champlain Bridge), not ones it crosses or passes over */
+    this.near(x,z,30,(v2,i)=>{if(!v2.br) return;const r=TN.seg(v2,i,x,z);if(r.d<TN.width(v2)/2+30&&Math.abs(r.tx*ux+r.tz*uz)>0.9){
       const hh=v2.hs?v2.hs[i]+(v2.hs[i+1]-v2.hs[i])*r.u:v2.H;if(hh>h) h=hh;}});
     hs.push(h>3?h:9);
   }
+  /* smooth along the line (over about 120 m), so heights change gradually like a real guideway */
+  {const sm=[];for(let j=0;j<P.length;j++){let a2=0,n2=0;for(let k=0;k<P.length;k++){const d=Math.abs(w.cum[k]-w.cum[j]);if(d<=60){const wt=1-d/60;a2+=hs[k]*wt;n2+=wt;}}sm.push(n2?a2/n2:hs[j]);}
+   for(let j=0;j<P.length;j++) hs[j]=sm[j];}
   /* an end with no other piece, or only ground-level pieces: the guideway comes down to the ground there */
   const free=j=>(links.get(w.keys[j])||[]).filter(l=>l[0]!==w).every(l=>l[0].ground);
   for(const [end,dir] of [[0,1],[P.length-1,-1]]){
     if(!free(end)) continue;
-    for(let j=end;j>=0&&j<P.length;j+=dir){const d=Math.abs(w.cum[j]-w.cum[end]);if(d>150) break;hs[j]=Math.min(hs[j],hs[j]*(d/150));}
+    for(let j=end;j>=0&&j<P.length;j+=dir){const d=Math.abs(w.cum[j]-w.cum[end]);if(d>250) break;hs[j]=Math.min(hs[j],hs[j]*(d/250));}
   }
-  w.rh=hs;w.hv=v;return hs;
+  w.rr=hs;w.rv=v;return hs;
 };
 TN.remAt=function(w,hs,s){let i=0;while(i<w.pts.length-2&&w.cum[i+1]<s) i++;const sg=w.cum[i+1]-w.cum[i]||1,t=Math.max(0,Math.min(1,(s-w.cum[i])/sg));
   return {x:w.pts[i][0]+(w.pts[i+1][0]-w.pts[i][0])*t,z:w.pts[i][1]+(w.pts[i+1][1]-w.pts[i][1])*t,y:hs[i]+(hs[i+1]-hs[i])*t,ux:(w.pts[i+1][0]-w.pts[i][0])/sg,uz:(w.pts[i+1][1]-w.pts[i][1])/sg};};
