@@ -798,6 +798,21 @@ TN.Net.prototype.drawRem=function(L,w,a,b){
     TN.box(G,q.x,q.z,-q.uz,q.ux,4.6,1.8,q.y-2.6,q.y-1.6,TN.C.cap);
   }
 };
+/* a soft round glow made of rings: brightness k[i] at radius r[i] (0..1 of R). 'flat' lies on the ground (slightly
+   longer along the road), 'ball' is three crossed discs so it looks round from every side */
+TN.glowDisc=function(G,cx,cy,cz,R,k,r,col,kind,ux,uz){
+  const n=16,planes=kind==='ball'?[[1,0,0,0,1,0],[0,0,1,0,1,0],[1,0,0,0,0,1]]:[[ux,0,uz,-uz,0,ux]];
+  for(const pl of planes){
+    const c0=G.n;G.p.push(cx,cy,cz);G.c.push(col[0]*k[0],col[1]*k[0],col[2]*k[0]);let nv=1;
+    for(let ri=1;ri<r.length;ri++){const rr=R*r[ri],kk=k[ri];
+      for(let q=0;q<n;q++){const an=q/n*Math.PI*2,a=Math.cos(an)*rr*(kind==='flat'?1.15:1),b=Math.sin(an)*rr*(kind==='flat'?0.9:1);
+        G.p.push(cx+pl[0]*a+pl[3]*b,cy+pl[1]*a+pl[4]*b,cz+pl[2]*a+pl[5]*b);G.c.push(col[0]*kk,col[1]*kk,col[2]*kk);nv++;}}
+    for(let q=0;q<n;q++) G.i.push(c0,c0+1+q,c0+1+(q+1)%n);
+    for(let ri=1;ri<r.length-1;ri++){const a0=c0+1+(ri-1)*n,b0=c0+1+ri*n;
+      for(let q=0;q<n;q++){const q1=(q+1)%n;G.i.push(a0+q,b0+q,b0+q1,a0+q,b0+q1,a0+q1);}}
+    G.n+=nv;
+  }
+};
 /* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.
    At night (glow layer) the lamp heads shine white and each lamp casts a soft pool of white LED light on the road. */
 /* is there a road surface (ground, ramp or bridge) at (x,z) within pad metres, at about height y? */
@@ -844,11 +859,10 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       const G=L.glow,gc=TN.C.glowc;
       TN.quad(G,[hx-rx*0.28-ux*0.13,top-0.37,hz-rz*0.28-uz*0.13],[hx+rx*0.28-ux*0.13,top-0.37,hz+rz*0.28-uz*0.13],
                 [hx+rx*0.28+ux*0.13,top-0.37,hz+rz*0.28+uz*0.13],[hx-rx*0.28+ux*0.13,top-0.37,hz-rz*0.28+uz*0.13],[1,1,1]);
-      const px=x+rx*2.8,pz=z+rz*2.8,py=y0+0.1,R=7.5,n=14,c0=G.n;
-      G.p.push(px,py,pz);G.c.push(gc[0]*0.55,gc[1]*0.55,gc[2]*0.55);
-      for(let q=0;q<=n;q++){const an=q/n*Math.PI*2;G.p.push(px+Math.cos(an)*R,py,pz+Math.sin(an)*R*0.8);G.c.push(0,0,0);}
-      for(let q=0;q<n;q++) G.i.push(c0,c0+1+q,c0+2+q);
-      G.n+=n+2;
+      /* a wide pool of light (about 13 m) with a smooth fade, so neighbouring lamps blend into a lit street */
+      TN.glowDisc(G,x+rx*2.4,y0+0.1,z+rz*2.4,13,[0.62,0.45,0.22,0.07,0],[0,0.25,0.5,0.78,1],gc,'flat',ux,uz);
+      /* the lamp itself shines: a soft halo around the head, seen from any side */
+      TN.glowDisc(G,hx,top-0.3,hz,1.1,[0.95,0.5,0.12,0],[0,0.25,0.6,1],[1,1,1],'ball',ux,uz);
     }
   }
 };

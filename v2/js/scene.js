@@ -23,6 +23,7 @@ TN.Scene.prototype.layer=function(){
       const mc=maplibregl.MercatorCoordinate.fromLngLat(TN.ORIGIN,0),msc=mc.meterInMercatorCoordinateUnits();
       const model=new THREE.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new THREE.Vector3(msc,-msc,msc)).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2));
       S.three={scene:scene,camera:camera,renderer:renderer,model:model};
+      try{S.addSky();}catch(e){}
       S.loadCar();
     },
     render(gl,arg){
@@ -33,6 +34,7 @@ TN.Scene.prototype.layer=function(){
       try{
         const inv=T.camera.projectionMatrix.clone().invert();
         TN.CUTU.cutCam.value.set(0,0,-1).applyMatrix4(inv);
+        S.updateSky(TN.CUTU.cutCam.value);
         const c=S.car3d;
         if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=4.5;}
         else TN.CUTU.cutR.value=0;
@@ -124,6 +126,8 @@ TN.Scene.prototype.setNight=function(nt){
   this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#6f7686',nt)),cm=new THREE.Color(TN.mix('#ffffff','#c9d0de',nt));
   for(const k in this.mats) if(k!=='glow') this.mats[k].color.copy(k==='mark'?cm:c);
   this.glowOp=Math.max(0,Math.min(1,(nt-0.45)/0.35));   /* street lights only once it is really getting dark */if(this.mats.glow) this.mats.glow.opacity=this.glowOp;
+  if(this.headMat) this.headMat.opacity=this.glowOp;
+  if(this.skyStars) this.skyStars.material.opacity=this.glowOp;
 };
 /* ---------- the car (Tessy's real model, model3.glb in the site's main folder) ---------- */
 TN.Scene.prototype.loadCar=async function(){
@@ -227,6 +231,14 @@ TN.Scene.prototype.addBrakeGlow=function(body){
     const gm=new THREE.MeshBasicMaterial({map:tex,color:0xff1e1e,transparent:true,opacity:0,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
     const plane=new THREE.Mesh(new THREE.PlaneGeometry(3.0,3.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.06,c.z+back*1.8);
     body.add(plane);this.glows.push(gm);this.glowGround=gm;
+    /* headlights: a beam of light on the road ahead, bright near the car and fading out about 30 m ahead (night only) */
+    const full=new THREE.Box3().setFromObject(body),fz=back>0?full.min.z:full.max.z,dir=-back,pos=[],colA=[],idx=[];
+    const rows=[[0,1.0,0.55],[0.25,2.4,0.42],[0.55,4.2,0.2],[1,6.5,0]];
+    for(const [t,hwid,b] of rows){const zz=fz+dir*(1.5+t*30);for(const xx of [-hwid,0,hwid]){pos.push(c.x+xx,0.07,zz);const e=xx===0?b:b*0.55;colA.push(e*0.95,e*0.97,e);}}
+    for(let r2=0;r2<rows.length-1;r2++){const a0=r2*3,b0=(r2+1)*3;for(const q of [0,1]) idx.push(a0+q,b0+q,b0+q+1,a0+q,b0+q+1,a0+q+1);}
+    const hg=new THREE.BufferGeometry();hg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));hg.setAttribute('color',new THREE.Float32BufferAttribute(colA,3));hg.setIndex(idx);
+    this.headMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:this.glowOp||0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+    const hm=new THREE.Mesh(hg,this.headMat);hm.renderOrder=4;hm.frustumCulled=false;body.add(hm);
   }catch(e){}
 };
 /* brake lights: 0 = normal tail lights, 1 = braking (bright red, with glow) */
@@ -317,6 +329,57 @@ TN.sunAlt=function(date,lat,lng){
   const ra=Math.atan2(Math.cos(e)*Math.sin(L),Math.cos(L)),dec=Math.asin(Math.sin(e)*Math.sin(L));
   const gmst=(18.697374558+24.06570982441908*d)%24,lst=(gmst*15+lng)*TN.R,ha=lst-ra;
   return Math.asin(Math.sin(lat*TN.R)*Math.sin(dec)+Math.cos(lat*TN.R)*Math.cos(dec)*Math.cos(ha))/TN.R;
+};
+/* the moon: position and phase (low-precision, good to about a degree) */
+TN.moonInfo=function(date,lat,lng){
+  const d=(date.getTime()/86400000)-10957.5,R=TN.R;
+  const Lm=218.316+13.176396*d,M=(134.963+13.064993*d)*R,F=(93.272+13.229350*d)*R;
+  const lon=(Lm+6.289*Math.sin(M))*R,la=5.128*Math.sin(F)*R,e=23.439*R;
+  const ra=Math.atan2(Math.sin(lon)*Math.cos(e)-Math.tan(la)*Math.sin(e),Math.cos(lon)),dec=Math.asin(Math.sin(la)*Math.cos(e)+Math.cos(la)*Math.sin(e)*Math.sin(lon));
+  const gmst=(18.697374558+24.06570982441908*d)%24,ha=(gmst*15+lng)*R-ra,phi=lat*R;
+  const alt=Math.asin(Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(ha));
+  const az=Math.atan2(-Math.sin(ha),Math.tan(dec)*Math.cos(phi)-Math.sin(phi)*Math.cos(ha));
+  const g=(357.529+0.98560028*d)*R,sunLon=280.459+0.98564736*d+1.915*Math.sin(g);
+  const el=((Lm+6.289*Math.sin(M)-sunLon)%360+360)%360;
+  return {alt:alt/R,az:(az/R+360)%360,illum:(1-Math.cos(el*R))/2,waxing:el<180};
+};
+/* stars and the moon in the night sky: a dome around the camera; fade in with the street lights */
+TN.Scene.prototype.addSky=function(){
+  try{
+    const N=700,pos=[];let sd=12345;const rnd=()=>{sd=(sd*16807)%2147483647;return sd/2147483647;};
+    for(let i=0;i<N;i++){const az=rnd()*Math.PI*2,alt=Math.asin(0.06+rnd()*0.94),R=1300;
+      pos.push(Math.sin(az)*Math.cos(alt)*R,Math.sin(alt)*R,-Math.cos(az)*Math.cos(alt)*R);}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    const m=new THREE.PointsMaterial({color:0xe8eeff,size:2,sizeAttenuation:false,transparent:true,opacity:0,depthWrite:false});
+    this.skyStars=new THREE.Points(g,m);this.skyStars.frustumCulled=false;this.three.scene.add(this.skyStars);
+    const cv=document.createElement('canvas');cv.width=cv.height=128;this.moonCv=cv;
+    this.moonTex=new THREE.CanvasTexture(cv);
+    this.moon=new THREE.Sprite(new THREE.SpriteMaterial({map:this.moonTex,transparent:true,opacity:0,depthWrite:false}));
+    this.moon.scale.set(70,70,1);this.three.scene.add(this.moon);this.moonT=0;
+  }catch(e){}
+};
+TN.Scene.prototype.updateSky=function(cam){
+  if(!this.skyStars) return;
+  this.skyStars.position.copy(cam);
+  const now=Date.now();
+  if(now-this.moonT>60000||!this.moonI){this.moonT=now;
+    try{const c=this.map.getCenter();this.moonI=TN.moonInfo(new Date(),c.lat,c.lng);this.drawMoon(this.moonI);}catch(e){}}
+  const I=this.moonI;if(!I) return;
+  const al=I.alt*TN.R,az=I.az*TN.R,R=1200;
+  this.moon.position.set(cam.x+Math.sin(az)*Math.cos(al)*R,cam.y+Math.sin(al)*R,cam.z-Math.cos(az)*Math.cos(al)*R);
+  this.moon.material.opacity=I.alt>1?Math.min(1,this.glowOp*1.2):0;
+};
+TN.Scene.prototype.drawMoon=function(I){
+  /* the lit part of the moon for its phase */
+  const g=this.moonCv.getContext('2d'),r=50,c=64;g.clearRect(0,0,128,128);
+  const glow=g.createRadialGradient(c,c,r*0.8,c,c,r*1.25);glow.addColorStop(0,'rgba(220,230,255,0.25)');glow.addColorStop(1,'rgba(220,230,255,0)');
+  g.fillStyle=glow;g.beginPath();g.arc(c,c,r*1.25,0,7);g.fill();
+  g.fillStyle='rgba(60,66,84,0.55)';g.beginPath();g.arc(c,c,r,0,7);g.fill();
+  const k=Math.cos(I.illum*Math.PI),dir=I.waxing?1:-1;
+  g.fillStyle='#eef1f8';g.beginPath();
+  g.arc(c,c,r,-Math.PI/2,Math.PI/2,dir<0);
+  g.ellipse(c,c,Math.abs(k)*r,r,0,Math.PI/2,-Math.PI/2,(k>0)===(dir>0));
+  g.fill();this.moonTex.needsUpdate=true;
 };
 /* timing per part (for recordings) */
 TN.PROF={};TN.prof=function(k,ms){TN.PROF[k]=(TN.PROF[k]||0)+ms;};
