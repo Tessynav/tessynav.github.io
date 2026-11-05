@@ -123,13 +123,14 @@ TN.Incidents.prototype.clear=function(){for(const m of this.markers.values()){tr
 TN.Incidents.prototype.ahead=function(car){
   const nav=this.api.nav,R=nav&&nav.active?nav.route:null;let best=null;
   for(const it of this.list){
+    if(it.mine) continue;   /* (your own reports: on the map, but no alert) */
     let d=null;
     if(R){/* on the route: the incident is within 25 m of the route line, ahead of the car */
       const s0=R.cum[nav.idx]||0;
       for(const p of it.pts){for(let i=nav.idx;i<R.pts.length&&R.cum[i]-s0<3000;i+=3){const q=R.pts[i];if(Math.hypot(q[0]-p[0],q[1]-p[1])<25){const dd=R.cum[i]-s0;if(dd>=0&&(d==null||dd<d)) d=dd;break;}}}}
     else{/* no route: within about 30 degrees of straight ahead, closer than 1.2 km */
       const hr=car.hd*Math.PI/180,fx=Math.sin(hr),fz=-Math.cos(hr);
-      for(const p of it.pts){const vx=p[0]-car.x,vz=p[1]-car.z,dist=Math.hypot(vx,vz);if(dist<15||dist>1200) continue;
+      for(const p of it.pts){const vx=p[0]-car.x,vz=p[1]-car.z,dist=Math.hypot(vx,vz);if(dist<20||dist>1200) continue;
         if((vx*fx+vz*fz)/dist>0.87&&(d==null||dist<d)) d=dist;}}
     if(d!=null&&d<(R?3000:1200)&&(!best||d<best.d)) best={it:it,d:d};
   }
@@ -137,7 +138,7 @@ TN.Incidents.prototype.ahead=function(car){
 };
 TN.Incidents.prototype.fun=function(){return !(TN.settings&&TN.settings.fun===false);};
 TN.Incidents.prototype.show=function(it,d,tapped){
-  const key=it.id+':'+(d==null?'':Math.round(d/50));if(this.cardKey===key&&this.card.style.display==='flex') return;this.cardKey=key;
+  const key=it.id+':'+(d==null?'':Math.round(d/50))+':'+this.fun();if(this.cardKey===key&&this.card.style.display==='flex') return;this.cardKey=key;
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
   if(this.alertFor!==it.id){this.joke=(TN.ROCCO_JOKES[it.kind]||TN.ROCCO_JOKES.unknown);this.joke=this.joke[Math.floor(Math.random()*this.joke.length)];this.alertFor=it.id;}
   const dist=d==null?'':' \u00b7 '+(d<950?Math.round(d/50)*50+' m':(d/1000).toFixed(1)+' km');
@@ -173,6 +174,8 @@ TN.Incidents.prototype.update=function(car,lng,lat){
   if(!car||car.x==null) return;
   /* a tapped badge shows its card for 8 s; otherwise the next incident ahead within reach */
   if(this.tapped&&now-this.shownAt<8000) return;
+  /* the trip list or the route overview is open: alerts wait until it's closed */
+  {const nv=this.api.nav;if(nv&&nv.ov&&nv.ov.style.display!=='none'){if(this.card.style.display!=='none') this.hide();return;}}
   const a=this.ahead(car);
   if(a) this.show(a.it,a.d,false);else if(this.card&&this.card.style.display!=='none') this.hide();
 };

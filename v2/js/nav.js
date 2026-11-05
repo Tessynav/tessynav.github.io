@@ -35,7 +35,7 @@ TN.Nav.prototype.build=function(){
    '#tn-ov .trip{margin-top:8px;display:flex;flex-direction:column;gap:4px}#tn-ov .row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border-radius:10px;padding:4px 6px}'+
    '#tn-ov .row .num{width:26px;height:26px;border-radius:50%;background:#f59e0b;color:#111;font:700 13px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;flex-shrink:0}#tn-ov .row .num.fin{background:transparent;font-size:18px}'+
    '#tn-ov .row .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}'+
-   '#tn-ov .row button{border:0;border-radius:8px;padding:6px 10px;font:600 15px system-ui,sans-serif;background:#3a4352;color:#e8f1fa;cursor:pointer}#tn-ov .row button:disabled{opacity:.3}'+
+   '#tn-ov .row button{display:flex;align-items:center;justify-content:center;border:0;border-radius:8px;padding:7px 10px;font:600 15px system-ui,sans-serif;background:#3a4352;color:#e8f1fa;cursor:pointer}#tn-ov .row button:disabled{opacity:.3}'+
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
@@ -480,10 +480,10 @@ TN.Nav.prototype.overview=function(){
 /* the trip in order: stops numbered 1, 2, 3..., the destination last; arrows to reorder, x to remove */
 TN.Nav.prototype.tripList=function(){
   const all=this.stops.concat([this.dest]),n=all.length;
-  return '<div class="trip">'+all.map((p,i)=>'<div class="row"><span class="num'+(i===n-1?' fin':'')+'">'+(i===n-1?'\uD83C\uDFC1':(i+1))+'</span>'+
+  return '<div class="trip">'+all.map((p,i)=>'<div class="row"><span class="num'+(i===n-1?' fin':'')+'">'+(i===n-1?TN.ICON('flag',18,'#ffffff'):(i+1))+'</span>'+
     '<span class="nm">'+TN.esc(p.name)+'</span>'+
-    '<button data-a="up" data-i="'+i+'"'+(i===0?' disabled':'')+'>\u2191</button><button data-a="down" data-i="'+i+'"'+(i===n-1?' disabled':'')+'>\u2193</button>'+
-    (n>1?'<button data-a="del" data-i="'+i+'">\u2715</button>':'')+'</div>').join('')+'</div>';
+    '<button data-a="up" data-i="'+i+'"'+(i===0?' disabled':'')+'>'+TN.ICON('straight',16,'#e8f1fa')+'</button><button data-a="down" data-i="'+i+'"'+(i===n-1?' disabled':'')+'><span style="display:block;transform:rotate(180deg)">'+TN.ICON('straight',16,'#e8f1fa')+'</span></button>'+
+    (n>1?'<button data-a="del" data-i="'+i+'">'+TN.ICON('x',16,'#ff8a80')+'</button>':'')+'</div>').join('')+'</div>';
 };
 TN.Nav.prototype.tripButtons=function(box,driving){
   box.querySelectorAll('.trip button').forEach(b=>b.onclick=ev=>{ev.stopPropagation();
@@ -668,8 +668,8 @@ TN.Nav.prototype.update=function(dt){
   this.bar.querySelector('.eta').innerHTML='<b>'+arr.toTimeString().slice(0,5)+'</b>'+Math.max(1,Math.round(remain/60))+' min \u00b7 '+fmtDist(left);
   /* the destination (and stops) as a button: tap it to see and change the trip */
   {const db=this.bar.querySelector('.dst'),n=this.stops.length;
-   const txt='\u270E '+(this.dest?this.dest.name:'Trip')+(n?' \u00b7 '+n+' stop'+(n>1?'s':''):'');
-   if(db.textContent!==txt) db.textContent=txt;}
+   const txt=(this.dest?this.dest.name:'Trip')+(n?' \u00b7 '+n+' stop'+(n>1?'s':''):'');
+   if(db.dataset.t!==txt){db.dataset.t=txt;db.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:6px"><path d="M4 20l1-5L16 4l4 4L9 19z M14 6l4 4" stroke="#fcd34d" stroke-width="2.4" fill="none" stroke-linejoin="round"/></svg>'+TN.esc(txt);}}
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
   /* arrived */
   if(left<30||(nx.type==='arrive'&&dNext<25)){this.arriveT+=dt;if(this.arriveT>3){this.bar.querySelector('.dist').textContent='You have arrived';this.bar.querySelector('.ins').textContent=TN.esc(this.dest.name);}
