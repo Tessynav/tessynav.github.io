@@ -348,35 +348,58 @@ TN.Net.prototype.heights=function*(){if(TN.HMODE==='cd'){yield* this.heightsCD()
    local rise (and a ramp underneath can dip a little), so nothing clips through the road below */
 TN.Net.prototype.clearance=function(){const j=this.clearanceJob();while(!j.next().done);};
 TN.Net.prototype.clearanceJob=function*(){
-  const NEED=5.0,Hh=(w,i)=>w.hs?w.hs[i]:(w.br?w.H:0),hAt=(w,i,u)=>w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*u:(w.br?w.H:0);
-  const found=new Map();
-  let cnt=0;
-  for(const w of this.ways.values()){
-    if(++cnt%60===0) yield;
-    if(w.tun||!(w.hs||(w.br&&w.H>0))) continue;
-    const mine=new Set(w.keys);
-    for(let i=0;i<w.pts.length;i++){
-      const h=Hh(w,i);if(h<1) continue;const x=w.pts[i][0],z=w.pts[i][1];
-      const ia=Math.max(0,i-1),ib=Math.min(w.pts.length-1,i+1);let ux=w.pts[ib][0]-w.pts[ia][0],uz=w.pts[ib][1]-w.pts[ia][1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
-      this.near(x,z,0,(v,k)=>{
-        if(v===w||v.tun) return;
-        /* a real crossing: the two roads cross at an angle and are not joined to each other */
-        if(v.keys.some(q=>mine.has(q))) return;
-        const r=TN.seg(v,k,x,z);if(r.d>TN.width(v)/2) return;if(Math.abs(r.tx*ux+r.tz*uz)>0.7) return;
-        const d=h-hAt(v,k,r.u);if(d<=0.8||d>=NEED) return;
-        const key=w.id+':'+v.id,o=found.get(key);if(!o||d<o.d) found.set(key,{w:w,s:w.cum[i],d:d});
-      });
-    }
-  }
-  /* a smooth gentle rise of the upper road, only where it fits inside its own road piece (so no joint changes);
-     the remaining low crossings need the planned height-model redesign */
+  /* Crossings solved as one connected network:
+     1. wherever a raised road passes less than 5 m above another road (a real crossing, at an angle, not joined),
+        its height there must be at least 5 m above the road below;
+     2. that rise spreads outward along every connected road at most 6% steep, through every joint (all roads
+        that meet at a point keep the same height there), so no steps can form;
+     repeated twice, since a rise can bring a road nearer to another one. */
+  const NEED=5.0,G=0.06;
+  const Hh=(w,i)=>w.hs?w.hs[i]:(w.br?w.H:0),hAt=(w,i,u)=>w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*u:(w.br?w.H:0);
   let fixed=0;
-  for(const c of found.values()){
-    const amt=NEED-c.d,w=c.w,L=Math.max(50,amt/0.035),room=Math.min(c.s,w.L-c.s);
-    if(room<L) continue;
-    if(!w.hs) w.hs=w.pts.map(()=>w.H);w.cb=w.cb||w.pts.map(()=>0);
-    for(let j=0;j<w.pts.length;j++){const d=Math.abs(w.cum[j]-c.s);if(d<L){const add=amt*0.5*(1+Math.cos(Math.PI*d/L));if(add>w.cb[j]){w.hs[j]+=add-w.cb[j];w.cb[j]=add;}}}
-    fixed++;
+  for(let round=0;round<2;round++){
+    /* 1. the lowest allowed height at each point that passes too low over another road */
+    const need=new Map();   /* way -> Map(vertex -> minimum height) */
+    let cnt=0;
+    for(const w of this.ways.values()){
+      if(++cnt%60===0) yield;
+      if(w.tun||!(w.hs||(w.br&&w.H>0))) continue;
+      const mine=new Set(w.keys);
+      for(let i=0;i<w.pts.length;i++){
+        const h=Hh(w,i);if(h<1) continue;const x=w.pts[i][0],z=w.pts[i][1];
+        const ia=Math.max(0,i-1),ib=Math.min(w.pts.length-1,i+1);let ux=w.pts[ib][0]-w.pts[ia][0],uz=w.pts[ib][1]-w.pts[ia][1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
+        this.near(x,z,0,(v,k)=>{
+          if(v===w||v.tun) return;if(v.keys.some(q=>mine.has(q))) return;
+          const r=TN.seg(v,k,x,z);if(r.d>TN.width(v)/2+1) return;if(Math.abs(r.tx*ux+r.tz*uz)>0.7) return;
+          const hv=hAt(v,k,r.u),d=h-hv;if(d<=0.8||d>=NEED) return;
+          let m=need.get(w);if(!m){m=new Map();need.set(w,m);}
+          const lb=hv+NEED;if(!(m.get(i)>=lb)) m.set(i,lb);
+        });
+      }
+    }
+    if(!need.size) break;
+    /* 2. raise those points, then spread the rise along the network (largest first), never steeper than 6% */
+    const heap=[];const push=(w,i,h)=>{heap.push([h,w,i]);let c=heap.length-1;while(c>0){const p=(c-1)>>1;if(heap[p][0]>=heap[c][0]) break;[heap[p],heap[c]]=[heap[c],heap[p]];c=p;}};
+    const pop=()=>{const top=heap[0],last=heap.pop();if(heap.length){heap[0]=last;let c=0;for(;;){const l=2*c+1,r=l+1;let m=c;if(l<heap.length&&heap[l][0]>heap[m][0]) m=l;if(r<heap.length&&heap[r][0]>heap[m][0]) m=r;if(m===c) break;[heap[m],heap[c]]=[heap[c],heap[m]];c=m;}}return top;};
+    const own=w=>{if(!w.hs) w.hs=w.pts.map(()=>w.br?w.H:0);return w.hs;};const raisedW=new Set();
+    for(const [w,m] of need) for(const [i,lb] of m){const hs=own(w);if(lb>hs[i]+0.01){hs[i]=lb;push(w,i,lb);fixed++;}}
+    let steps=0;
+    while(heap.length){
+      if(++steps%3000===0) yield;
+      const [h,w,i]=pop();const hs=own(w);if(h<hs[i]-0.001) continue;raisedW.add(w);
+      /* along this road */
+      for(const j of [i-1,i+1]){if(j<0||j>=w.pts.length) continue;
+        const d=Math.abs(w.cum[j]-w.cum[i]),c=h-G*d;if(c>hs[j]+0.01){hs[j]=c;push(w,j,c);}}
+      /* the same point on every road that meets here */
+      for(const [v,k] of (this.keys.get(w.keys[i])||[])){
+        if(v===w||v.tun) continue;const hv=own(v);if(h>hv[k]+0.01){hv[k]=h;push(v,k,h);}}
+    }
+    /* no small valleys left between two raised parts of a road (it stays up, like an embankment) */
+    for(const w of raisedW) if(w.hs){const hs=w.hs,c=w.cum;
+      for(let j=0;j<hs.length;j++){let l=0,r=0;
+        for(let a=j-1;a>=0&&c[j]-c[a]<150;a--) if(hs[a]>l) l=hs[a];
+        for(let a=j+1;a<hs.length&&c[a]-c[j]<150;a++) if(hs[a]>r) r=hs[a];
+        const m=Math.min(l,r);if(m>1&&hs[j]<m-0.05&&m-hs[j]<3) hs[j]=m;}}
   }
   this.clearFixed=fixed;
 };
@@ -640,20 +663,20 @@ TN.normals=function(pts){
   return N;
 };
 /* is a point on another road at about the same height? (then markings are left out there) */
-TN.Net.prototype.onOther=function(way,x,z,h){
-  const G=this._sg;
+TN.Net.prototype.onOther=function(way,x,z,h,tol){
+  tol=tol||1;const G=this._sg;
   if(G){
     const gx=Math.floor(x/10),gz=Math.floor(z/10),l=G.get(gx*1e6+gz);if(!l) return false;
     for(const e of l){const w=e[0],i=e[1];if(w===way||w.tun) continue;
       const r=TN.seg(w,i,x,z);if(r.d>=TN.width(w)/2-0.2) continue;
-      const wh=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);if(Math.abs(wh-h)<1) return true;}
+      const wh=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);if(Math.abs(wh-h)<tol) return true;}
     return false;
   }
   let hit=false;
   this.near(x,z,0,(w,i)=>{
     if(w===way||w.tun) return;
     const r=TN.seg(w,i,x,z),wh=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);
-    if(r.d<TN.width(w)/2-0.2&&Math.abs(wh-h)<1){hit=true;return true;}
+    if(r.d<TN.width(w)/2-0.2&&Math.abs(wh-h)<tol){hit=true;return true;}
   });
   return hit;
 };
@@ -1257,16 +1280,21 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     /* walls and barriers only where this part of the road is actually raised (not on its ground-level part) */
     if(Math.max(H(i),H(i+1))<0.5) continue;
     const t0=H(i)+top,t1=H(i+1)+top,b0=bot(i),b1=bot(i+1);if(t0-b0<0.05&&t1-b1<0.05) continue;
-    /* where another road is right beside this edge at about the same height (a ramp joining or leaving the
-       highway), there is no wall: you can drive across there */
-    {const oi=o(i),oj=o(i+1),sg=Math.sign(oi+oj)||1,mx=(P[i][0]+P[i+1][0])/2+(N[i][0]+N[i+1][0])/2*((oi+oj)/2+sg*1.5),
-      mz=(P[i][1]+P[i+1][1])/2+(N[i][1]+N[i+1][1])/2*((oi+oj)/2+sg*1.5);
-     if(net.onOther(w,mx,mz,(H(i)+H(i+1))/2)) continue;
-     /* the edge itself runs across another road at the same height (a street joining the ramp): no wall either */
-     const ex=(P[i][0]+P[i+1][0])/2+(N[i][0]+N[i+1][0])/2*(oi+oj)/2,ez=(P[i][1]+P[i+1][1])/2+(N[i][1]+N[i+1][1])/2*(oi+oj)/2;
-     if(net.onOther(w,ex,ez,(H(i)+H(i+1))/2)) continue;}
-    const p=(j,h)=>[P[j][0]+N[j][0]*o(j),h,P[j][1]+N[j][1]*o(j)];
-    TN.quad(G,p(i,b0),p(i+1,b1),p(i+1,t1),p(i,t0),col);}};
+    /* checked every ~4 m along the section (not just its middle): no wall where another road is right beside
+       this edge at about the same height (a ramp joining or leaving), nor where the edge runs across another
+       road (a street joining the ramp) - you can drive across there */
+    const len=Math.hypot(P[i+1][0]-P[i][0],P[i+1][1]-P[i][1]),n=Math.max(1,Math.ceil(len/4));
+    const at=(u,off)=>{const nx=N[i][0]+(N[i+1][0]-N[i][0])*u,nz=N[i][1]+(N[i+1][1]-N[i][1])*u;
+      return [P[i][0]+(P[i+1][0]-P[i][0])*u+nx*off,P[i][1]+(P[i+1][1]-P[i][1])*u+nz*off];};
+    const oi=o(i),oj=o(i+1);
+    for(let k=0;k<n;k++){
+      const u0=k/n,u1=(k+1)/n,um=(u0+u1)/2,of=oi+(oj-oi)*um,sg=Math.sign(of)||1,hm=H(i)+(H(i+1)-H(i))*um;
+      const q1=at(um,of+sg*1.5),q2=at(um,of);
+      if(net.onOther(w,q1[0],q1[1],hm,1.8)||net.onOther(w,q2[0],q2[1],hm,1.8)) continue;   /* (walls: up to 1.8 m apart counts as joining) */
+      const pt=(u,h)=>{const q=at(u,oi+(oj-oi)*u);return [q[0],h,q[1]];};
+      const T0=t0+(t1-t0)*u0,T1=t0+(t1-t0)*u1,B0=b0+(b1-b0)*u0,B1=b0+(b1-b0)*u1;
+      TN.quad(G,pt(u0,B0),pt(u1,B1),pt(u1,T1),pt(u0,T0),col);
+    }}};
   const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
     for(let i=a;i<b;i++){
       const s0=w.cum[i],s1=w.cum[i+1],len=s1-s0;if(len<0.05) continue;
