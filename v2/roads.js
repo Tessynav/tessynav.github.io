@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#ffc477',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#ffa64a',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -608,7 +608,7 @@ TN.Net.prototype.onOther=function(way,x,z,h){
 };
 TN.Net.prototype.buildCell=function(tx,ty){const g=this.buildCellJob(tx,ty);let r;do{r=g.next();}while(!r.done);return r.value;};
 TN.Net.prototype.buildCellJob=function*(tx,ty){
-  const L={lot:TN.geo(),curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo()};
+  const L={lot:TN.geo(),curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo(),lamps:[]};
   const net=this;let nn=0,SG=null;
   /* pause point: the fast road lookup belongs to this job only, so it is switched off while paused */
   const pause=function*(){net._sg=null;yield;net._sg=SG;};
@@ -814,7 +814,7 @@ TN.glowDisc=function(G,cx,cy,cz,R,k,r,col,kind,ux,uz){
   }
 };
 /* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.
-   At night (glow layer) the lamp heads shine warm yellow and each lamp casts a soft pool of warm light on the road. */
+   At night (glow layer) the lamp heads shine amber and each lamp casts a soft, gentle pool of amber light on the road. */
 /* is there a road surface (ground, ramp or bridge) at (x,z) within pad metres, at about height y? */
 TN.Net.prototype.roadAtHeight=function(x,z,y,pad){
   const hit=(w,i)=>{if(w.tun) return false;const r=TN.seg(w,i,x,z);if(r.d>=TN.width(w)/2+pad) return false;
@@ -854,15 +854,16 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       TN.box(L.road,x,z,ux,uz,0.18,0.18,y0,top,TN.C.post);
       TN.box(L.road,x+rx*1.1,z+rz*1.1,rx,rz,2.2,0.12,top-0.2,top-0.06,TN.C.post);
       const hx=x+rx*2.2,hz=z+rz*2.2;
+      if(L.lamps) L.lamps.push(hx,top-0.3,hz);
       TN.box(L.road,hx,hz,rx,rz,0.6,0.3,top-0.36,top-0.16,TN.C.lamp);
       /* night: the lamp's lit underside and its pool of light (bright in the middle, fading out) */
       const G=L.glow,gc=TN.C.glowc;
       TN.quad(G,[hx-rx*0.28-ux*0.13,top-0.37,hz-rz*0.28-uz*0.13],[hx+rx*0.28-ux*0.13,top-0.37,hz+rz*0.28-uz*0.13],
-                [hx+rx*0.28+ux*0.13,top-0.37,hz+rz*0.28+uz*0.13],[hx-rx*0.28+ux*0.13,top-0.37,hz-rz*0.28+uz*0.13],[1,0.88,0.62]);
+                [hx+rx*0.28+ux*0.13,top-0.37,hz+rz*0.28+uz*0.13],[hx-rx*0.28+ux*0.13,top-0.37,hz-rz*0.28+uz*0.13],[0.9,0.66,0.38]);
       /* a wide pool of light (about 13 m) with a smooth fade, so neighbouring lamps blend into a lit street */
-      TN.glowDisc(G,x+rx*2.4,y0+0.1,z+rz*2.4,13,[0.46,0.33,0.16,0.05,0],[0,0.25,0.5,0.78,1],gc,'flat',ux,uz);
+      TN.glowDisc(G,x+rx*2.4,y0+0.1,z+rz*2.4,15,[0.26,0.2,0.11,0.04,0],[0,0.25,0.5,0.78,1],gc,'flat',ux,uz);
       /* the lamp itself shines: a soft halo around the head, seen from any side */
-      TN.glowDisc(G,hx,top-0.3,hz,1.1,[0.95,0.5,0.12,0],[0,0.25,0.6,1],[1,0.84,0.55],'ball',ux,uz);
+      TN.glowDisc(G,hx,top-0.3,hz,0.8,[0.72,0.36,0.08,0],[0,0.25,0.6,1],[1,0.72,0.4],'ball',ux,uz);
     }
   }
 };
@@ -1043,12 +1044,16 @@ TN.Net.prototype.drawSignal=function(L,m,done){
     const head=(hx,hz,y0,sz)=>{
       /* housing, then the three lamps in front of it, facing the traffic (-d) */
       TN.box(G,hx,hz,S.rx,S.rz,0.36*sz,0.26*sz,y0,y0+1.0*sz,TN.C.sigbox);
-      const fx=hx-S.dx*(0.15*sz),fz=hz-S.dz*(0.15*sz),r=0.11*sz;
+      /* lamps clearly in front of the housing (no flicker); at night a matching glow keeps them bright,
+         equal for all three so no colour looks lit */
+      const fx=hx-S.dx*(0.2*sz),fz=hz-S.dz*(0.2*sz),r=0.11*sz,GL=L.glow;
       [[TN.C.sigred,0.80],[TN.C.sigyel,0.50],[TN.C.siggrn,0.20]].forEach(([c,v])=>{
         const cy=y0+v*sz,ring=[];for(let k=0;k<8;k++){const a=k/8*Math.PI*2;ring.push([Math.cos(a)*r,Math.sin(a)*r]);}
         for(let k=0;k<8;k++){const p=ring[k],q=ring[(k+1)%8];
           const C=[fx,cy,fz],A=[fx+S.rx*p[0],cy+p[1],fz+S.rz*p[0]],B=[fx+S.rx*q[0],cy+q[1],fz+S.rz*q[0]];
-          for(const tri of [[C,A,B],[C,B,A]]){const b=G.n;for(const v2 of tri){G.p.push(v2[0],v2[1],v2[2]);G.c.push(c[0],c[1],c[2]);}G.i.push(b,b+1,b+2);G.n+=3;}}
+          for(const tri of [[C,A,B],[C,B,A]]){const b=G.n;for(const v2 of tri){G.p.push(v2[0],v2[1],v2[2]);G.c.push(c[0],c[1],c[2]);}G.i.push(b,b+1,b+2);G.n+=3;}
+          if(GL){const C2=[fx-S.dx*0.01,cy,fz-S.dz*0.01],A2=[A[0]-S.dx*0.01,A[1],A[2]-S.dz*0.01],B2=[B[0]-S.dx*0.01,B[1],B[2]-S.dz*0.01];
+            for(const tri of [[C2,A2,B2],[C2,B2,A2]]){const b=GL.n;for(const v2 of tri){GL.p.push(v2[0],v2[1],v2[2]);GL.c.push(c[0]*0.6,c[1]*0.6,c[2]*0.6);}GL.i.push(b,b+1,b+2);GL.n+=3;}}}
       });
     };
     const n=S.hw>5&&!S.ow?1:(S.hw>5?2:1);
