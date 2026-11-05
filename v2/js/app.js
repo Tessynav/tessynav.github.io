@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=38;
+TN.APPBUILD=39;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -83,6 +83,11 @@ TN.APPBUILD=38;
   let gpsStartT=0,gpsGoodT=0,gpsLastAcc=1e9,gpsRestarts=0;
   function startFollow(){
     follow=true;userZoom=0;$('btn').textContent='Recenter';
+    /* the car isn't placed yet (GPS still rough): bring the camera back to its last known spot, driving view */
+    if(!track.car||track.car.x==null){
+      let c=null;try{c=JSON.parse(localStorage.getItem('lastPos')||'null');}catch(e){}
+      try{map.easeTo({center:c||map.getCenter(),zoom:18.5,pitch:60,duration:900});}catch(e){}
+    }
     if(watchId===null){gpsStartT=Date.now();
       watchId=navigator.geolocation.watchPosition(p=>{try{localStorage.setItem('tn2_gpsok','1');}catch(e){}
           gpsLastAcc=p.coords.accuracy;if(gpsLastAcc<100) gpsGoodT=Date.now();onPos(p);},
@@ -217,7 +222,7 @@ TN.APPBUILD=38;
      '#tn-updbar .i{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#1fa596;color:#fff;font-size:15px}'+
      '#tn-updpill{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:none;padding:6px 14px;border-radius:999px;background:rgba(10,18,32,.85);color:#9fe0d4;font:13px sans-serif}';
    document.head.appendChild(st);
-   const bar=document.createElement('div');bar.id='tn-updbar';bar.innerHTML='<span class="i">\u2B07</span><span class="m">New update arrived</span><button class="u">Update now</button><button class="l">Later</button>';document.body.appendChild(bar);
+   const bar=document.createElement('div');bar.id='tn-updbar';bar.innerHTML='<span class="i"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 4v13M6 11l6 6 6-6" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="m">New update arrived</span><button class="u">Update now</button><button class="l">Later</button>';document.body.appendChild(bar);
    /* while driving: a quiet note without buttons */
    const pill=document.createElement('div');pill.id='tn-updpill';pill.textContent='New update ready \u00b7 it will be offered when you stop';document.body.appendChild(pill);
    bar.querySelector('.u').onclick=()=>{bar.style.display='none';if(pendingUpd) update(pendingUpd);};

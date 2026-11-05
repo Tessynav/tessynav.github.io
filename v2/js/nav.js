@@ -17,7 +17,7 @@ TN.Nav.prototype.build=function(){
   st.textContent=
    '#tn-search{left:50%;top:16px;transform:translateX(-50%);width:min(44vw,560px);padding:0;display:flex;align-items:center}'+
    '#tn-search input{flex:1;background:transparent;border:0;outline:0;color:#e8f1fa;font:18px system-ui,sans-serif;padding:14px 16px 14px 6px}'+
-   '#tn-search .i{padding-left:16px;font-size:20px;color:#9fb3c8}#tn-search .x{padding:0 16px;font-size:20px;color:#9fb3c8;cursor:pointer;display:none}'+
+   '#tn-search .i{padding-left:16px}#tn-search .x{padding:0 16px;cursor:pointer;display:none}'+
    '#tn-res{left:50%;top:76px;transform:translateX(-50%);width:min(44vw,560px);padding:6px;display:none;max-height:56vh;overflow:auto}'+
    '#tn-res .r{display:flex;align-items:center;gap:12px;padding:14px 12px;border-radius:12px;cursor:pointer;font-size:17px}'+
    '#tn-res .r:active,#tn-res .r:hover{background:rgba(255,255,255,.08)}#tn-res .r small{display:block;color:#9fb3c8;font-size:13px;margin-top:2px}'+
@@ -26,20 +26,20 @@ TN.Nav.prototype.build=function(){
    '#tn-ov small{color:#9fb3c8;font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
    '#tn-ov .go{background:#1fa596;color:#fff}#tn-ov .cancel{background:#3a4352;color:#e8f1fa}'+
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
-   '#tn-bar .a{font-size:40px;line-height:1;width:44px;text-align:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
+   '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
    '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
    'body.tn-routing #status,body.tn-routing #tn-search,body.tn-routing #rec{display:none}';
   document.head.appendChild(st);
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
-  this.box=el('tn-search','','<span class="i">\u2315</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">\u2715</span>');
+  this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>');
   this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dist"></div><div class="ins"></div></div><div class="eta"></div>');
   this.endBtn=el('tn-end','','End route','button');this.roadName=el('tn-roadname');
   const inp=this.input=this.box.querySelector('input'),x=this.box.querySelector('.x');
   let tmr=null;
   inp.addEventListener('focus',()=>{if(!inp.value) this.showRecent();});
-  inp.addEventListener('input',()=>{x.style.display=inp.value?'block':'none';clearTimeout(tmr);
+  inp.addEventListener('input',()=>{x.style.display=inp.value?'flex':'none';clearTimeout(tmr);
     if(inp.value.trim().length<2){this.showRecent();return;}tmr=setTimeout(()=>this.search(inp.value.trim()),300);});
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&this.results&&this.results[0]) this.pick(this.results[0]);if(e.key==='Escape') this.closeSearch();});
   x.onclick=()=>{inp.value='';x.style.display='none';this.showRecent();inp.focus();};
@@ -54,9 +54,24 @@ TN.Nav.prototype.list=function(items,msg){
   if(!items.length){R.innerHTML='<div class="msg">'+(msg||'No results')+'</div>';return;}
   const h=this.here();
   R.innerHTML=items.map((it,i)=>{const d=TN.distLL(h,[it.lng,it.lat]);
-    return '<div class="r" data-i="'+i+'"><span>'+(it.recent?'\u21BB':'\uD83D\uDCCD')+'</span><div>'+TN.esc(it.name)+'<small>'+TN.esc(it.sub||'')+'</small></div><span class="d">'+fmtDist(d)+'</span></div>';}).join('');
+    return '<div class="r" data-i="'+i+'"><span>'+(it.recent?TN.ICON('recent',22,'#9fb3c8'):TN.ICON('pin',24))+'</span><div>'+TN.esc(it.name)+'<small>'+TN.esc(it.sub||'')+'</small></div><span class="d">'+fmtDist(d)+'</span></div>';}).join('');
   R.querySelectorAll('.r').forEach(r=>r.onclick=()=>this.pick(items[+r.dataset.i]));
 };
+/* icons as small drawings (some car browsers lack symbol fonts) */
+TN.ICON=(name,size,color)=>{const c=color||'currentColor',z=size||22,P={
+  search:'<circle cx="10" cy="10" r="6.5" fill="none" stroke="'+c+'" stroke-width="2.4"/><path d="M15 15l5.5 5.5" stroke="'+c+'" stroke-width="2.6" stroke-linecap="round"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18" stroke="'+c+'" stroke-width="2.6" stroke-linecap="round"/>',
+  pin:'<path d="M12 22s7-7.2 7-12.2A7 7 0 0 0 5 9.8C5 14.8 12 22 12 22z" fill="#ff5a4f"/><circle cx="12" cy="9.8" r="2.6" fill="#fff"/>',
+  recent:'<circle cx="12" cy="12" r="8.5" fill="none" stroke="'+c+'" stroke-width="2.2"/><path d="M12 7.5V12l3 2" stroke="'+c+'" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  straight:'<path d="M12 21V4M6 10l6-6 6 6" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  left:'<path d="M17 21v-7a4 4 0 0 0-4-4H5M10 5L5 10l5 5" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  right:'<path d="M7 21v-7a4 4 0 0 1 4-4h8M14 5l5 5-5 5" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  sleft:'<path d="M15 21v-6.5L7 6.5M7 12.5V6.5h6" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  sright:'<path d="M9 21v-6.5l8-8M11 6.5h6v6" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  uturn:'<path d="M8 21V9a4 4 0 0 1 8 0v4M12 10l4 4 4-4" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  round:'<circle cx="12" cy="11" r="5" fill="none" stroke="'+c+'" stroke-width="2.6"/><path d="M12 21v-5M15.5 7.5L19 4M19 4v4.5M19 4h-4.5" stroke="'+c+'" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  flag:'<path d="M6 21V4M6 4h11l-2.5 4L17 12H6" stroke="'+c+'" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+  }[name]||'';return '<svg width="'+z+'" height="'+z+'" viewBox="0 0 24 24" style="display:block">'+P+'</svg>';};
 TN.esc=t=>String(t==null?'':t).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 TN.distLL=(a,b)=>{const R=6371000,p=Math.PI/180,dLa=(b[1]-a[1])*p,dLo=(b[0]-a[0])*p,s=Math.sin(dLa/2)**2+Math.cos(a[1]*p)*Math.cos(b[1]*p)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(s));};
 TN.Nav.prototype.showRecent=function(){
@@ -111,6 +126,7 @@ TN.Nav.prototype.setRoute=function(rt){
     steps.push({at:cum[bi],type:s.maneuver.type,mod:s.maneuver.modifier||'',exit:s.maneuver.exit,name:s.name||'',ref:s.ref||'',dest:s.destinations||''});}
   this.route={pts:pts,cum:cum,L:cum[cum.length-1],dur:rt.duration,dist:rt.distance,steps:steps,hy:null};
   this.idx=0;this.offT=0;this.drawn=-1;this.heights();this.draw(0);
+  this.mapLine(rt.geometry.coordinates);
 };
 /* height of the route at each point: the road it runs on (bridges and ramps included) */
 TN.Nav.prototype.heights=function(){
@@ -141,6 +157,24 @@ TN.Nav.prototype.draw=function(from){
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);
   this.mesh=new THREE.Mesh(g,this.mat);this.mesh.frustumCulled=false;this.mesh.renderOrder=4;S.three.scene.add(this.mesh);this.drawn=a0;
 };
+/* the route as a map line: stays thick and visible at any zoom (overview, and far ahead beyond the 3D roads) */
+TN.Nav.prototype.mapLine=function(coords){
+  const map=this.api.map,data={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+  try{
+    if(map.getSource('tn-route')) map.getSource('tn-route').setData(data);
+    else{map.addSource('tn-route',{type:'geojson',data:data});
+      map.addLayer({id:'tn-route-casing',type:'line',source:'tn-route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#ffffff','line-width':['interpolate',['linear'],['zoom'],10,6,16,12],'line-opacity':0.9}});
+      map.addLayer({id:'tn-route-line',type:'line',source:'tn-route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#3b82f6','line-width':['interpolate',['linear'],['zoom'],10,4,16,8]}});}
+    const end=coords[coords.length-1];
+    if(!this.pinEl){this.pinEl=document.createElement('div');this.pinEl.innerHTML=TN.ICON('pin',40);this.pinEl.style.transform='translateY(-18px)';}
+    if(!this.pin&&typeof maplibregl!=='undefined') this.pin=new maplibregl.Marker({element:this.pinEl,anchor:'bottom'}).setLngLat(end).addTo(map);
+    else if(this.pin) this.pin.setLngLat(end);
+  }catch(e){}
+};
+TN.Nav.prototype.clearMapLine=function(){
+  const map=this.api.map;try{if(map.getLayer('tn-route-line')) map.removeLayer('tn-route-line');if(map.getLayer('tn-route-casing')) map.removeLayer('tn-route-casing');if(map.getSource('tn-route')) map.removeSource('tn-route');}catch(e){}
+  if(this.pin){try{this.pin.remove();}catch(e){}this.pin=null;}
+};
 TN.Nav.prototype.overview=function(){
   const R=this.route,api=this.api;api.setFollow(false);
   let a=[1e9,1e9],b=[-1e9,-1e9];for(let i=0;i<R.pts.length;i+=4){const ll=TN.fromLocal(R.pts[i][0],R.pts[i][1]);a=[Math.min(a[0],ll[0]),Math.min(a[1],ll[1])];b=[Math.max(b[0],ll[0]),Math.max(b[1],ll[1])];}
@@ -160,22 +194,22 @@ TN.Nav.prototype.end=function(){
   this.active=false;this.route=null;document.body.classList.remove('tn-routing');
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
-  this.input.value='';this.api.setFollow(true);
+  this.clearMapLine();this.input.value='';this.api.setFollow(true);
 };
 /* ---------- while driving ---------- */
 TN.Nav.prototype.instr=function(s){
   const m=s.mod,side=m.indexOf('left')>=0?'left':m.indexOf('right')>=0?'right':'';
-  const arrow={'left':'\u2190','right':'\u2192','slight left':'\u2196','slight right':'\u2197','sharp left':'\u21B0','sharp right':'\u21B1','straight':'\u2191','uturn':'\u21B6'}[m]||'\u2191';
+  const arrow={'left':'left','right':'right','slight left':'sleft','slight right':'sright','sharp left':'left','sharp right':'right','straight':'straight','uturn':'uturn'}[m]||'straight';
   let t,a=arrow;
   switch(s.type){
     case 'depart':t='Head '+(s.name?'on '+s.name:'out');break;
-    case 'arrive':t='Arrive at your destination';a='\uD83C\uDFC1';break;
+    case 'arrive':t='Arrive at your destination';a='flag';break;
     case 'turn':case 'end of road':t='Turn '+(m||'');break;
     case 'fork':t='Keep '+(side||'straight');break;
     case 'merge':t='Merge'+(side?' '+side:'');break;
     case 'on ramp':t='Take the ramp'+(side?' on the '+side:'');break;
     case 'off ramp':t='Take the exit'+(side?' on the '+side:'');break;
-    case 'roundabout':case 'rotary':t='At the roundabout, take exit '+(s.exit||1);a='\u27F3';break;
+    case 'roundabout':case 'rotary':t='At the roundabout, take exit '+(s.exit||1);a='round';break;
     case 'exit roundabout':case 'exit rotary':t='Exit the roundabout';break;
     case 'new name':case 'continue':t=m&&m!=='straight'?'Keep '+side:'Continue';break;
     default:t=m?'Turn '+m:'Continue';
@@ -195,7 +229,7 @@ TN.Nav.prototype.update=function(dt){
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
   const I=this.instr(nx),dNext=Math.max(0,nx.at-s);
-  this.bar.querySelector('.a').textContent=I.a;
+  if(this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'#ffffff');this.lastIcon=I.a;}
   this.bar.querySelector('.dist').textContent=nx.type==='arrive'&&dNext<30?'Arriving':fmtDist(dNext);
   this.bar.querySelector('.ins').textContent=I.t+(I.where?' \u00b7 '+I.where:'');
   const remain=R.dur*(left/Math.max(1,R.L)),arr=new Date(Date.now()+remain*1000);
