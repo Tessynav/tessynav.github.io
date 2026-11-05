@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=52;
+TN.APPBUILD=53;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -409,7 +409,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
         /* with a route: tilted a little more, so the sky shows below the navigation bar;
            before exits, forks and roundabouts: the bird's-eye view (higher and more from above) */
         let pitchT=pitch,zoomT=zoom;
-        if(nav&&nav.active){pitchT=Math.min(74,pitch+5);const b=nav.bird||0;if(b>0.01){pitchT=pitchT*(1-b)+40*b;zoomT=zoom-1.4*b;}}
+        if(nav&&nav.active){pitchT=Math.min(74,pitch+5);const b=nav.bird||0;if(b>0.01){pitchT=pitchT*(1-b)+32*b;zoomT=zoom-1.1*b;}}
         if(pitchT!==pitch){const Hc=map.getContainer().clientHeight||600,c2=1.5*Hc*Math.cos(pitchT*TN.R)*40075016.7*Math.cos(ll[1]*TN.R)/512;
           zMaxNow=Math.log2(c2/(y>0.5?y+8:3.5));if(zoomT>zMaxNow) zoomT=zMaxNow;}
         gZoom+=(zoomT-gZoom)*Math.min(1,dt*1.2);gPitch+=(pitchT-gPitch)*Math.min(1,dt*2.5);
@@ -432,7 +432,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       scene.update(ac.lng,ac.lat);
       if(trees){try{trees.update(ac.lng,ac.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(ac.lng,ac.lat,lastFps);}catch(e){}}
-      if(rem){try{const q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
+      if(rem){try{const tr0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);TN.prof('rem',performance.now()-tr0);}catch(e){}}
       if(water){try{water.update(dt,ac.lng,ac.lat);}catch(e){}}
       if(season){try{if(follow&&car&&car.x!=null) season.update(dt,car.x,car.y||0,car.z,lastFps);else{const q=TN.toLocal(ac.lng,ac.lat);season.update(dt,q[0],0,q[1],lastFps);}}catch(e){}}
       /* brake lights: on while slowing down clearly, and while stopped after driving (like a held brake) */

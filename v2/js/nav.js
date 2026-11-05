@@ -33,7 +33,7 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
    '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:#9fb3c8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
-   '#tn-bar .lanes{display:flex;gap:4px;margin-top:6px}#tn-bar .lanes:empty{display:none}#tn-bar .lanes span{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;background:rgba(255,255,255,.08)}#tn-bar .lanes span.on{background:rgba(59,130,246,.35)}'+
+   '#tn-bar .dline{display:flex;align-items:center;gap:14px}#tn-bar .lanes{display:flex;gap:3px}#tn-bar .lanes:empty{display:none}#tn-bar .lanes span{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:rgba(255,255,255,.08)}#tn-bar .lanes span.on{background:rgba(59,130,246,.35)}'+
    '#tn-bar .pb{position:absolute;left:18px;right:18px;bottom:9px;height:6px;border-radius:3px;background:#2a3444}'+
    '#tn-bar .pb .car{position:absolute;top:50%;left:0;width:13px;height:13px;border-radius:50%;background:#fff;border:3px solid #3b82f6;transform:translate(-50%,-50%);box-sizing:border-box}'+
    '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
@@ -48,7 +48,7 @@ TN.Nav.prototype.build=function(){
   document.head.appendChild(st);
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
   this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>');
-  this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dist"></div><div class="ins"></div><div class="then"></div><div class="lanes"></div></div><div class="eta"></div><div class="pb"><div class="car"></div></div>');
+  this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dline"><div class="dist"></div><div class="lanes"></div></div><div class="ins"></div><div class="then"></div></div><div class="eta"></div><div class="pb"><div class="car"></div></div>');
   this.endBtn=el('tn-end','','End route','button');this.roadName=el('tn-roadname');
   this.limit=el('tn-limit','','<small>MAX</small><b></b>');
   const inp=this.input=this.box.querySelector('input'),x=this.box.querySelector('.x');
@@ -496,7 +496,8 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   const hd=(Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]))*180/Math.PI+360)%360;
   const m0=(R.sm&&R.sm[j])||[0,0,0,0],m1=(R.sm&&R.sm[j+1])||m0,mi=k=>m0[k]+(m1[k]-m0[k])*t;
   const lo=mi(0),ux=Math.sin(hd*Math.PI/180),uz=-Math.cos(hd*Math.PI/180);
-  const y=base.y!=null?base.y:mi(3);
+  let y=base.y!=null?base.y:mi(3);
+  {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
   return Object.assign({},base,{x:px+mi(1)-uz*lo,z:pz+mi(2)+ux*lo,hd:hd,y:y,onRoute:true});
 };
 /* ---------- while driving ---------- */
@@ -558,7 +559,7 @@ TN.Nav.prototype.update=function(dt){
    if(nx.lanes&&nx.lanes.length&&dNext<1000){
      const ic={'straight':'straight','left':'left','right':'right','slight left':'sleft','slight right':'sright','sharp left':'left','sharp right':'right','uturn':'uturn'};
      html=nx.lanes.map(l=>{const ind=(l.indications||['straight']);const pick=l.valid&&l.valid_indication?l.valid_indication:ind.find(x=>x===nx.mod)||ind[0];
-       return '<span class="'+(l.valid?'on':'')+'">'+TN.ICON(ic[pick]||'straight',22,l.valid?'#ffffff':'#5d6b80')+'</span>';}).join('');}
+       return '<span class="'+(l.valid?'on':'')+'">'+TN.ICON(ic[pick]||'straight',19,l.valid?'#ffffff':'#5d6b80')+'</span>';}).join('');}
    if(le.innerHTML!==html) le.innerHTML=html;}
   /* bird's-eye view: the camera rises before highway exits, forks and roundabouts, and comes back after */
   {const big=['off ramp','fork','roundabout','rotary','merge'].indexOf(nx.type)>=0||(nx.lanes&&nx.lanes.length>=3&&dNext<300);

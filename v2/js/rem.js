@@ -113,7 +113,7 @@ TN.Rem.prototype.buildStation=function(name,b){
 TN.Rem.prototype.updateLabels=function(cx,cz){
   if(typeof document==='undefined') return;
   if(!this.labels){this.labels=new Map();
-    const st=document.createElement('style');st.textContent='.tn-rem{position:absolute;z-index:3;pointer-events:none;transform:translate(-50%,-100%);display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:rgba(255,255,255,.95);color:#1c2430;font:600 18px sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25)}.tn-rem b{background:#1fa596;color:#fff;font:700 11px sans-serif;padding:4px 7px;border-radius:7px}.tn-rem.n{background:rgba(16,24,38,.92);color:#e8f1fa}';
+    const st=document.createElement('style');st.textContent='.tn-rem{position:absolute;left:0;top:0;z-index:3;pointer-events:none;will-change:transform;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:rgba(255,255,255,.95);color:#1c2430;font:600 18px sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25)}.tn-rem b{background:#1fa596;color:#fff;font:700 11px sans-serif;padding:4px 7px;border-radius:7px}.tn-rem.n{background:rgba(16,24,38,.92);color:#e8f1fa}';
     document.head.appendChild(st);}
   const M=this.scene.three&&this.scene.three.camera?this.scene.three.camera.projectionMatrix:null;if(!M) return;
   const cv=this.scene.map.getCanvas(),W=cv.clientWidth,H=cv.clientHeight,v=new THREE.Vector4();
@@ -122,17 +122,25 @@ TN.Rem.prototype.updateLabels=function(cx,cz){
     if(!el){el=document.createElement('div');el.className='tn-rem';el.innerHTML='<b>REM</b>'+st.name.replace(/[<>&]/g,'');document.body.appendChild(el);this.labels.set(k,el);}
     const d=Math.hypot(st.x-cx,st.z-cz);
     v.set(st.x,st.y+7,st.z,1).applyMatrix4(M);
-    if(d>1500||v.w<=0){el.style.display='none';continue;}
+    if(d>1500||v.w<=0){if(el._k!=='h'){el.style.display='none';el._k='h';}continue;}
     const x=(v.x/v.w*0.5+0.5)*W,y=(-v.y/v.w*0.5+0.5)*H;
-    if(x<-100||x>W+100||y<-60||y>H+60){el.style.display='none';continue;}
-    el.style.display='flex';el.style.left=x+'px';el.style.top=y+'px';
+    if(x<-100||x>W+100||y<-60||y>H+60){if(el._k!=='h'){el.style.display='none';el._k='h';}continue;}
+    /* only touch the page when something visibly changed (every write costs time) */
+    const key=Math.round(x)+','+Math.round(y)+','+Math.round(d/50)+(this.night>0.45?'n':'');
+    if(el._k===key) continue;el._k=key;
+    el.style.display='flex';el.style.transform='translate('+Math.round(x)+'px,'+Math.round(y)+'px) translate(-50%,-100%)';
     el.style.opacity=String(Math.min(1,(1500-d)/200));el.style.fontSize=Math.round(16+6*Math.max(0,1-d/1500))+'px';
     el.classList.toggle('n',this.night>0.45);
   }
 };
 TN.Rem.prototype.update=function(dt,cx,cz){
   if(!this.on){if(this.labels) for(const el of this.labels.values()) el.style.display='none';return;}
-  this.stT-=dt;if(this.stT<=0&&this.scene.three&&this.net.rem&&this.net.rem.size){this.stT=3;try{this.findStations(cx,cz);}catch(e){}}
+  /* looking for stations scans all the map's points of interest (slow): only every 15 s, and only after moving
+     at least 300 m or when new map data has arrived */
+  this.stT-=dt;
+  if(this.stT<=0&&this.scene.three&&this.net.rem&&this.net.rem.size){this.stT=15;
+    const moved=this.stPos?Math.hypot(cx-this.stPos[0],cz-this.stPos[1]):1e9;
+    if(moved>300||this.net.ver!==this.stVer){this.stPos=[cx,cz];this.stVer=this.net.ver;try{this.findStations(cx,cz);}catch(e){}}}
   try{this.updateLabels(cx,cz);}catch(e){}
   const net=this.net;
   if(!this.on||!this.scene.three||!net.rem||!net.rem.size){for(const t of this.trains) this.free(t);this.trains=[];return;}
