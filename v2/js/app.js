@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=43;
+TN.APPBUILD=44;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -24,7 +24,7 @@ TN.APPBUILD=43;
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  const brk={t:0,v:0,d:0,k:0,moved:0};let dispHd=null,dispX=null,dispZ=null;
+  const brk={t:0,v:0,d:0,k:0,moved:0};let dispHd=null,dispX=null,dispZ=null,mvX=null,mvZ=null,mvHd=null,dX=null,dZ=null,dH=null,dV=0;
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
   /* ---------- panel ---------- */
@@ -328,16 +328,27 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     if(car&&car.x!=null){
       /* navigating: the car is drawn on the route path (smooth turns like Google Maps / Waze) */
       if(nav){try{const pc=nav.place(car,track.last,Date.now(),dt);if(pc){car=pc;}}catch(e){}}
-      /* any sudden hop of the drawn car (switching between on-route and normal following, a re-found road) glides over */
-      {if(dispX==null||Math.hypot(car.x-dispX,car.z-dispZ)>40){dispX=car.x;dispZ=car.z;}
-       const gap=Math.hypot(car.x-dispX,car.z-dispZ);
-       if(gap>0.6){const k=Math.min(1,dt*5);dispX+=(car.x-dispX)*k;dispZ+=(car.z-dispZ)*k;car=Object.assign({},car,{x:dispX,z:dispZ});}
-       else{dispX=car.x;dispZ=car.z;}}
-      /* the car's visible heading turns smoothly (no sudden swing at intersections) */
-      {if(dispHd==null) dispHd=car.hd;let dh=((car.hd-dispHd)%360+540)%360-180;
-       /* turning rate on screen: natural at driving speed, very gentle at walking pace (unreliable GPS direction) */
-       const vv=track.last?track.last.v:0,maxStep=(vv<3?Math.max(4,vv*10):Math.max(30,Math.min(90,vv*4+30)))*dt;
-       dh=Math.max(-maxStep,Math.min(maxStep,dh*Math.min(1,dt*7)));dispHd=(dispHd+dh+360)%360;}
+      /* the car on screen is DRIVEN like a real car: it only moves forward along its nose and steers toward where
+         it should be (a point a little ahead on its path), within a real turning circle. Corrections happen by
+         steering, never by sliding, so it can't move sideways (corners, roundabouts, parking lots). */
+      {const vT=track.last?track.last.v:0;
+       if(dX==null||Math.hypot(car.x-dX,car.z-dZ)>25){dX=car.x;dZ=car.z;dH=car.hd;dV=vT;}
+       const hr=dH*Math.PI/180,sx=Math.sin(hr),sz=-Math.cos(hr);
+       const ex=car.x-dX,ez=car.z-dZ,along=ex*sx+ez*sz,dist=Math.hypot(ex,ez);
+       if(vT>0.4||dist>1.5){
+         /* steer toward a point ahead of where the car should be */
+         const L=Math.max(3,vT*0.7),ch=car.hd*Math.PI/180;
+         const tx=car.x+Math.sin(ch)*L,tz=car.z-Math.cos(ch)*L;
+         const want=(Math.atan2(tx-dX,-(tz-dZ))*180/Math.PI+360)%360;
+         /* turning limit: a real car's turning circle (about 4.5 m), gentler at speed */
+         const maxYaw=Math.max(15,Math.min(110,(Math.max(vT,1)*180/Math.PI)/4.5))*dt;
+         dH=(dH+Math.max(-maxYaw,Math.min(maxYaw,(((want-dH+540)%360)-180)))+360)%360;
+         /* speed: the real speed, a little faster or slower to catch up along the path */
+         dV=Math.max(0,vT+Math.max(-3,Math.min(3,along*1.2)));
+         if(vT<0.4) dV=Math.min(dV,2);
+         const h2=dH*Math.PI/180;dX+=Math.sin(h2)*dV*dt;dZ-=Math.cos(h2)*dV*dt;
+       }
+       car=Object.assign({},car,{x:dX,z:dZ,hd:dH});dispHd=dH;}
       scene.placeCar(car.x,car.z,car.y||0,dispHd);
       try{scene.updateBeam(car);}catch(e){}
       if(nav){try{nav.update(dt);}catch(e){}}
@@ -389,9 +400,16 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(season){try{if(follow&&car&&car.x!=null) season.update(dt,car.x,car.y||0,car.z,lastFps);else{const q=TN.toLocal(ac.lng,ac.lat);season.update(dt,q[0],0,q[1],lastFps);}}catch(e){}}
       /* brake lights: on while slowing down clearly, and while stopped after driving (like a held brake) */
       {const L=track.last;if(L&&L.t!==brk.t){
-        if(brk.t){const dts=(L.t-brk.t)/1000;if(dts>0.05&&dts<2){const a=(brk.v-L.v)/dts;brk.d+=(a-brk.d)*Math.min(1,dts*3);}}
-        brk.t=L.t;brk.v=L.v;if(L.v>3) brk.moved=Date.now();}
-       const on=(brk.d>1.1&&track.last&&track.last.v>0.5)||(track.last&&track.last.v<0.5&&Date.now()-brk.moved<600000);
+        brk.t=L.t;brk.v=L.v;if(L.v>3) brk.moved=Date.now();
+        /* the speed trend over the last 2 s (a straight-line fit): steady even with noisy readings */
+        brk.h=(brk.h||[]).filter(q=>L.t-q[0]<2200);brk.h.push([L.t,L.v]);
+        if(brk.h.length>=2){const n=brk.h.length,mt=brk.h.reduce((a,q)=>a+q[0],0)/n,mv=brk.h.reduce((a,q)=>a+q[1],0)/n;
+          let num=0,den=0;for(const q of brk.h){num+=(q[0]-mt)*(q[1]-mv);den+=(q[0]-mt)**2;}brk.d=den>0?-num/den*1000:0;}}
+       const v=track.last?track.last.v:0;
+       /* braking: slowing down by more than 0.6 m/s per second, or creeping to a stop; stays on 0.8 s after */
+       const braking=v>0.5&&(brk.d>0.6||(v<3&&brk.d>0.25));
+       if(braking) brk.hold=Date.now();
+       const on=braking||Date.now()-(brk.hold||0)<800||(v<0.5&&Date.now()-brk.moved<600000);
        brk.k+=((on?1:0)-brk.k)*Math.min(1,dt*(on?12:5));try{scene.setBrake(Math.round(brk.k*20)/20);}catch(e){}}
       if(rec.rec&&Date.now()-lastRec>=500){
         lastRec=Date.now();rec.frame(car,map.getZoom(),follow);

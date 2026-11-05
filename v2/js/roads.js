@@ -1292,7 +1292,9 @@ TN.Net.prototype.drawWay=function(L,w,runs){
         const ok=hh<0.3&&!net.onOther(w,mx+nx*o,mz+nz*o,0)&&!net.onOther(w,mx-nx*o,mz-nz*o,0);
         if(ok){if(i0<0) i0=i;}else flush(i);}
       flush(b);}
-    strip(L.road,a,b,j=>hwJ(j),j=>-hwJ(j),0.04,TN.C.road);
+    /* where two road surfaces overlap (joins, merges), the more important one is always drawn on top */
+    const rk={motorway:5,trunk:4,primary:3,secondary:2,tertiary:1}[w.cls]||0;
+    strip(L.road,a,b,j=>hwJ(j),j=>-hwJ(j),0.04+(w.ramp?rk*0.004-0.002:rk*0.004)+(Math.abs(w.id|0)%2)*0.001,TN.C.road);
     if(w.ow){
       const n=w.lanes||Math.max(1,Math.round(W/3.4));
       /* drawing direction = driving direction for ow=1; ow=-1 roads are drawn the other way */

@@ -29,7 +29,7 @@ TN.Trees.prototype.setup=function(){
   this.geo={crown:crown,cone:cone,trunk:trunk};
   this.mats={crown:new THREE.MeshLambertMaterial({flatShading:true}),cone:new THREE.MeshLambertMaterial({flatShading:true}),
     trunk:new THREE.MeshLambertMaterial({color:0x5b4636})};
-  if(TN.cutPatch) for(const k in this.mats) TN.cutPatch(this.mats[k]);
+  if(TN.cutPatch) for(const k in this.mats) TN.cutPatch(this.mats[k],{fade:true});
   /* seasons (Montreal): spring Apr-May, summer Jun-mid Sep, autumn mid Sep-Nov, winter Dec-Mar */
   const d=new Date(),m=d.getMonth()+1,day=d.getDate();
   this.season=(m===12||m<=3)?'winter':(m<=5)?'spring':(m<9||(m===9&&day<15))?'summer':'autumn';

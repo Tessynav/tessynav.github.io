@@ -62,6 +62,7 @@ TN.Scene.prototype.mat=function(k){
   const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,
     polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
   if(k==='mark') this.beamPatch(m);   /* lane markings light up in the headlights */
+  TN.cutPatch(m,{high:true});   /* a bridge or overpass right above the car is cut away so the car stays visible */
   this.tintMat(k,m);this.mats[k]=m;return m;
 };
 TN.Scene.prototype.cellMesh=function(tx,ty){return this.meshOf(this.net.buildCell(tx,ty));};
@@ -190,30 +191,39 @@ TN.Scene.prototype.addSilhouette=function(body){ /* replaced by the see-through 
 TN.CUTU={cutCam:{value:new THREE.Vector3()},cutCar:{value:new THREE.Vector3(0,-1e6,0)},cutR:{value:0}};
 TN.CUTGLSL=[
   'uniform vec3 cutCam;uniform vec3 cutCar;uniform float cutR;varying vec3 vCutW;',
-  'bool tnCut(){',
-  '  if(cutR<=0.0) return false;',
-  '  vec3 d=cutCar-cutCam;float dd=dot(d,d);if(dd<1.0) return false;',
-  /* anything right at the camera (the camera inside a building) is simply hidden: no speckles */
-  '  if(length(vCutW-cutCam)<7.0) return true;',
+  /* how much of this point to fade (0 = keep, 1 = gone): a soft cone from the camera to the car */
+  'float tnCutK(){',
+  '  if(cutR<=0.0) return 0.0;',
+  '#ifdef TN_HIGH',
+  /* roads and bridges: only what is above the car (a bridge or overpass it drives under) */
+  '  if(vCutW.y<cutCar.y+2.5) return 0.0;',
+  '#endif',
+  '  vec3 d=cutCar-cutCam;float dd=dot(d,d);if(dd<1.0) return 0.0;',
+  '  if(length(vCutW-cutCam)<7.0) return 1.0;',
   '  float t=dot(vCutW-cutCam,d)/dd;',
-  '  if(t<=0.0||t>1.0-2.5/sqrt(dd)) return false;',
+  '  if(t<=0.0||t>1.0-2.5/sqrt(dd)) return 0.0;',
   '  float r=length(vCutW-(cutCam+d*t));',
-  /* a cone from the camera to the car: only what covers the car on screen fades (nothing beside the car) */
   '  float rad=cutR*t;',
-  /* fully hidden inside the cone; the soft dot pattern only on its edge */
-  '  float k=1.0-smoothstep(rad*0.6,rad,r);',
-  '  if(k<=0.0) return false;if(k>=0.999) return true;',
-  '  return fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)<k;',
-  '}'].join('\n');
+  '  return 1.0-smoothstep(rad*0.35,rad*1.15,r);',
+  '}',
+  'bool tnCut(){return tnCutK()>0.5;}'].join('\n');
 TN.CUTVERT='\n#ifdef USE_INSTANCING\nvCutW=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;\n#else\nvCutW=(modelMatrix*vec4(transformed,1.0)).xyz;\n#endif\n';
 /* add the circle to a built-in material (trees) */
-TN.cutPatch=function(mat){
-  mat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,TN.CUTU);
+TN.cutPatch=function(mat,opts){
+  opts=opts||{};const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);Object.assign(sh.uniforms,TN.CUTU);
     sh.vertexShader='varying vec3 vCutW;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>'+TN.CUTVERT);
-    sh.fragmentShader=TN.CUTGLSL+'\n'+sh.fragmentShader.replace('void main() {','void main() {\n  if(tnCut()) discard;');};
+    let f=(opts.high?'#define TN_HIGH\n':'')+TN.CUTGLSL+'\n'+sh.fragmentShader;
+    if(opts.fade){
+      /* real transparency: fades smoothly (no dots) */
+      f=f.replace('void main() {','void main() {\n  float tnK=tnCutK();if(tnK>0.97) discard;');
+      f=f.replace(/}\s*$/,'  gl_FragColor.a*=1.0-tnK;\n}');
+    }else f=f.replace('void main() {','void main() {\n  if(tnCutK()>0.5) discard;');
+    sh.fragmentShader=f;};
+  if(opts.fade) mat.transparent=true;
+  mat.customProgramCacheKey=()=>'cut'+(opts.high?'h':'')+(opts.fade?'f':'')+(prev?'p':'');
   mat.needsUpdate=true;
-};
-/* a soft red glow behind each tail light, and on the road behind the car, shown while braking */
+};/* a soft red glow behind each tail light, and on the road behind the car, shown while braking */
 TN.Scene.prototype.addBrakeGlow=function(body){
   try{
     const cv=document.createElement('canvas');cv.width=cv.height=64;const g=cv.getContext('2d');
@@ -232,7 +242,7 @@ TN.Scene.prototype.addBrakeGlow=function(body){
       const m=new THREE.SpriteMaterial({map:tex,color:0xff2a2a,transparent:true,opacity:0,depthWrite:false});
       const sp=new THREE.Sprite(m);sp.scale.set(0.9,0.6,1);sp.position.set(c.x+sx*size.x*0.42,c.y,c.z+back*0.15);body.add(sp);this.glows.push(m);
     }
-    const gm=new THREE.MeshBasicMaterial({map:tex,color:0xff1e1e,transparent:true,opacity:0,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+    const gm=new THREE.MeshBasicMaterial({map:tex,color:0xff1e1e,transparent:true,opacity:0,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-24,polygonOffsetUnits:-60});   /* wins over road, curb and slope surfaces */
     const plane=new THREE.Mesh(new THREE.PlaneGeometry(3.0,3.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.24,c.z+back*1.8);   /* above sidewalks: no flicker */
     body.add(plane);this.glows.push(gm);this.glowGround=gm;
     /* the headlamps themselves glow at night (the light on the road is the beam, see updateBeam) */

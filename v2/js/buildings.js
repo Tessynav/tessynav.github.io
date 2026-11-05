@@ -25,19 +25,19 @@ TN.Buildings.prototype.material=function(){
       '  vec3 n=normalize(normal);vShade=0.80+0.20*abs(n.x)+0.10*max(n.y,0.0);',
       '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'].join('\n'),
     fragmentShader:[
-      (TN.CUTGLSL||'varying vec3 vCutW;bool tnCut(){return false;}'),
+      (TN.CUTGLSL||'varying vec3 vCutW;float tnCutK(){return 0.0;}'),
       'uniform float night;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
       'float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
       'void main(){',
-      '  if(tnCut()) discard;',
+      '  float tnK=tnCutK();if(tnK>0.97) discard;float al=1.0-tnK;',
       '  vec3 wall=vCol*vShade*(1.0-0.62*night);',
-      '  if(vUv.z<0.0){gl_FragColor=vec4(wall,1.0);return;}',
+      '  if(vUv.z<0.0){gl_FragColor=vec4(wall,al);return;}',
       '  vec2 cell=vec2(floor(vUv.x/3.2),floor(vUv.y/3.0));vec2 f=vec2(fract(vUv.x/3.2),fract(vUv.y/3.0));',
       '  float win=step(0.22,f.x)*step(f.x,0.78)*step(0.28,f.y)*step(f.y,0.80)*step(1.0,vUv.y);',
       '  float lit=step(hh(cell+vec2(vUv.z,vUv.z*1.7)),0.33);',
       '  vec3 day=vec3(0.30,0.37,0.45);vec3 dark=vec3(0.07,0.08,0.11);vec3 warm=vec3(1.0,0.80,0.45);',
       '  vec3 wc=mix(day,mix(dark,warm,lit),night);',
-      '  gl_FragColor=vec4(mix(wall,wc,win),1.0);}'].join('\n')
+      '  gl_FragColor=vec4(mix(wall,wc,win),al);}'].join('\n'),transparent:true
   });
   return this.mat;
 };
@@ -47,15 +47,20 @@ TN.Buildings.prototype.collect=function(ck){
   const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function') return [];
   const [cx,cy]=ck.split(',').map(Number);
   const out=[],seen=new Set();
-  let fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});}catch(e){return [];}
+  /* the map scan is the slow part: done once and reused for a few seconds by every area */
+  const nowT=performance.now();
+  if(this.scan&&nowT-this.scan.t<4000){var fs=this.scan.fs,whole=this.scan.whole;}
+  else{
+  var fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});}catch(e){return [];}
   /* a building on a tile edge arrives in pieces (same id): add up the size of all its pieces, so each piece is
      styled as the whole building (not as a small house) */
-  const whole=new Map(),seenPiece=new Set();
+  var whole=new Map();const seenPiece=new Set();
   for(const f of fs){if(f.id==null||!f.geometry) continue;const g=f.geometry;
     const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
     for(const rings of list){const r=rings[0];if(!r||r.length<4) continue;const pk=f.id+':'+r[0][0].toFixed(6)+','+r[0][1].toFixed(6);if(seenPiece.has(pk)) continue;seenPiece.add(pk);
       let A=0;for(let i=0;i<r.length-1;i++){const p=TN.toLocal(r[i][0],r[i][1]),q=TN.toLocal(r[i+1][0],r[i+1][1]);A+=p[0]*q[1]-q[0]*p[1];}
       const o=whole.get(f.id)||{a:0,n:0};o.a+=Math.abs(A)/2;o.n++;whole.set(f.id,o);}}
+  this.scan={t:nowT,fs:fs,whole:whole};}
   for(const f of fs){
     const g=f.geometry;if(!g) continue;
     const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
@@ -209,7 +214,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   if(this.job){
     const t0=performance.now(),J=this.job;
     this.net&&(this.net._sg=J.sg);
-    while(J.i<J.list.length&&performance.now()-t0<5){this.addBuilding(J.G,J.list[J.i++],J);}
+    while(J.i<J.list.length&&performance.now()-t0<3){this.addBuilding(J.G,J.list[J.i++],J);}
     this.net&&(this.net._sg=null);
     if(J.i>=J.list.length){
       const mesh=this.finish(J.G);if(mesh) this.scene.three.scene.add(mesh);
@@ -218,6 +223,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     TN.prof('buildings',performance.now()-t0);
     return;
   }
+  if(now-(this.lastStart||0)<400) return;
   let best=null;
   for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
     const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),d=dx*dx+dy*dy;
@@ -225,7 +231,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     if(!best||d<best.d) best={k:k,d:d,tries:0};
   }
   if(!best) return;
-  const t0=performance.now(),list=this.collect(best.k);
+  this.lastStart=now;const t0=performance.now(),list=this.collect(best.k);
   if(!this.noIdMode&&(this.idSeen||0)>200&&(this.idMissing||0)>this.idSeen*0.5){
     this.noIdMode=true;this.range=Math.max(this.range,2);
     try{this.scene.map.setLayoutProperty('tn-buildings','visibility','none');}catch(e){}
