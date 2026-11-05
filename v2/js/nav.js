@@ -400,12 +400,12 @@ TN.Nav.prototype.fitRange=function(i0,i1){
     net.near(p[0],p[1],12,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,p[0],p[1]);if(r.d>TN.width(w)/2+6) return;
       const h0=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
       const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20+(prev==null?0:Math.abs(h0-prev)*4);
-      if(!best||sc<best.sc) best={sc:sc,h:h0,lane:w.ow?0:TN.width(w)/4,dx:r.qx-p[0],dz:r.qz-p[1]};});
+      if(!best||sc<best.sc) best={sc:sc,h:h0,lane:w.ow?0:TN.width(w)/4,dx:r.qx-p[0],dz:r.qz-p[1],hw:TN.width(w)/2,ow:!!w.ow};});
     /* turning here (direction changes over 20 degrees within about 10 m): keep the arc, no snapping */
     let turnHere=false;{const a=R.pts[Math.max(0,i-15)],b=R.pts[i],c2=R.pts[Math.min(R.pts.length-1,i+15)];
       const h1=Math.atan2(b[0]-a[0],-(b[1]-a[1])),h2=Math.atan2(c2[0]-b[0],-(c2[1]-b[1]));let dh=Math.abs(h2-h1)*180/Math.PI;if(dh>180) dh=360-dh;turnHere=dh>20;}
     if(best&&turnHere){best.dx=0;best.dz=0;}
-    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,miss:false}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:0,dx:0,dz:0,miss:true,ver:net.ver};
+    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,miss:false}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:0,dx:0,dz:0,miss:true,ver:net.ver};
   }
   /* smoothed values for drawing and placing the car (lane and shift change gradually, over about 40 m) */
   R.sm=R.sm||{};const sm=R.sm;
@@ -546,12 +546,13 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      Judged from the real GPS direction, not the matched car (which can briefly sit on a wrong street). */
   {const P0=R.pts[Math.max(0,bi-2)],P1=R.pts[Math.min(R.pts.length-1,bi+2)];
    const rh=(Math.atan2(P1[0]-P0[0],-(P1[1]-P0[1]))*180/Math.PI+360)%360;
-   const gh=this.api.gpsHd?this.api.gpsHd():null,hdUse=gh!=null?gh:base.hd;
+   /* (the GPS's own heading when it gives one: the smoothed one lags behind in a turn) */
+   const gh=L.hd!=null&&L.v>3?L.hd:(this.api.gpsHd?this.api.gpsHd():null),hdUse=gh!=null?gh:base.hd;
    const off=Math.abs(((hdUse-rh+540)%360)-180);
    /* (a different direction must last a moment: during a normal turn the two briefly differ) */
    const fresh=now-L.t<3000;   /* only judge from a recent GPS reading (not one frozen during a pause) */
    if(fresh&&gd>8&&off>55&&L.v>2) this.relT=(this.relT||0)+dt;else this.relT=0;
-   if(gd>18||this.relT>0.6||this.rerouting){if(this.ps!=null) this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.ps=null;return null;}}
+   if(gd>18||this.relT>0.35||this.rerouting){if(this.ps!=null){this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.relAt=Date.now();}this.ps=null;return null;}}
   this.pi=bi;
   /* projection on the segment for a precise distance */
   const i0=Math.max(0,Math.min(R.pts.length-2,bi-(bi>0&&bi===R.pts.length-1?1:0)));
@@ -575,7 +576,17 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   const p1=at(this.ps-3),p2=at(this.ps+3);
   const hd=(Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]))*180/Math.PI+360)%360;
   const m0=(R.sm&&R.sm[j])||[0,0,0,0],m1=(R.sm&&R.sm[j+1])||m0,mi=k=>m0[k]+(m1[k]-m0[k])*t;
-  const lo=mi(0),ux=Math.sin(hd*Math.PI/180),uz=-Math.cos(hd*Math.PI/180);
+  let lo=mi(0);const ux=Math.sin(hd*Math.PI/180),uz=-Math.cos(hd*Math.PI/180);
+  /* which lane: the GPS's sideways position from the road's centre line, smoothed over a few seconds and kept on
+     the road (on a two-way street, in the right half); the default lane until the GPS has settled */
+  {const f=R.fit&&R.fit[j];
+   if(f&&!f.miss&&L.v>3&&now-L.t<3000){
+     const cx0=px+mi(1),cz0=pz+mi(2),latG=(L.x-cx0)*(-uz)+(L.z-cz0)*ux;
+     const lim=Math.max(0.5,f.hw-1.6),lo0=f.ow?-lim:0.5;
+     const want=Math.max(lo0,Math.min(lim,latG));
+     this.latS=this.latS==null?lo:this.latS+(want-this.latS)*Math.min(1,dt*0.4);}
+   else if(this.latS!=null) this.latS+=(lo-this.latS)*Math.min(1,dt*0.2);
+   if(this.latS!=null) lo=this.latS;}
   let y=base.y!=null?base.y:mi(3);
   {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
   return Object.assign({},base,{x:px+mi(1)-uz*lo,z:pz+mi(2)+ux*lo,hd:hd,y:y,onRoute:true});
@@ -621,7 +632,7 @@ TN.Nav.prototype.reroute=async function(){
   try{await this.plan(true);}catch(e){}
   this.note('rerouted',{ok:!!this.route&&this.route.L!==L0,km:this.route?+(this.route.L/1000).toFixed(2):null});
   if(this.mat) this.mat.opacity=0.85;
-  this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;
+  this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.gdH=[];
 };
 TN.Nav.prototype.update=function(dt){
   if(!this.route||!this.active) return;

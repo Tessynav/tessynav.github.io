@@ -108,12 +108,15 @@ TN.Incidents.prototype.fetch=async function(lng,lat){
   }catch(e){this.err='net';}
 };
 TN.Incidents.prototype.merge=function(){this.list=this.tt.concat(this.reports.list);this.drawMarkers();};
+TN.Incidents.prototype.nearest=function(max){
+  const c=this.api.getCar&&this.api.getCar();if(!c||c.x==null||this.list.length<=max) return this.list;
+  return this.list.slice().sort((a,b)=>Math.hypot(a.pts[0][0]-c.x,a.pts[0][1]-c.z)-Math.hypot(b.pts[0][0]-c.x,b.pts[0][1]-c.z)).slice(0,max);};
 TN.Incidents.prototype.drawMarkers=function(){
   if(typeof maplibregl==='undefined') return;
-  const keep=new Set(this.list.map(i=>i.id));
+  const shown=this.nearest(40),keep=new Set(shown.map(i=>i.id));
   for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
-  for(const it of this.list){if(this.markers.has(it.id)) continue;
+  for(const it of shown){if(this.markers.has(it.id)) continue;
     const el=document.createElement('div');el.className='tn-inc '+it.kind+(it.user?' user':'');el.innerHTML=TN.ROCCO(it.kind,40,night);
     el.title=TN.ROCCO_TITLE[it.kind];el.onclick=e=>{e.stopPropagation();this.show(it,null,true);};
     this.markers.set(it.id,new maplibregl.Marker({element:el}).setLngLat(it.ll).addTo(this.api.map));}
@@ -128,7 +131,8 @@ TN.Incidents.prototype.ahead=function(car){
     if(R){/* on the route: the incident is within 25 m of the route line, ahead of the car */
       const s0=R.cum[nav.idx]||0;
       for(const p of it.pts){for(let i=nav.idx;i<R.pts.length&&R.cum[i]-s0<3000;i+=3){const q=R.pts[i];if(Math.hypot(q[0]-p[0],q[1]-p[1])<25){const dd=R.cum[i]-s0;if(dd>=0&&(d==null||dd<d)) d=dd;break;}}}}
-    else{/* no route: within about 30 degrees of straight ahead, closer than 1.2 km */
+    else{/* no route: within about 30 degrees of straight ahead, closer than 1.2 km (only while driving) */
+      if((car.v||0)<2) continue;
       const hr=car.hd*Math.PI/180,fx=Math.sin(hr),fz=-Math.cos(hr);
       for(const p of it.pts){const vx=p[0]-car.x,vz=p[1]-car.z,dist=Math.hypot(vx,vz);if(dist<20||dist>1200) continue;
         if((vx*fx+vz*fz)/dist>0.87&&(d==null||dist<d)) d=dist;}}

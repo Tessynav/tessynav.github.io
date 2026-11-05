@@ -62,10 +62,27 @@ TN.Rem.prototype.nextPiece=function(t){
   return bs>0.3?best:null;
 };
 /* ---------- stations ---------- */
+TN.Rem.prototype.stationList=function(){
+  if(this.stList) return this.stList;
+  try{const c=JSON.parse(localStorage.getItem('tn2_remst')||'null');if(c&&Date.now()-c.t<7*86400000&&c.list&&c.list.length){this.stList=c.list;return this.stList;}}catch(e){}
+  if(this.stLoading||Date.now()-(this.stTried||0)<120000) return null;
+  this.stLoading=true;this.stTried=Date.now();
+  const q='[out:json][timeout:20];(node["railway"="station"]["network"~"REM"](45.2,-74.3,45.9,-73.2);node["public_transport"="station"]["network"~"REM"](45.2,-74.3,45.9,-73.2););out;';
+  fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q)).then(r=>r.ok?r.json():null).then(j=>{
+    this.stLoading=false;if(!j||!j.elements) return;const seen=new Set(),list=[];
+    for(const e of j.elements){const name=(e.tags&&(e.tags['name:latin']||e.tags.name))||'';if(!name||e.lat==null) continue;
+      const k=name+Math.round(e.lat*500)+Math.round(e.lon*500);if(seen.has(k)) continue;seen.add(k);
+      /* the same shape the rest of this file reads (like a map feature) */
+      list.push({properties:{class:'railway',name:name},geometry:{type:'Point',coordinates:[e.lon,e.lat]}});}
+    if(list.length){this.stList=list;try{localStorage.setItem('tn2_remst',JSON.stringify({t:Date.now(),list:list}));}catch(e){}this.stT=0;}
+  }).catch(()=>{this.stLoading=false;});
+  return null;
+};
 TN.Rem.prototype.findStations=function(cx,cz){
   const map=this.scene.map,net=this.net;if(!map||typeof map.querySourceFeatures!=='function'||!net.rem) return;
-  /* only railway points of interest are asked for (the map engine skips the others before preparing them) */
-  let fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'poi',filter:['==',['get','class'],'railway']});}catch(e){return;}
+  /* the REM stations come from a small list asked from OpenStreetMap once and kept for a week (no map scanning
+     while driving, which was slow); until that list arrives, nothing is scanned */
+  const fs=this.stationList();if(!fs) return;
   for(const f of fs){
     const pr=f.properties||{};if(pr.class!=='railway'||!f.geometry||f.geometry.type!=='Point') continue;
     const name=pr['name:latin']||pr.name||'';if(!name) continue;
