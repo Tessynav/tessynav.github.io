@@ -124,7 +124,8 @@ TN.Net.prototype.rebuildJob=function*(){
   }
   this.keys=keys;this.idx=idx;
   yield* this.heights();
-  for(const w of this.ways.values()){w.br=w._br;w.H=w._H||0;w.W=w._W;w.hs=w._hs;}
+  for(const w of this.ways.values()){w.br=w._br;w.H=w._H||0;w.W=w._W;w.hs=w._hs?w._hs.slice():w._hs;w.cb=null;}
+  this.clearance();
   this.ver++;
 };
 TN.Net.prototype.rebuildIndex=function(){const j=this.rebuildJob();while(!j.next().done);};
@@ -341,6 +342,39 @@ TN.Net.prototype.crossesSomething=function(b){
 /* the new model is still being tuned: it is only used with ?heights=cd in the address */
 TN.HMODE=(typeof location!=='undefined'&&/[?&]heights=cd/.test(location.search))?'cd':'old';
 TN.Net.prototype.heights=function*(){if(TN.HMODE==='cd'){yield* this.heightsCD();return;}yield* this.heightsOld();};
+/* clean crossings: wherever a raised road passes less than 5 m above another road, the upper road gets a gentle
+   local rise (and a ramp underneath can dip a little), so nothing clips through the road below */
+TN.Net.prototype.clearance=function(){
+  const NEED=5.0,Hh=(w,i)=>w.hs?w.hs[i]:(w.br?w.H:0),hAt=(w,i,u)=>w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*u:(w.br?w.H:0);
+  const found=new Map();
+  for(const w of this.ways.values()){
+    if(w.tun||!(w.hs||(w.br&&w.H>0))) continue;
+    const mine=new Set(w.keys);
+    for(let i=0;i<w.pts.length;i++){
+      const h=Hh(w,i);if(h<1) continue;const x=w.pts[i][0],z=w.pts[i][1];
+      const ia=Math.max(0,i-1),ib=Math.min(w.pts.length-1,i+1);let ux=w.pts[ib][0]-w.pts[ia][0],uz=w.pts[ib][1]-w.pts[ia][1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
+      this.near(x,z,0,(v,k)=>{
+        if(v===w||v.tun) return;
+        /* a real crossing: the two roads cross at an angle and are not joined to each other */
+        if(v.keys.some(q=>mine.has(q))) return;
+        const r=TN.seg(v,k,x,z);if(r.d>TN.width(v)/2) return;if(Math.abs(r.tx*ux+r.tz*uz)>0.7) return;
+        const d=h-hAt(v,k,r.u);if(d<=0.8||d>=NEED) return;
+        const key=w.id+':'+v.id,o=found.get(key);if(!o||d<o.d) found.set(key,{w:w,s:w.cum[i],d:d});
+      });
+    }
+  }
+  /* a smooth gentle rise of the upper road, only where it fits inside its own road piece (so no joint changes);
+     the remaining low crossings need the planned height-model redesign */
+  let fixed=0;
+  for(const c of found.values()){
+    const amt=NEED-c.d,w=c.w,L=Math.max(50,amt/0.035),room=Math.min(c.s,w.L-c.s);
+    if(room<L) continue;
+    if(!w.hs) w.hs=w.pts.map(()=>w.H);w.cb=w.cb||w.pts.map(()=>0);
+    for(let j=0;j<w.pts.length;j++){const d=Math.abs(w.cum[j]-c.s);if(d<L){const add=amt*0.5*(1+Math.cos(Math.PI*d/L));if(add>w.cb[j]){w.hs[j]+=add-w.cb[j];w.cb[j]=add;}}}
+    fixed++;
+  }
+  this.clearFixed=fixed;
+};
 TN.Net.prototype.heightsOld=function*(){
   const ways=[...this.ways.values()];
   for(const w of ways){if(w.brSrc===undefined) w.brSrc=w.br;w._br=w.brSrc;w._hs=null;w._H=0;w._W=w.w;}
