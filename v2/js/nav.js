@@ -32,6 +32,9 @@ TN.Nav.prototype.build=function(){
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+   '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:#9fb3c8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
+   '#tn-bar .pb{position:absolute;left:18px;right:18px;bottom:9px;height:6px;border-radius:3px;background:#2a3444}'+
+   '#tn-bar .pb .car{position:absolute;top:50%;left:0;width:13px;height:13px;border-radius:50%;background:#fff;border:3px solid #3b82f6;transform:translate(-50%,-50%);box-sizing:border-box}'+
    '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
    '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
@@ -41,7 +44,7 @@ TN.Nav.prototype.build=function(){
   document.head.appendChild(st);
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
   this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>');
-  this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dist"></div><div class="ins"></div></div><div class="eta"></div>');
+  this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dist"></div><div class="ins"></div><div class="then"></div></div><div class="eta"></div><div class="pb"><div class="car"></div></div>');
   this.endBtn=el('tn-end','','End route','button');this.roadName=el('tn-roadname');
   const inp=this.input=this.box.querySelector('input'),x=this.box.querySelector('.x');
   let tmr=null;
@@ -508,6 +511,23 @@ TN.Nav.prototype.update=function(dt){
   /* the exit number as a green highway exit sign (where the map has one) */
   const exn=(nx.type==='off ramp'||nx.type==='fork')&&nx.exits?String(nx.exits).split(';')[0]:'';
   this.bar.querySelector('.ins').innerHTML=(exn?'<span class="exit">EXIT '+TN.esc(exn)+'</span>':'')+TN.esc(I.t+(I.where?' \u00b7 '+I.where:''));
+  /* the following turn ("Then: ...") */
+  {const k=R.steps.indexOf(nx),n2=k>=0?R.steps[k+1]:null;
+   let th='';if(n2&&nx.type!=='arrive'){const I2=this.instr(n2);th='Then: '+(n2.type==='arrive'?'arrive':I2.t.charAt(0).toLowerCase()+I2.t.slice(1))+(I2.where&&n2.type!=='arrive'?' onto '+I2.where:'');}
+   const te=this.bar.querySelector('.then');if(te.textContent!==th) te.textContent=th;}
+  /* progress: done part grey, the part ahead coloured by traffic (refreshed every few seconds), the car as a dot */
+  {const f=Math.max(0,Math.min(1,s/Math.max(1,R.L))),pb=this.bar.querySelector('.pb');
+   pb.querySelector('.car').style.left=(f*100).toFixed(2)+'%';
+   this.pbT=(this.pbT||0)+dt;
+   if(this.pbT>4||this.pbRoute!==R){this.pbT=0;this.pbRoute=R;
+     const col=c=>c==='moderate'?'#f59e0b':c==='heavy'?'#ef4444':c==='severe'?'#991b1b':'#22c55e';
+     const stops=['#7f8ea3 0%','#7f8ea3 '+(f*100).toFixed(1)+'%'];
+     if(R.cong){let cur=null,st=f;const N=R.pts.length;
+       for(let i=bi;i<N;i+=Math.max(1,Math.floor(N/300))){const c=col(R.cong[i]),p=R.cum[i]/R.L;
+         if(c!==cur){if(cur) stops.push(cur+' '+(st*100).toFixed(1)+'%',cur+' '+(p*100).toFixed(1)+'%');cur=c;st=Math.max(p,f);}}
+       if(cur) stops.push(cur+' '+(st*100).toFixed(1)+'%',cur+' 100%');}
+     else stops.push('#3b82f6 '+(f*100).toFixed(1)+'%','#3b82f6 100%');
+     pb.style.background='linear-gradient(90deg,'+stops.join(',')+')';}}
   const remain=R.dur*(left/Math.max(1,R.L)),arr=new Date(Date.now()+remain*1000);
   this.bar.querySelector('.eta').innerHTML='<b>'+arr.toTimeString().slice(0,5)+'</b>'+Math.max(1,Math.round(remain/60))+' min \u00b7 '+fmtDist(left);
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
