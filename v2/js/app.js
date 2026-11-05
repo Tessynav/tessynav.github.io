@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=37;
+TN.APPBUILD=38;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -19,6 +19,10 @@ TN.APPBUILD=37;
   /* the settings menu (gear button) */
   const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,night:()=>night()}):null;
   if(settings){try{settings.build();}catch(e){}}
+  /* navigation: search, route, directions */
+  const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
+    setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
+  if(nav){try{nav.build();}catch(e){}}
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
   const brk={t:0,v:0,d:0,k:0,moved:0};
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
@@ -291,6 +295,7 @@ TN.APPBUILD=37;
     if(car&&car.x!=null){
       scene.placeCar(car.x,car.z,car.y||0,car.hd);
       try{scene.updateBeam(car);}catch(e){}
+      if(nav){try{nav.update(dt);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);
       if(follow){
         const kmh=(track.last?track.last.v:0)*3.6;
