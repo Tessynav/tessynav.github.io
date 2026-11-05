@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#cfdcf0',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#ffc477',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -814,7 +814,7 @@ TN.glowDisc=function(G,cx,cy,cz,R,k,r,col,kind,ux,uz){
   }
 };
 /* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.
-   At night (glow layer) the lamp heads shine white and each lamp casts a soft pool of white LED light on the road. */
+   At night (glow layer) the lamp heads shine warm yellow and each lamp casts a soft pool of warm light on the road. */
 /* is there a road surface (ground, ramp or bridge) at (x,z) within pad metres, at about height y? */
 TN.Net.prototype.roadAtHeight=function(x,z,y,pad){
   const hit=(w,i)=>{if(w.tun) return false;const r=TN.seg(w,i,x,z);if(r.d>=TN.width(w)/2+pad) return false;
@@ -858,11 +858,11 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       /* night: the lamp's lit underside and its pool of light (bright in the middle, fading out) */
       const G=L.glow,gc=TN.C.glowc;
       TN.quad(G,[hx-rx*0.28-ux*0.13,top-0.37,hz-rz*0.28-uz*0.13],[hx+rx*0.28-ux*0.13,top-0.37,hz+rz*0.28-uz*0.13],
-                [hx+rx*0.28+ux*0.13,top-0.37,hz+rz*0.28+uz*0.13],[hx-rx*0.28+ux*0.13,top-0.37,hz-rz*0.28+uz*0.13],[1,1,1]);
+                [hx+rx*0.28+ux*0.13,top-0.37,hz+rz*0.28+uz*0.13],[hx-rx*0.28+ux*0.13,top-0.37,hz-rz*0.28+uz*0.13],[1,0.88,0.62]);
       /* a wide pool of light (about 13 m) with a smooth fade, so neighbouring lamps blend into a lit street */
       TN.glowDisc(G,x+rx*2.4,y0+0.1,z+rz*2.4,13,[0.62,0.45,0.22,0.07,0],[0,0.25,0.5,0.78,1],gc,'flat',ux,uz);
       /* the lamp itself shines: a soft halo around the head, seen from any side */
-      TN.glowDisc(G,hx,top-0.3,hz,1.1,[0.95,0.5,0.12,0],[0,0.25,0.6,1],[1,1,1],'ball',ux,uz);
+      TN.glowDisc(G,hx,top-0.3,hz,1.1,[0.95,0.5,0.12,0],[0,0.25,0.6,1],[1,0.84,0.55],'ball',ux,uz);
     }
   }
 };
