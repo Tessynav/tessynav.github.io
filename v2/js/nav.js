@@ -6,6 +6,9 @@
    - rerouting when you leave the route, arrival detection, End route
    Services: Photon (photon.komoot.io) and OSRM (router.project-osrm.org) are free public servers for testing. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
+/* Mapbox (search, traffic-aware routes, live traffic). The key only works on tessynav.github.io. */
+TN.MBX='pk.eyJ1IjoibXpud2F0dGFyIiwiYSI6ImNtdzNramNhMDAyaXIyeW9na3FpYnVtN2gifQ.Y9UmNDaEoXj0RRMTJLV-_g';
+TN.TRAFFIC_COL={low:'#3b82f6',moderate:'#f59e0b',heavy:'#ef4444',severe:'#991b1b',unknown:'#3b82f6'};
 
 TN.Nav=function(api){
   this.note=(k,d,sh)=>{try{api.note&&api.note(k,d,sh);}catch(e){}};
@@ -58,7 +61,7 @@ TN.Nav.prototype.list=function(items,msg){
   const allRow=q.length>=3&&!(items[0]&&items[0].recent)?'<div class="r all" style="color:#7fd3c8">'+TN.ICON('pin',24)+'<div>Show all nearby on map<small>Every \u201c'+TN.esc(q)+'\u201d around you</small></div></div>':'';
   if(!items.length){R.innerHTML=allRow+'<div class="msg">'+(msg||'No results')+'</div>';const ar=R.querySelector('.all');if(ar) ar.onclick=()=>this.showAll(q);return;}
   const h=this.here();
-  R.innerHTML=items.map((it,i)=>{const d=TN.distLL(h,[it.lng,it.lat]);
+  R.innerHTML=items.map((it,i)=>{const d=it.lng!=null?TN.distLL(h,[it.lng,it.lat]):(it.dist||0);
     return '<div class="r" data-i="'+i+'"><span>'+(it.recent?TN.ICON('recent',22,'#9fb3c8'):TN.ICON('pin',24))+'</span><div>'+TN.esc(it.name)+'<small>'+TN.esc(it.sub||'')+'</small></div><span class="d">'+fmtDist(d)+'</span></div>';}).join('');
   if(allRow) R.innerHTML=allRow+R.innerHTML;
   R.querySelectorAll('.r[data-i]').forEach(r=>r.onclick=()=>this.pick(items[+r.dataset.i]));
@@ -87,6 +90,14 @@ TN.Nav.prototype.showRecent=function(){
 };
 TN.Nav.prototype.search=async function(q){
   const h=this.here(),my=++this.qn;this.qn=my;
+  if(TN.MBX){try{
+    if(!this.sess) this.sess=Math.random().toString(36).slice(2)+Date.now().toString(36);
+    const u='https://api.mapbox.com/search/searchbox/v1/suggest?q='+encodeURIComponent(q)+'&language=en&country=ca,us&limit=8&proximity='+h[0].toFixed(5)+','+h[1].toFixed(5)+
+      '&origin='+h[0].toFixed(5)+','+h[1].toFixed(5)+'&session_token='+this.sess+'&access_token='+TN.MBX;
+    const r=await fetch(u);if(!r.ok) throw 0;const j=await r.json();if(my!==this.qn) return;
+    const items=(j.suggestions||[]).filter(sg=>sg.feature_type!=='category'&&sg.mapbox_id).map(sg=>({name:sg.name,sub:sg.full_address||sg.place_formatted||'',mbid:sg.mapbox_id,dist:sg.distance}));
+    if(items.length){items.sort((a,b)=>(a.dist==null?1e9:a.dist)-(b.dist==null?1e9:b.dist));this.list(items);return;}
+  }catch(e){}}
   try{
     const u='https://photon.komoot.io/api/?q='+encodeURIComponent(q)+'&lat='+h[1].toFixed(4)+'&lon='+h[0].toFixed(4)+'&limit=7&lang=en';
     const r=await fetch(u);if(!r.ok) throw 0;const j=await r.json();if(my!==this.qn) return;
@@ -99,8 +110,14 @@ TN.Nav.prototype.search=async function(q){
   }catch(e){if(my===this.qn) this.list([],'Search is not available right now');}
 };
 TN.Nav.prototype.qn=0;
-TN.Nav.prototype.pick=function(it){
+TN.Nav.prototype.pick=async function(it){
   this.closeSearch();this.input.value=it.name;
+  if(it.lng==null&&it.mbid){
+    try{const r=await fetch('https://api.mapbox.com/search/searchbox/v1/retrieve/'+encodeURIComponent(it.mbid)+'?session_token='+this.sess+'&access_token='+TN.MBX);
+      const j=await r.json(),f=j.features&&j.features[0];if(f){it.lng=f.geometry.coordinates[0];it.lat=f.geometry.coordinates[1];}}catch(e){}
+    this.sess=null;   /* a new search session next time */
+    if(it.lng==null){this.ov.style.display='flex';this.ov.innerHTML='<div>Could not open that place</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};return;}
+  }
   this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
   try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
   this.dest=it;this.plan(false);
@@ -167,8 +184,33 @@ TN.Nav.prototype.dropAt=async function(lng,lat){
       it.name=p.name||[p.housenumber,p.street].filter(Boolean).join(' ')||'Dropped pin';it.sub=[p.name?[p.housenumber,p.street].filter(Boolean).join(' '):'',p.city].filter(Boolean).join(' \u00b7 ');
       if(this.dropPin) this.pinCard(it,0,'');}}catch(e){}
 };
+/* ---------- live traffic around you (Mapbox traffic) ---------- */
+TN.Nav.prototype.traffic=function(show){
+  const map=this.api.map;if(!TN.MBX||!map||!map.getStyle) return;
+  if(TN.settings&&TN.settings.traffic===false) show=false;
+  try{
+    if(!map.getSource('tn-traffic')){
+      if(!show) return;
+      map.addSource('tn-traffic',{type:'vector',tiles:['https://api.mapbox.com/v4/mapbox.mapbox-traffic-v1/{z}/{x}/{y}.vector.pbf?access_token='+TN.MBX],maxzoom:16});
+      map.addLayer({id:'tn-traffic',type:'line',source:'tn-traffic','source-layer':'traffic',minzoom:9,
+        filter:['in',['get','congestion'],['literal',['moderate','heavy','severe']]],
+        layout:{'line-join':'round','line-cap':'round'},
+        paint:{'line-color':['match',['get','congestion'],'moderate',TN.TRAFFIC_COL.moderate,'heavy',TN.TRAFFIC_COL.heavy,'severe',TN.TRAFFIC_COL.severe,'#999'],
+          'line-width':['interpolate',['linear'],['zoom'],10,1.5,16,5],'line-opacity':0.9}});
+    }
+    map.setLayoutProperty('tn-traffic','visibility',show?'visible':'none');
+  }catch(e){}
+};
 /* ---------- route ---------- */
 TN.Nav.prototype.fetchRoute=async function(from,to){
+  if(TN.MBX){try{
+    const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+from[0].toFixed(6)+','+from[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+
+      '?geometries=geojson&overview=full&steps=true&annotations=congestion&language=en&access_token='+TN.MBX;
+    const r=await fetch(u);if(r.ok){const j=await r.json();if(j.routes&&j.routes[0]){j.routes[0].traffic=true;return j.routes[0];}}
+  }catch(e){}}
+  return this.fetchRouteFree(from,to);
+};
+TN.Nav.prototype.fetchRouteFree=async function(from,to){
   const u='https://router.project-osrm.org/route/v1/driving/'+from[0].toFixed(6)+','+from[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+'?overview=full&geometries=geojson&steps=true';
   const r=await fetch(u);if(!r.ok) throw new Error('route');const j=await r.json();
   if(!j.routes||!j.routes[0]) throw new Error('no route');return j.routes[0];
@@ -198,7 +240,13 @@ TN.Nav.prototype.setRoute=function(rt){
   const steps=[];for(const lg of rt.legs) for(const s of lg.steps){const q=TN.toLocal(s.maneuver.location[0],s.maneuver.location[1]);
     let bi=0,bd=1e18;for(let i=0;i<pts.length;i++){const d=(pts[i][0]-q[0])**2+(pts[i][1]-q[1])**2;if(d<bd){bd=d;bi=i;}}
     steps.push({at:cum[bi],type:s.maneuver.type,mod:s.maneuver.modifier||'',exit:s.maneuver.exit,name:s.name||'',ref:s.ref||'',dest:s.destinations||''});}
-  this.route={pts:pts,cum:cum,L:cum[cum.length-1],dur:rt.duration,dist:rt.distance,steps:steps,hy:null};
+  this.route={pts:pts,cum:cum,L:cum[cum.length-1],dur:rt.duration,dist:rt.distance,steps:steps,hy:null,traffic:!!rt.traffic};
+  /* traffic per stretch (from the route's congestion levels), placed along the line by distance */
+  {const cong=[];for(const lg of rt.legs||[]) if(lg.annotation&&lg.annotation.congestion) cong.push(...lg.annotation.congestion);
+   const C=rt.geometry.coordinates,D=[0];for(let i=1;i<C.length;i++) D.push(D[i-1]+TN.distLL(C[i-1],C[i]));
+   const R0=this.route,lv=[];
+   if(cong.length===C.length-1&&D[D.length-1]>0){let k=0;for(let i=0;i<R0.pts.length;i++){const d=R0.cum[i]/R0.L*D[D.length-1];while(k<cong.length-1&&D[k+1]<d) k++;lv.push(cong[k]||'unknown');}}
+   R0.cong=lv.length?lv:null;R0.congRaw=cong.length===C.length-1?cong:null;}
   this.idx=0;this.offT=0;this.drawn=-1;this.heights();this.draw(0);
   this.mapLine(rt.geometry.coordinates);
 };
@@ -224,29 +272,37 @@ TN.Nav.prototype.heights=function(){
 TN.Nav.prototype.draw=function(from){
   const R=this.route;if(!R) return;
   const S=this.api.scene;if(!S.three) return;
-  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-16});}
-  const pos=[],idx=[],hw=1.3;let n=0;
+  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-16});}
+  const pos=[],idx=[],col=[],hw=1.3;let n=0;const tc=new THREE.Color();
   const a0=Math.max(0,from|0);
   let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
   for(let i=a0;i<=a1;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     const y=(R.hy?R.hy[i]:0)+0.16,lo=R.lane?R.lane[i]:0,cx=p[0]-uz*lo,cz=p[1]+ux*lo;
     pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
+    tc.set(TN.TRAFFIC_COL[R.cong?R.cong[i]:'unknown']||'#3b82f6');col.push(tc.r,tc.g,tc.b,tc.r,tc.g,tc.b);
     if(i>a0) idx.push(n-2,n-1,n+1,n-2,n+1,n);
     n+=2;
   }
   if(this.mesh){S.three.scene.remove(this.mesh);this.mesh.geometry.dispose();}
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setIndex(idx);
   this.mesh=new THREE.Mesh(g,this.mat);this.mesh.frustumCulled=false;this.mesh.renderOrder=4;S.three.scene.add(this.mesh);this.drawn=a0;
 };
 /* the route as a map line: stays thick and visible at any zoom (overview, and far ahead beyond the 3D roads) */
 TN.Nav.prototype.mapLine=function(coords){
-  const map=this.api.map,data={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+  const map=this.api.map,cg=this.route&&this.route.congRaw;
+  /* split into stretches of equal traffic, each with its colour */
+  let data;
+  if(cg){const fs=[];let cur=null;for(let i=0;i<coords.length-1;i++){const lv=cg[i]||'unknown';
+      if(!cur||cur.properties.c!==lv){cur={type:'Feature',properties:{c:lv},geometry:{type:'LineString',coordinates:[coords[i]]}};fs.push(cur);}
+      cur.geometry.coordinates.push(coords[i+1]);}
+    data={type:'FeatureCollection',features:fs};}
+  else data={type:'Feature',properties:{c:'unknown'},geometry:{type:'LineString',coordinates:coords}};
   try{
     if(map.getSource('tn-route')) map.getSource('tn-route').setData(data);
     else{map.addSource('tn-route',{type:'geojson',data:data});
       map.addLayer({id:'tn-route-casing',type:'line',source:'tn-route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#ffffff','line-width':['interpolate',['linear'],['zoom'],10,6,16,12],'line-opacity':0.9}});
-      map.addLayer({id:'tn-route-line',type:'line',source:'tn-route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#3b82f6','line-width':['interpolate',['linear'],['zoom'],10,4,16,8]}});}
+      map.addLayer({id:'tn-route-line',type:'line',source:'tn-route',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['match',['get','c'],'moderate',TN.TRAFFIC_COL.moderate,'heavy',TN.TRAFFIC_COL.heavy,'severe',TN.TRAFFIC_COL.severe,TN.TRAFFIC_COL.low],'line-width':['interpolate',['linear'],['zoom'],10,4,16,8]}});}
     const end=coords[coords.length-1];
     if(!this.pinEl){this.pinEl=document.createElement('div');this.pinEl.innerHTML=TN.ICON('pin',40);this.pinEl.style.transform='translateY(-18px)';}
     if(!this.pin&&typeof maplibregl!=='undefined') this.pin=new maplibregl.Marker({element:this.pinEl,anchor:'bottom'}).setLngLat(end).addTo(map);

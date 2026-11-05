@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=45;
+TN.APPBUILD=46;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -37,7 +37,7 @@ TN.APPBUILD=45;
    cv.addEventListener('touchstart',down,{passive:true});cv.addEventListener('touchmove',move,{passive:true});cv.addEventListener('touchend',up);
    cv.addEventListener('mousedown',down);cv.addEventListener('mousemove',move);cv.addEventListener('mouseup',up);}catch(e){}
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
-  const brk={t:0,v:0,d:0,k:0,moved:0};let dispHd=null,dispX=null,dispZ=null,mvX=null,mvZ=null,mvHd=null,dX=null,dZ=null,dH=null,dV=0;
+  const brk={t:0,v:0,d:0,k:0,moved:0};let lastFollowT=null,dispHd=null,dispX=null,dispZ=null,mvX=null,mvZ=null,mvHd=null,dX=null,dZ=null,dH=null,dV=0;
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
 
   /* ---------- panel ---------- */
@@ -366,6 +366,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       scene.placeCar(car.x,car.z,car.y||0,dispHd);
       try{scene.updateBeam(car);}catch(e){}
       if(nav){try{nav.update(dt);}catch(e){}}
+      /* live traffic lines when browsing the map or looking at a route overview (not while following the car) */
+      if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
       if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);
       if(follow){
