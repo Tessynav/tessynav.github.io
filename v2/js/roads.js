@@ -19,7 +19,7 @@ TN.CELL=0.005;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#ffa64a',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={ballast:'#5c5852',sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#ffa64a',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -78,6 +78,16 @@ TN.Net.prototype.addPack=function(key,P,later){
     let cx=0,cz=0;for(const q of pts){cx+=q[0];cz+=q[1];}
     let bx0=1e9,bx1=-1e9,bz0=1e9,bz1=-1e9;for(const q of pts){if(q[0]<bx0)bx0=q[0];if(q[0]>bx1)bx1=q[0];if(q[1]<bz0)bz0=q[1];if(q[1]>bz1)bz1=q[1];}
     this.parkings.set(r[0],{pts:pts,c:[cx/pts.length,cz/pts.length],bb:[bx0,bx1,bz0,bz1]});
+  }
+  /* the REM at ground level (road tiles v5): same line as the elevated parts, drawn on the ground */
+  for(const r of P.rg||[]){
+    rec.rm=rec.rm||new Set();rec.rm.add(r[0]);this.rem=this.rem||new Map();if(this.rem.has(r[0])) continue;
+    const f=r[1],pts=[],keys=[];for(let i=0;i<f.length;i+=2){pts.push(TN.toLocal(f[i],f[i+1]));keys.push(TN.vkey(f[i],f[i+1]));}
+    if(pts.length<2) continue;
+    const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+    let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const q of pts){if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<z0)z0=q[1];if(q[1]>z1)z1=q[1];}
+    this.rem.set(r[0],{id:r[0],name:'REM',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],bb:[x0,x1,z0,z1],rem:true,ground:true,br:false});
+    this.remVer=(this.remVer||0)+1;
   }
   /* stop signs, yield signs and crosswalks: [lng, lat, kind s/y/c, direction f/b/''] */
   rec.mk=new Set();this.marks=this.marks||new Map();
@@ -762,13 +772,15 @@ TN.Net.prototype.remLinks=function(){
 TN.Net.prototype.remHeights=function(w){
   const v=this.ver+':'+(this.remVer||0);if(w.hv===v&&w.rh) return w.rh;
   const links=this.remLinks(),P=w.pts,hs=[];
+  if(w.ground){w.rh=P.map(()=>0);w.hv=v;return w.rh;}
   for(let j=0;j<P.length;j++){
     let h=-1;const x=P[j][0],z=P[j][1];
     this.near(x,z,30,(v2,i)=>{if(!v2.br) return;const r=TN.seg(v2,i,x,z);if(r.d<TN.width(v2)/2+30){
       const hh=v2.hs?v2.hs[i]+(v2.hs[i+1]-v2.hs[i])*r.u:v2.H;if(hh>h) h=hh;}});
     hs.push(h>3?h:9);
   }
-  const free=j=>(links.get(w.keys[j])||[]).length<2;
+  /* an end with no other piece, or only ground-level pieces: the guideway comes down to the ground there */
+  const free=j=>(links.get(w.keys[j])||[]).filter(l=>l[0]!==w).every(l=>l[0].ground);
   for(const [end,dir] of [[0,1],[P.length-1,-1]]){
     if(!free(end)) continue;
     for(let j=end;j>=0&&j<P.length;j+=dir){const d=Math.abs(w.cum[j]-w.cum[end]);if(d>150) break;hs[j]=Math.min(hs[j],hs[j]*(d/150));}
@@ -782,6 +794,12 @@ TN.Net.prototype.drawRem=function(L,w,a,b){
   const at=(j,o,y)=>[P[j][0]+N[j][0]*o,y,P[j][1]+N[j][1]*o];
   for(let i=a;i<b;i++){
     const h0=hs[i],h1=hs[i+1];
+    if(h0<0.6&&h1<0.6){
+      /* at ground level: a bed of ballast with the two rails */
+      TN.quad(L.curb,at(i,-2.1,0.05),at(i+1,-2.1,0.05),at(i+1,2.1,0.05),at(i,2.1,0.05),TN.C.ballast);
+      for(const o of [-0.72,0.72]) TN.quad(L.mark,at(i,o-0.06,0.09),at(i+1,o-0.06,0.09),at(i+1,o+0.06,0.09),at(i,o+0.06,0.09),TN.C.rail);
+      continue;
+    }
     TN.quad(G,at(i,-hw,h0),at(i+1,-hw,h1),at(i+1,hw,h1),at(i,hw,h0),TN.C.remdeck);
     for(const o of [hw,-hw]){
       TN.quad(G,at(i,o,Math.max(0,h0-1.6)),at(i+1,o,Math.max(0,h1-1.6)),at(i+1,o,h1+0.6),at(i,o,h0+0.6),TN.C.remside);
@@ -792,7 +810,7 @@ TN.Net.prototype.drawRem=function(L,w,a,b){
   }
   /* single-column piers with a cap, every 32 m, where the guideway is high enough and not above a road */
   for(let s=Math.ceil(w.cum[a]/32)*32+16;s<w.cum[b];s+=32){
-    const q=TN.remAt(w,hs,s);if(q.y<4) continue;
+    if(w.ground) break;const q=TN.remAt(w,hs,s);if(q.y<4) continue;
     if(this.nearOther(null,q.x,q.z,1.0)) continue;
     TN.box(G,q.x,q.z,q.ux,q.uz,2.0,2.0,0,q.y-2.6,TN.C.pier);
     TN.box(G,q.x,q.z,-q.uz,q.ux,4.6,1.8,q.y-2.6,q.y-1.6,TN.C.cap);
@@ -1239,7 +1257,13 @@ TN.Net.prototype.widthsAlong=function(w){
       const tv=tan(v,vi,vd),dot=-(t[0]*tv[0]+t[1]*tv[1]);
       if(dot>bd){bd=dot;best=v;}
     }
-    return best?(W+TN.width(best))/2:W;
+    if(!best) return W;
+    /* use the width the other piece itself will have at this joint, so both sides meet exactly */
+    const bi=best.keys.indexOf(w.keys[j]);if(bi<0) return (W+TN.width(best))/2;
+    const bdir=bi===0?1:-1,bt=tan(best,bi,bdir);let bb=null,bbd=0.85;
+    for(const [v,vi] of l){if(v===best||v.tun) continue;const vd=vi===0?1:(vi===v.pts.length-1?-1:0);if(!vd) continue;
+      const tv=tan(v,vi,vd),d2=-(bt[0]*tv[0]+bt[1]*tv[1]);if(d2>bbd){bbd=d2;bb=v;}}
+    return bb?(TN.width(best)+TN.width(bb))/2:TN.width(best);
   };
   const w0=joinW(0,1),w1=joinW(n-1,-1),T=Math.min(60,w.L/2);
   for(let j=0;j<n;j++){

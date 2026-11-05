@@ -91,6 +91,16 @@ TN.Buildings.prototype.crossesRoad=function(ring){
   net.near(cx,cz,r,test);
   return hit;
 };
+TN.Buildings.prototype.overRem=function(ring){
+  const net=this.net;if(!net||!net.rem||!net.rem.size) return false;
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+  const inside=(x,z)=>{let c=false;for(let k=0,j=ring.length-1;k<ring.length;j=k++){const A=ring[k],B=ring[j];
+    if(((A[1]>z)!==(B[1]>z))&&(x<(B[0]-A[0])*(z-A[1])/((B[1]-A[1])||1e-9)+A[0])) c=!c;}return c;};
+  for(const w of net.rem.values()){const b=w.bb;if(b[1]<x0||b[0]>x1||b[3]<z0||b[2]>z1) continue;
+    for(let i=0;i<w.pts.length-1;i++){const a=w.pts[i],c=w.pts[i+1];
+      for(const t of [0.25,0.5,0.75]) if(inside(a[0]+(c[0]-a[0])*t,a[1]+(c[1]-a[1])*t)) return true;}}
+  return false;
+};
 TN.Buildings.prototype.palette=function(H,seed){
   const pick=a=>a[seed%a.length];
   if(H<=13) return pick(['#a65a43','#8e4b3a','#b46b54','#9c5f4a','#c8b08f','#b9a185']);
@@ -100,6 +110,8 @@ TN.Buildings.prototype.palette=function(H,seed){
 TN.Buildings.prototype.addBuilding=function(G,b,J){
   let ring=b.ring;const n=ring.length;if(n<3) return;
   const map=this.scene.map,fs=b.id!=null?{source:'openmaptiles',sourceLayer:'building',id:b.id}:null;
+  /* a station roof over the REM tracks, mapped as a solid building: left out (the REM station is drawn instead) */
+  if(this.overRem(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
   /* a building whose footprint crosses a street (a skybridge, a building over a road): room to drive underneath */
   if(this.crossesRoad(ring)){const Bx=Math.max(b.B,b.H>=8?5.5:b.H*0.55);b={ring:ring,H:Math.max(b.H,Bx+2),B:Bx,id:b.id};
     if(fs){try{map.setFeatureState(fs,{lift:Bx});}catch(e){}}}
