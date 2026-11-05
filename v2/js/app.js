@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=29;
+TN.APPBUILD=30;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -229,6 +229,7 @@ TN.APPBUILD=29;
     TN.prof('track',performance.now()-t0);
     if(car&&car.x!=null){
       scene.placeCar(car.x,car.z,car.y||0,car.hd);
+      try{scene.updateBeam(car);}catch(e){}
       const ll=TN.fromLocal(car.x,car.z);
       if(follow){
         const kmh=(track.last?track.last.v:0)*3.6;
