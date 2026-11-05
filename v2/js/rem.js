@@ -64,7 +64,8 @@ TN.Rem.prototype.nextPiece=function(t){
 /* ---------- stations ---------- */
 TN.Rem.prototype.findStations=function(cx,cz){
   const map=this.scene.map,net=this.net;if(!map||typeof map.querySourceFeatures!=='function'||!net.rem) return;
-  let fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'poi'});}catch(e){return;}
+  /* only railway points of interest are asked for (the map engine skips the others before preparing them) */
+  let fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'poi',filter:['==',['get','class'],'railway']});}catch(e){return;}
   for(const f of fs){
     const pr=f.properties||{};if(pr.class!=='railway'||!f.geometry||f.geometry.type!=='Point') continue;
     const name=pr['name:latin']||pr.name||'';if(!name) continue;

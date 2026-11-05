@@ -206,7 +206,10 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     if(this.slowT>300&&this.range>0){this.range--;this.slowT=0;
       const cx0=Math.floor(lng/TN.CELL),cy0=Math.floor(lat/TN.CELL);
       for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx0)>this.range||Math.abs(y-cy0)>this.range) this.free(k);}this.job=null;}
-    else if(this.slowT>300&&this.range===0&&fps<35){this.on=false;for(const k of [...this.cells.keys()]) this.free(k);this.job=null;return;}
+    /* never switched off: at the shortest range they keep the area you are in; after a minute of smooth driving
+       the range grows back (up to the full 1.1 km) */
+    if(fps>=55) this.fastT=(this.fastT||0)+1;else this.fastT=0;
+    if(this.fastT>3600&&this.range<2){this.range++;this.fastT=0;}
   }
   const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),R=this.range,now=performance.now();
   for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>R+1||Math.abs(y-cy)>R+1) this.free(k);}

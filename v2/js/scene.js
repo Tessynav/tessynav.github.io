@@ -243,7 +243,7 @@ TN.Scene.prototype.addBrakeGlow=function(body){
       const m=new THREE.SpriteMaterial({map:tex,color:0xff2a2a,transparent:true,opacity:0,depthWrite:false});
       const sp=new THREE.Sprite(m);sp.scale.set(0.9,0.6,1);sp.position.set(c.x+sx*size.x*0.42,c.y,c.z+back*0.15);body.add(sp);this.glows.push(m);
     }
-    const gm=new THREE.MeshBasicMaterial({map:tex,color:0xff1e1e,transparent:true,opacity:0,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-24,polygonOffsetUnits:-60});   /* wins over road, curb and slope surfaces */
+    const gm=new THREE.MeshBasicMaterial({map:tex,color:0xff1e1e,transparent:true,opacity:0,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-12});   /* over road and curb, without drawing over the car */
     const plane=new THREE.Mesh(new THREE.PlaneGeometry(3.0,3.2),gm);plane.rotation.x=-Math.PI/2;plane.position.set(c.x,0.24,c.z+back*1.8);   /* above sidewalks: no flicker */
     body.add(plane);this.glows.push(gm);this.glowGround=gm;
     /* the headlamps themselves glow at night (the light on the road is the beam, see updateBeam) */

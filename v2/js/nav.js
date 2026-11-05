@@ -11,6 +11,7 @@ TN.MBX='pk.eyJ1IjoibXpud2F0dGFyIiwiYSI6ImNtdzNramNhMDAyaXIyeW9na3FpYnVtN2gifQ.Y9
 TN.TRAFFIC_COL={low:'#3b82f6',moderate:'#f59e0b',heavy:'#ef4444',severe:'#991b1b',unknown:'#3b82f6'};
 
 TN.Nav=function(api){
+  this.stops=[];
   this.note=(k,d,sh)=>{try{api.note&&api.note(k,d,sh);}catch(e){}};
   this.api=api;this.route=null;this.mesh=null;this.mat=null;this.idx=0;this.offT=0;this.lastReroute=0;this.arriveT=0;
   this.recent=[];try{this.recent=JSON.parse(localStorage.getItem('tn2_recent')||'[]')||[];}catch(e){}
@@ -29,7 +30,7 @@ TN.Nav.prototype.build=function(){
    '#tn-res .d{margin-left:auto;color:#9fb3c8;font-size:14px;white-space:nowrap}#tn-res .msg{padding:12px;color:#9fb3c8}'+
    '#tn-ov{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:18px;padding:14px 18px;font-size:16px}'+
    '#tn-ov small{color:#9fb3c8;font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
-   '#tn-ov .go{background:#1fa596;color:#fff}#tn-ov .cancel{background:#3a4352;color:#e8f1fa}'+
+   '#tn-ov .go{background:#1fa596;color:#fff}#tn-ov .cancel,#tn-ov .stop{background:#3a4352;color:#e8f1fa}'+
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
@@ -39,6 +40,8 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .pb .car{position:absolute;top:50%;left:0;width:13px;height:13px;border-radius:50%;background:#fff;border:3px solid #3b82f6;transform:translate(-50%,-50%);box-sizing:border-box}'+
    '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
    '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
+   '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgba(10,18,32,.88);color:#fcd34d}body.tn-routing #tn-stopbtn{display:block}'+
+   'body.tn-routing.tn-addstop #tn-search{display:flex}body.tn-routing.tn-addstop #tn-bar{display:none!important}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
    '#tn-limit{left:168px;bottom:24px;display:none;flex-direction:column;align-items:center;justify-content:center;width:58px;height:70px;padding:0;background:#fff;color:#111;border:3px solid #111;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35)}'+
    '#tn-limit small{font:700 10px system-ui,sans-serif;letter-spacing:.05em}#tn-limit b{font:800 28px system-ui,sans-serif;line-height:1}'+
@@ -50,7 +53,8 @@ TN.Nav.prototype.build=function(){
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
   this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>');
   this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dline"><div class="dist"></div><div class="lanes"></div></div><div class="ins"></div><div class="then"></div></div><div class="eta"></div><div class="pb"><div class="car"></div></div>');
-  this.endBtn=el('tn-end','','End route','button');this.roadName=el('tn-roadname');
+  this.endBtn=el('tn-end','','End route','button');
+  this.stopBtn=el('tn-stopbtn','','+ Stop','button');this.stopBtn.onclick=()=>this.addStop();this.roadName=el('tn-roadname');
   this.limit=el('tn-limit','','<small>MAX</small><b></b>');
   const inp=this.input=this.box.querySelector('input'),x=this.box.querySelector('.x');
   let tmr=null;
@@ -62,7 +66,7 @@ TN.Nav.prototype.build=function(){
   this.endBtn.onclick=()=>this.end();
   document.addEventListener('pointerdown',e=>{if(!this.box.contains(e.target)&&!this.res.contains(e.target)) this.res.style.display='none';},true);
 };
-TN.Nav.prototype.closeSearch=function(){this.res.style.display='none';this.input.blur();this.syncX();};
+TN.Nav.prototype.closeSearch=function(){this.res.style.display='none';this.input.blur();this.syncX();if(!this.addingStop) this.input.placeholder='Search a place or address';};
 TN.Nav.prototype.syncX=function(){const x=this.box&&this.box.querySelector('.x');if(x) x.style.display=this.input.value?'flex':'none';};
 TN.Nav.prototype.here=function(){const c=this.api.getCar();if(c&&c.x!=null) return TN.fromLocal(c.x,c.z);const m=this.api.map.getCenter();return [m.lng,m.lat];};
 const fmtDist=m=>m<950?(m<100?Math.max(10,Math.round(m/10)*10):Math.round(m/50)*50)+' m':(m/1000).toFixed(m<9500?1:0)+' km';
@@ -131,7 +135,26 @@ TN.Nav.prototype.pick=async function(it){
   }
   this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
   try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
+  if(this.addingStop){this.addingStop=false;document.body.classList.remove('tn-addstop');
+    this.stops.push({name:it.name,sub:it.sub,lng:it.lng,lat:it.lat});this.stopPins();
+    this.plan(this.active);   /* while driving: the route changes at once; before Go: a new overview */
+    return;}
+  this.stops=[];this.stopPins();
   this.dest=it;this.plan(false);
+};
+/* add a stop: the search box opens (also while driving), the next place picked becomes a stop on the way */
+TN.Nav.prototype.addStop=function(){
+  this.addingStop=true;document.body.classList.add('tn-addstop');
+  if(!this.active) this.ov.style.display='none';
+  this.input.value='';this.input.placeholder='Add a stop on the way';this.syncX();this.input.focus();this.showRecent();
+};
+/* small numbered pins for the stops */
+TN.Nav.prototype.stopPins=function(){
+  if(this.sPins) for(const m of this.sPins){try{m.remove();}catch(e){}}this.sPins=[];
+  if(typeof maplibregl==='undefined') return;
+  this.stops.forEach((p,i)=>{const el=document.createElement('div');
+    el.innerHTML='<div style="width:26px;height:26px;border-radius:50%;background:#f59e0b;color:#111;font:700 14px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">'+(i+1)+'</div>';
+    this.sPins.push(new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(this.api.map));});
 };
 /* ---------- every nearby place with a name (McDonald's, Tim Hortons...) as pins on the map ---------- */
 TN.Nav.prototype.showAll=async function(q){
@@ -188,6 +211,10 @@ TN.Nav.prototype.placeAll=function(items,q,h,first){
     if(typeof maplibregl!=='undefined') this.pins.push(new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([it.lng,it.lat]).addTo(api.map));}
   const card=()=>{this.ov.innerHTML='<div><b>'+this.allItems.length+' \u00d7 \u201c'+TN.esc(q)+'\u201d</b><br><small>Tap a pin to choose</small></div><button class="cancel">Close</button>';
     this.ov.querySelector('.cancel').onclick=()=>{this.clearPins();this.ov.style.display='none';api.setFollow(true);};};
+  /* where you are, as a blue dot, so you can pick the closest */
+  if(typeof maplibregl!=='undefined'){if(this.meDot){try{this.meDot.remove();}catch(e){}}
+    const me=document.createElement('div');me.innerHTML='<div style="width:20px;height:20px;border-radius:50%;background:#3b82f6;border:4px solid #fff;box-shadow:0 0 0 6px rgba(59,130,246,.3)"></div>';
+    this.meDot=new maplibregl.Marker({element:me}).setLngLat(h).addTo(api.map);}
   if(first){api.setFollow(false);
     const near=items.slice(0,Math.min(items.length,12)).concat([{lng:h[0],lat:h[1]}]);this.fitView(near.map(it=>[it.lng,it.lat]));card();}
   else if(this.ov.textContent.indexOf('Tap a pin')>=0) card();
@@ -196,15 +223,12 @@ TN.Nav.prototype.pinCard=function(it,count,q){
   const d=TN.distLL(this.here(),[it.lng,it.lat]);
   this.ov.style.display='flex';
   this.ov.innerHTML='<div><b>'+TN.esc(it.name)+'</b><br><small>'+(it.sub?TN.esc(it.sub)+' \u00b7 ':'')+fmtDist(d)+' away</small></div><button class="go">Go</button>'+(count?'<button class="cancel">Back</button>':'<button class="cancel">Cancel</button>');
-  this.ov.querySelector('.go').onclick=()=>{this.clearPins();this.dest=it;
-    this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
-    try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
-    this.plan(false);};
+  this.ov.querySelector('.go').onclick=()=>{this.clearPins();this.pick(it);};   /* (as the destination, or as a stop when adding one) */
   this.ov.querySelector('.cancel').onclick=()=>{if(count){count=this.allItems?this.allItems.length:count;this.ov.innerHTML='<div><b>'+count+' \u00d7 \u201c'+TN.esc(q)+'\u201d</b><br><small>Tap a pin to choose</small></div><button class="cancel">Close</button>';
       this.ov.querySelector('.cancel').onclick=()=>{this.clearPins();this.ov.style.display='none';this.api.setFollow(true);};}
     else{this.clearPins();this.ov.style.display='none';this.api.setFollow(true);}};
 };
-TN.Nav.prototype.clearPins=function(){this.allN=(this.allN||0)+1;this.allItems=null;if(this.pins) for(const m of this.pins){try{m.remove();}catch(e){}}this.pins=null;if(this.dropPin){try{this.dropPin.remove();}catch(e){}this.dropPin=null;}};
+TN.Nav.prototype.clearPins=function(){this.allN=(this.allN||0)+1;this.allItems=null;if(this.meDot){try{this.meDot.remove();}catch(e){}this.meDot=null;}if(this.pins) for(const m of this.pins){try{m.remove();}catch(e){}}this.pins=null;if(this.dropPin){try{this.dropPin.remove();}catch(e){}this.dropPin=null;}};
 /* a view showing a set of points from above (also used by the route overview) */
 TN.Nav.prototype.fitView=function(pts){
   const api=this.api;let a=[1e9,1e9],b=[-1e9,-1e9];for(const p of pts){a=[Math.min(a[0],p[0]),Math.min(a[1],p[1])];b=[Math.max(b[0],p[0]),Math.max(b[1],p[1])];}
@@ -271,15 +295,17 @@ TN.Nav.prototype.traffic=function(show){
 /* ---------- route ---------- */
 TN.Nav.prototype.fetchRoute=async function(from,to){
   if(TN.MBX){try{
-    const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60;':'';
-    const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+from[0].toFixed(6)+','+from[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+
+    const via=(this.stops||[]).map(p=>p.lng.toFixed(6)+','+p.lat.toFixed(6));
+    const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60'+';'.repeat(via.length+1):'';
+    const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+[from[0].toFixed(6)+','+from[1].toFixed(6)].concat(via,[to[0].toFixed(6)+','+to[1].toFixed(6)]).join(';')+
       '?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language=en'+brg+'&access_token='+TN.MBX;
     const r=await fetch(u);if(r.ok){const j=await r.json();if(j.routes&&j.routes[0]){j.routes[0].traffic=true;return j.routes[0];}}
   }catch(e){}}
   return this.fetchRouteFree(from,to);
 };
 TN.Nav.prototype.fetchRouteFree=async function(from,to){
-  const u='https://router.project-osrm.org/route/v1/driving/'+from[0].toFixed(6)+','+from[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+'?overview=full&geometries=geojson&steps=true';
+  const pts=[from].concat((this.stops||[]).map(p=>[p.lng,p.lat]),[to]);
+  const u='https://router.project-osrm.org/route/v1/driving/'+pts.map(p=>p[0].toFixed(6)+','+p[1].toFixed(6)).join(';')+'?overview=full&geometries=geojson&steps=true';
   const r=await fetch(u);if(!r.ok) throw new Error('route');const j=await r.json();
   if(!j.routes||!j.routes[0]) throw new Error('no route');return j.routes[0];
 };
@@ -322,9 +348,9 @@ TN.Nav.prototype.setRoute=function(rt){
     for(let i=0;i<pts.length-1;i++){const A=pts[i],B=pts[i+1];q.push([A[0]*0.75+B[0]*0.25,A[1]*0.75+B[1]*0.25],[A[0]*0.25+B[0]*0.75,A[1]*0.25+B[1]*0.75]);}
     q.push(pts[pts.length-1]);pts.length=0;for(const p of q) pts.push(p);}
   const cum=[0];for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
-  const steps=[];for(const lg of rt.legs) for(const s of lg.steps){const q=TN.toLocal(s.maneuver.location[0],s.maneuver.location[1]);
+  const steps=[];let legN=0;const legCount=rt.legs.length;for(const lg of rt.legs){legN++;for(const s of lg.steps){const q=TN.toLocal(s.maneuver.location[0],s.maneuver.location[1]);
     let bi=0,bd=1e18;for(let i=0;i<pts.length;i++){const d=(pts[i][0]-q[0])**2+(pts[i][1]-q[1])**2;if(d<bd){bd=d;bi=i;}}
-    steps.push({at:cum[bi],type:s.maneuver.type,mod:s.maneuver.modifier||'',exit:s.maneuver.exit,name:s.name||'',ref:s.ref||'',dest:s.destinations||'',exits:s.exits||'',lanes:(s.intersections&&s.intersections[0]&&s.intersections[0].lanes)||null});}
+    steps.push({at:cum[bi],type:s.maneuver.type,mod:s.maneuver.modifier||'',exit:s.maneuver.exit,name:s.name||'',ref:s.ref||'',dest:s.destinations||'',exits:s.exits||'',lanes:(s.intersections&&s.intersections[0]&&s.intersections[0].lanes)||null,stop:s.maneuver.type==='arrive'&&legN<legCount?legN:0});}}
   this.route={pts:pts,cum:cum,L:cum[cum.length-1],dur:rt.duration,dist:rt.distance,steps:steps,hy:null,traffic:!!rt.traffic};
   /* traffic per stretch (from the route's congestion levels), placed along the line by distance */
   {const cong=[];for(const lg of rt.legs||[]) if(lg.annotation&&lg.annotation.congestion) cong.push(...lg.annotation.congestion);
@@ -375,14 +401,16 @@ TN.Nav.prototype.heights=function(){};
 TN.Nav.prototype.draw=function(from){
   const R=this.route;if(!R) return;
   const S=this.api.scene;if(!S.three) return;
-  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-16});}
+  /* (lifted 0.22 m above the road with only a light "on top" setting: a strong one made it draw over the car's
+     lower body on bridges, so the car looked sunk) */
+  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});}
   const pos=[],idx=[],col=[],hw=1.3;let n=0;const tc=new THREE.Color();
   const a0=Math.max(0,from|0);
   let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
   this.fitRange(Math.max(0,a0-40),a1);this.drawVer=this.api.net.ver;
   for(let i=a0;i<=a1;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
-    const m=R.sm[i]||[0,0,0,0],y=m[3]+0.16,lo=m[0],cx=p[0]+m[1]-uz*lo,cz=p[1]+m[2]+ux*lo;
+    const m=R.sm[i]||[0,0,0,0],y=m[3]+0.22,lo=m[0],cx=p[0]+m[1]-uz*lo,cz=p[1]+m[2]+ux*lo;
     pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
     tc.set(TN.TRAFFIC_COL[R.cong?R.cong[i]:'unknown']||'#3b82f6');col.push(tc.r,tc.g,tc.b,tc.r,tc.g,tc.b);
     if(i>a0) idx.push(n-2,n-1,n+1,n-2,n+1,n);
@@ -434,8 +462,9 @@ TN.Nav.prototype.overview=function(){
   }catch(e){}
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
-  this.ov.innerHTML='<div><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+'</small></div><button class="go">Go</button><button class="cancel">Cancel</button>';
+  this.ov.innerHTML='<div><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+(this.stops.length?'<br>via '+this.stops.map(p=>TN.esc(p.name)).join(', '):'')+'</small></div><button class="go">Go</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button>';
   this.ov.querySelector('.go').onclick=()=>this.go();
+  this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
 };
 TN.Nav.prototype.go=function(){
@@ -448,7 +477,7 @@ TN.Nav.prototype.go=function(){
 };
 TN.Nav.prototype.end=function(why){
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
-  this.active=false;this.route=null;this.bird=0;document.body.classList.remove('tn-routing');
+  this.active=false;this.route=null;this.bird=0;document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);
@@ -517,7 +546,7 @@ TN.Nav.prototype.instr=function(s){
   let t,a=arrow;
   switch(s.type){
     case 'depart':t='Head '+(s.name?'on '+s.name:'out');break;
-    case 'arrive':t='Arrive at your destination';a='flag';break;
+    case 'arrive':t=s.stop?'Arrive at your stop'+(this.stops[s.stop-1]?' \u00b7 '+this.stops[s.stop-1].name:''):'Arrive at your destination';a='flag';break;
     case 'turn':case 'end of road':t='Turn '+(m||'');break;
     case 'fork':t='Keep '+(side||'straight');break;
     case 'merge':t='Merge'+(side?' '+side:'');break;
@@ -555,6 +584,8 @@ TN.Nav.prototype.update=function(dt){
   this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,drawn:this.drawn});}
   if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||this.api.net.ver!==this.drawVer) this.draw(Math.max(0,bi-4));
   if(this.rerouting) return;
+  /* a stop reached (passed its arrival point): dropped from the list, so a recalculation won't send you back */
+  {const st=R.steps.find(q=>q.stop===1);if(st&&s>st.at+30&&this.stops.length){this.stops.shift();this.stopPins();for(const q of R.steps) if(q.stop) q.stop--;}}
   /* next step ahead */
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
