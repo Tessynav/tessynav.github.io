@@ -39,7 +39,9 @@ TN.Season.prototype.density=function(cx,cz){
   return Math.max(0.3,Math.min(1,n/40));
 };
 TN.Season.prototype.update=function(dt,cx,cy,cz,fps){
-  if(!this.mode) return;this.build();if(!this.mesh) return;
+  if(!this.mode) return;
+  if(this.off){if(this.mesh) this.mesh.visible=false;return;}
+  if(this.mesh) this.mesh.visible=true;this.build();if(!this.mesh) return;
   /* fewer pieces if the screen slows down, none if it stays slow */
   if(fps){if(fps<45) this.slowT++;else this.slowT=Math.max(0,this.slowT-1);
     if(this.slowT>300){this.slowT=0;this.max=Math.floor(this.max/2);if(this.max<40){this.scene.three.scene.remove(this.mesh);this.mode=null;return;}}}

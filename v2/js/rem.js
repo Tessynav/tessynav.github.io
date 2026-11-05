@@ -131,6 +131,7 @@ TN.Rem.prototype.updateLabels=function(cx,cz){
   }
 };
 TN.Rem.prototype.update=function(dt,cx,cz){
+  if(!this.on){if(this.labels) for(const el of this.labels.values()) el.style.display='none';return;}
   this.stT-=dt;if(this.stT<=0&&this.scene.three&&this.net.rem&&this.net.rem.size){this.stT=3;try{this.findStations(cx,cz);}catch(e){}}
   try{this.updateLabels(cx,cz);}catch(e){}
   const net=this.net;

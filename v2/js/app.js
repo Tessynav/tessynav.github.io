@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=31;
+TN.APPBUILD=32;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -16,6 +16,9 @@ TN.APPBUILD=31;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
   const season=TN.Season?new TN.Season(scene,trees):null;
   const water=TN.Water?new TN.Water(scene):null;
+  /* the settings menu (gear button) */
+  const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,night:()=>night()}):null;
+  if(settings){try{settings.build();}catch(e){}}
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
   const brk={t:0,v:0,d:0,k:0,moved:0};
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
@@ -195,7 +198,9 @@ TN.APPBUILD=31;
   function night(){
     const c=map.getCenter(),alt=TN.sunAlt(new Date(),c.lat,c.lng);
     let nt=Math.min(1,Math.max(0,(6-alt)/12));
-    {const mm=typeof location!=='undefined'&&location.search.match(/[?&]night=([0-9.]+)/);if(mm) nt=Math.min(1,Math.max(0,parseFloat(mm[1])));}
+    const mm=typeof location!=='undefined'&&location.search.match(/[?&]night=([0-9.]+)/);
+    if(mm){nt=Math.min(1,Math.max(0,parseFloat(mm[1])));scene.extraDark=0;}
+    else if(TN.nightFrom){const nf=TN.nightFrom(nt);nt=nf.nt;scene.extraDark=nf.extra;}
     lastNt=nt;
     if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);if(rem) rem.setNight(nt);if(season) season.setNight(nt);if(water) water.setNight(nt);}
   }
@@ -203,7 +208,7 @@ TN.APPBUILD=31;
 
   /* ---------- main loop ---------- */
   try{window.TN_PROGRESS&&window.TN_PROGRESS(75,'Preparing the map…');}catch(e){}
-  map.on('load',()=>{scene.styleMap();ready=true;night();
+  map.on('load',()=>{scene.styleMap();ready=true;if(settings){try{settings.applyAll();}catch(e){}}night();
     try{window.TN_PROGRESS&&window.TN_PROGRESS(90,'Building the streets…');}catch(e){}
     try{map.once('idle',()=>{try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e){}});}catch(e){try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e2){}}
     /* opening animation: the city in glowing lines with the TessyNav name, then real colours */

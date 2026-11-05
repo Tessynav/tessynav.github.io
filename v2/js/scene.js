@@ -126,7 +126,7 @@ TN.Scene.prototype.update=function(lng,lat){
 TN.Scene.prototype.setNight=function(nt){
   this.night=nt;
   for(const k in this.mats) if(k!=='glow') this.tintMat(k,this.mats[k]);
-  this.glowOp=Math.max(0,Math.min(1,(nt-0.45)/0.35));   /* street lights only once it is really getting dark */if(this.mats.glow) this.mats.glow.opacity=this.glowOp;
+  this.glowOp=Math.max(0,Math.min(1,(nt-0.45)/0.35));   /* street lights only once it is really getting dark */if(this.mats.glow) this.mats.glow.opacity=this.lightsOff?0:this.glowOp;
   if(this.headMat) this.headMat.opacity=this.glowOp;   /* headlamps on the car */
   if(this.skyStars) this.skyStars.material.opacity=this.glowOp;
 };
@@ -316,7 +316,7 @@ TN.Scene.prototype.applyNight=function(nt){
       'fog-color':TN.mix('#dfe8ef','#1c2638',nt),'sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.85,'atmosphere-blend':0});
   }catch(e){}
   try{
-    this.map.setPaintProperty('tn-night','fill-opacity',0);
+    this.map.setPaintProperty('tn-night','fill-opacity',this.extraDark||0);   /* the 'darker' end of the night brightness setting */
     this.applyGround(nt);
     this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.farBuildingColor(nt));
   }catch(e){}

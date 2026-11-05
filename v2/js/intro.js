@@ -11,6 +11,7 @@ TN.Intro=function(scene,map){this.scene=scene;this.map=map;this.on=true;this.don
 TN.Intro.allowed=function(){
   try{
     if(/[?&]intro=0/.test(location.search)) return false;
+    if(TN.settings&&TN.settings.intro===false) return false;
     if(/[?&]r=\d/.test(location.search)) return false;          /* reload after an update */
     if(sessionStorage.getItem('tn2_target')) return false;
   }catch(e){}
