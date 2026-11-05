@@ -668,7 +668,8 @@ TN.Nav.prototype.update=function(dt){
   this.bar.querySelector('.eta').innerHTML='<b>'+arr.toTimeString().slice(0,5)+'</b>'+Math.max(1,Math.round(remain/60))+' min \u00b7 '+fmtDist(left);
   /* the destination (and stops) as a button: tap it to see and change the trip */
   {const db=this.bar.querySelector('.dst'),n=this.stops.length;
-   const txt=(this.dest?this.dest.name:'Trip')+(n?' \u00b7 '+n+' stop'+(n>1?'s':''):'');
+   /* where you're heading next (the first line of the trip list); without stops, the destination */
+   const txt=n?'Next: '+this.stops[0].name+' \u00b7 '+(n+1)+' places':(this.dest?this.dest.name:'Trip');
    if(db.dataset.t!==txt){db.dataset.t=txt;db.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:6px"><path d="M4 20l1-5L16 4l4 4L9 19z M14 6l4 4" stroke="#fcd34d" stroke-width="2.4" fill="none" stroke-linejoin="round"/></svg>'+TN.esc(txt);}}
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
   /* arrived */
