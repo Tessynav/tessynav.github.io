@@ -31,7 +31,7 @@ TN.Settings.prototype.apply=function(k){
       if(!s.rem){for(const t of R.trains) R.free(t);R.trains=[];}}
     if(k==='lights'){sc.lightsOff=!s.lights;sc.setNight(sc.night||0);}
     if(k==='cut'){sc.cutOn=!!s.cut;}
-    if(k==='record'){const b=document.getElementById('rec');if(b) b.style.display=s.record?'':'none';}
+    if(k==='record'){for(const id of ['rec','trips']){const b=document.getElementById(id);if(b) b.style.display=s.record?'':'none';}}
     if(k==='time'||k==='nightLevel'){if(m.night) m.night();}
   }catch(e){}
 };
@@ -54,7 +54,7 @@ TN.Settings.prototype.build=function(){
     tog('lights','Street light glow','At night')+tog('rem','REM trains and labels')+tog('cut','See-through around Tessy','Fade what hides the car')+
     '<div class="h">TIME OF DAY</div><div class="r"><div>Light</div><div class="seg" data-k="time"><span data-v="auto">Auto</span><span data-v="day">Day</span><span data-v="night">Night</span></div></div>'+
     '<div class="r" style="display:block"><div>Night brightness</div><input type="range" min="0" max="100" step="1" data-k="nightLevel" value="'+Math.round(this.s.nightLevel*100)+'"><div class="lbls"><span>Softer</span><span>Darker</span></div></div>'+
-    '<div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record button','For test drives')+
+    '<div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives')+
     '<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>';
   const seg=p.querySelector('.seg');const mark=()=>seg.querySelectorAll('span').forEach(x=>x.classList.toggle('on',x.dataset.v===this.s.time));mark();
   seg.querySelectorAll('span').forEach(x=>x.onclick=()=>{this.set('time',x.dataset.v);mark();});

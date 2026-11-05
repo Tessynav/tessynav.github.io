@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=40;
+TN.APPBUILD=41;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -140,9 +140,37 @@ TN.APPBUILD=40;
   };
   async function uploadTrip(trip){
     panel('Encrypting and uploading…',[]);
-    try{const name=await TN.up.upload(trip);panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>Send this name to Claude.</small>',[['Close',hide]]);}
+    try{const name=await TN.up.upload(trip);
+      /* remember it in this car's list of recordings (Trips button) */
+      try{const L=JSON.parse(localStorage.getItem('tn2_trips')||'[]');L.unshift({n:name,t:Date.now(),d:Math.round((trip.dur||0)/60000)});localStorage.setItem('tn2_trips',JSON.stringify(L.slice(0,40)));}catch(e){}
+panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>Send this name to Claude.</small>',[['Close',hide]]);}
     catch(e){panel('Upload failed:<br><small>'+String(e.message||e)+'</small>',[['Try again',()=>uploadTrip(trip)],['Close',hide]]);}
   }
+  /* ---------- Trips: the list of recordings ---------- */
+  function tripLabel(n){const m=n.match(/trip-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/);if(!m) return '';
+    const d=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]);return d.toLocaleDateString('en-CA',{month:'short',day:'numeric'})+' \u00b7 '+m[4]+':'+m[5];}
+  function showTrip(n){
+    panel('Trip name:<br><b style="font-size:22px;user-select:all">'+n+'</b><br><small>Send this name to Claude.</small>',
+      [['Copy',()=>{try{navigator.clipboard.writeText(n).then(()=>panel('Copied:<br><b>'+n+'</b>',[['Close',hide]]),()=>{});}catch(e){}}],['Back',showTrips],['Close',hide]]);
+  }
+  async function showTrips(){
+    let L=[];try{L=JSON.parse(localStorage.getItem('tn2_trips')||'[]');}catch(e){}
+    const mine=new Set(L.map(x=>x.n));
+    const render=(more)=>{
+      const rows=L.map(x=>({n:x.n,sub:tripLabel(x.n)+(x.d?' \u00b7 '+x.d+' min':'')+' \u00b7 this car'})).concat((more||[]).filter(n=>!mine.has(n)).map(n=>({n:n,sub:tripLabel(n)})));
+      if(!rows.length){panel('No recordings yet.<br><small>Use Record on a drive, then they show up here.</small>',[['Close',hide]]);return;}
+      panel('<b>Recordings</b><div id="tn-trips" style="max-height:50vh;overflow:auto;margin-top:10px;text-align:left">'+
+        rows.slice(0,30).map((r,i)=>'<div data-i="'+i+'" style="padding:12px 10px;border-radius:10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.08)">'+r.n+'<br><small style="color:#9fb3c8">'+r.sub+'</small></div>').join('')+'</div>',[['Close',hide]]);
+      document.querySelectorAll('#tn-trips [data-i]').forEach(el=>el.onclick=()=>showTrip(rows[+el.dataset.i].n));
+    };
+    render(null);
+    /* also the latest ones in the trips repo (recordings from other devices) */
+    try{const tok=TN.up.get('token'),h={'Accept':'application/vnd.github+json'};if(tok) h.Authorization='Bearer '+tok;
+      const r=await fetch('https://api.github.com/repos/Tessynav/tessynav-trips/contents/trips?t='+Date.now(),{headers:h,cache:'no-store'});
+      if(r.ok){const j=await r.json();const names=j.map(f=>f.name.replace(/\.json$/,'')).filter(n=>/^trip-/.test(n)).sort().reverse().slice(0,30);
+        if($('tn-trips')) render(names);}}catch(e){}
+  }
+  if($('trips')) $('trips').onclick=showTrips;
   const saved=rec.saved();
   if(saved&&saved.g&&saved.g.length>50) setTimeout(()=>panel('A recording was saved before the app closed ('+Math.round((saved.dur||0)/60000)+' min).',
     [['Upload it',()=>{try{localStorage.removeItem('tn2_rec');}catch(e){}uploadTrip(saved);}],['Delete',()=>{try{localStorage.removeItem('tn2_rec');}catch(e){}hide();}]]),1500);
