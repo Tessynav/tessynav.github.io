@@ -4,7 +4,8 @@
    - houses and small buildings get a pitched (hip) roof; larger buildings a flat roof with a low parapet
    - colours by type: brick for houses and plexes, concrete/beige for mid-rise, glassy grey-blue for towers
    - windows drawn by a small graphics program (no images to download), in rows and floors
-   - at night about a third of the windows light up warm yellow (always the same ones per building)
+   - at night about a third of the windows light up (more in office towers), in a mix of warm yellow, soft white,
+     cool white and dim orange, each at its own brightness (always the same ones per building)
    Built to stay light: each area is ONE drawing job, built a few hundred buildings per frame, kept while near.
    ?buildings=0 in the address switches the detailed buildings off. Nothing here touches the car or the roads. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
@@ -34,9 +35,16 @@ TN.Buildings.prototype.material=function(){
       '  if(vUv.z<0.0){gl_FragColor=vec4(wall,al);return;}',
       '  vec2 cell=vec2(floor(vUv.x/3.2),floor(vUv.y/3.0));vec2 f=vec2(fract(vUv.x/3.2),fract(vUv.y/3.0));',
       '  float win=step(0.22,f.x)*step(f.x,0.78)*step(0.28,f.y)*step(f.y,0.80)*step(1.0,vUv.y);',
-      '  float lit=step(hh(cell+vec2(vUv.z,vUv.z*1.7)),0.33);',
-      '  vec3 day=vec3(0.30,0.37,0.45);vec3 dark=vec3(0.07,0.08,0.11);vec3 warm=vec3(1.0,0.80,0.45);',
-      '  vec3 wc=mix(day,mix(dark,warm,lit),night);',
+      /* night windows: homes mostly warm yellow with soft white, some cool white and a few dim orange; offices (tall
+         buildings) more lit windows, whiter and cooler; each window its own brightness. Always the same per window. */
+      '  float off=step(999.5,vUv.z);float sd=mod(vUv.z,1000.0);',
+      '  float lit=step(hh(cell+vec2(sd,sd*1.7)),mix(0.33,0.55,off));',
+      '  float r=hh(cell*1.37+vec2(sd*0.31,sd*2.3));',
+      '  vec3 warm=vec3(1.0,0.77,0.36);vec3 soft=vec3(1.0,0.93,0.78);vec3 cool=vec3(0.84,0.90,1.0);vec3 dimo=vec3(0.89,0.55,0.25);',
+      '  vec3 lc=off>0.5?(r<0.35?soft:(r<0.75?cool:(r<0.92?warm:dimo))):(r<0.55?warm:(r<0.80?soft:(r<0.92?cool:dimo)));',
+      '  lc*=0.7+0.3*hh(cell+vec2(sd*3.1,5.0));',
+      '  vec3 day=vec3(0.30,0.37,0.45);vec3 dark=vec3(0.07,0.08,0.11);',
+      '  vec3 wc=mix(day,mix(dark,lc,lit),night);',
       '  gl_FragColor=vec4(mix(wall,wc,win),al);}'].join('\n'),transparent:true
   });
   return this.mat;
@@ -154,7 +162,7 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   let run=0;
   for(let i=0;i<n;i++){
     const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
-    quadWall(a,c,bot,top,run,len,seed,col);run+=len;
+    quadWall(a,c,bot,top,run,len,seed+(top-bot>=25?1000:0),col);run+=len;   /* (+1000: an office-height building) */
   }
   /* pitched roof only for a whole small house in one piece (a piece of a bigger building gets the flat roof) */
   const pitched=b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1;
