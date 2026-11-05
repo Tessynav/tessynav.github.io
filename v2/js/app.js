@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=32;
+TN.APPBUILD=33;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -73,11 +73,21 @@ TN.APPBUILD=32;
     if(c.accuracy<100){try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
     wantPacks(c.longitude,c.latitude);
   }
-  $('btn').onclick=()=>{
+  function startFollow(){
     follow=true;userZoom=0;$('btn').textContent='Recenter';
-    if(watchId===null) watchId=navigator.geolocation.watchPosition(onPos,()=>{$('status').textContent='Location not available';},
-      {enableHighAccuracy:true,maximumAge:0,timeout:15000});
-  };
+    if(watchId===null) watchId=navigator.geolocation.watchPosition(p=>{try{localStorage.setItem('tn2_gpsok','1');}catch(e){}onPos(p);},
+      ()=>{$('status').textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  }
+  $('btn').onclick=startFollow;
+  /* start following Tessy by itself when location is already allowed (no Start tap needed);
+     the first time on a new device, the Start button asks for permission as before */
+  (function autoStart(){
+    let ok=false;try{ok=localStorage.getItem('tn2_gpsok')==='1';}catch(e){}
+    const go=()=>{if(watchId===null){$('status').textContent='Finding Tessy…';startFollow();}};
+    if(navigator.permissions&&navigator.permissions.query){
+      navigator.permissions.query({name:'geolocation'}).then(r=>{if(r.state==='granted'||(ok&&r.state!=='denied')) go();}).catch(()=>{if(ok) go();});
+    }else if(ok) go();
+  })();
   /* using the screen while following:
      - pinch / zoom buttons / scroll: your zoom is kept as an offset, and the map keeps following the car
      - dragging, rotating or tilting by hand: following pauses so you can look around; Recenter brings it back */
