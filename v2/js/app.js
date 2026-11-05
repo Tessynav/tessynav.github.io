@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=49;
+TN.APPBUILD=52;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -356,7 +356,9 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
        if(dX==null||Math.hypot(car.x-dX,car.z-dZ)>25){dX=car.x;dZ=car.z;dH=car.hd;dV=vT;}
        const hr=dH*Math.PI/180,sx=Math.sin(hr),sz=-Math.cos(hr);
        const ex=car.x-dX,ez=car.z-dZ,along=ex*sx+ez*sz,dist=Math.hypot(ex,ez);
-       if(vT>0.4||dist>1.5){
+       /* stopped: ease straight into place (settling between the lines of a parking space, small corrections) */
+       if(vT<=0.4&&dist<6){const k=Math.min(1,dt*1.5);dX+=ex*k;dZ+=ez*k;dH=(dH+(((car.hd-dH+540)%360)-180)*k+360)%360;}
+       else if(vT>0.4||dist>1.5){
          /* steer toward a point ahead of where the car should be */
          const L=Math.max(3,vT*0.7),ch=car.hd*Math.PI/180;
          const tx=car.x+Math.sin(ch)*L,tz=car.z-Math.cos(ch)*L;
@@ -382,9 +384,11 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       const ll=TN.fromLocal(car.x,car.z);
       if(follow){
         const kmh=(track.last?track.last.v:0)*3.6;
-        /* the camera turns with the car: tighter at speed, gentle when slow */
+        /* heading-up, like Tesla's map: the car always points straight up the screen and in a turn the whole map
+           turns around it (the camera is locked to the car's smooth on-screen direction, with only a very light
+           smoothing against tiny jitters) */
         if(camHd===null) camHd=car.hd;
-        const rate=kmh<15?1.6:kmh<40?1.6+(kmh-15)/25*2.4:4;
+        const rate=12;
         camHd=(camHd+TN.angDiff2(car.hd,camHd)*Math.min(1,dt*rate)+360)%360;
         /* Codriver-style view: higher and further back (camera about 40 m up), so the car is always well above
            any bridge deck and the road ahead is visible. A little more zoomed out at speed. */
@@ -402,7 +406,13 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
          /* camera height at a zoom is c/2^zoom: keep it at least 8 m above the car */
          /* on raised roads keep the camera 8 m above the car (clear of any deck); on the ground 4.5 m is enough */
          zMaxNow=Math.log2(c/(y>0.5?y+8:3.5));if(zoom>zMaxNow) zoom=zMaxNow;}
-        gZoom+=(zoom-gZoom)*Math.min(1,dt*1.2);gPitch+=(pitch-gPitch)*Math.min(1,dt*2.5);
+        /* with a route: tilted a little more, so the sky shows below the navigation bar;
+           before exits, forks and roundabouts: the bird's-eye view (higher and more from above) */
+        let pitchT=pitch,zoomT=zoom;
+        if(nav&&nav.active){pitchT=Math.min(74,pitch+5);const b=nav.bird||0;if(b>0.01){pitchT=pitchT*(1-b)+40*b;zoomT=zoom-1.4*b;}}
+        if(pitchT!==pitch){const Hc=map.getContainer().clientHeight||600,c2=1.5*Hc*Math.cos(pitchT*TN.R)*40075016.7*Math.cos(ll[1]*TN.R)/512;
+          zMaxNow=Math.log2(c2/(y>0.5?y+8:3.5));if(zoomT>zMaxNow) zoomT=zMaxNow;}
+        gZoom+=(zoomT-gZoom)*Math.min(1,dt*1.2);gPitch+=(pitchT-gPitch)*Math.min(1,dt*2.5);
         camY+=(y-camY)*Math.min(1,dt*4);
         const H=map.getContainer().clientHeight||800;
         /* the map can only aim at the ground. On a raised road the car is above the ground point, so it showed up
