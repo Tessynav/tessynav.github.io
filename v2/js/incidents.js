@@ -77,8 +77,8 @@ TN.Incidents.prototype.build=function(){
   const st=document.createElement('style');
   st.textContent='.tn-inc{width:34px;height:34px;border-radius:50%;background:#fff;border:3px solid #e5352b;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}'+
     '.tn-inc.jam{border-color:#f28c1c}.tn-inc.jam.stand{border-color:#b91c1c}.tn-inc.works,.tn-inc.lane{border-color:#f28c1c}.tn-inc.ice,.tn-inc.fog,.tn-inc.flood,.tn-inc.rain,.tn-inc.wind{border-color:#3b82f6}'+
-    '#tn-alert{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:14px;padding:10px 18px 10px 12px;max-width:min(92vw,620px);z-index:8}'+
-    '#tn-alert b{font-size:22px;display:block}#tn-alert small{color:#9fb3c8;font-size:14px;display:block;margin-top:2px}#tn-alert .joke{color:#fcd34d}'+
+    '#tn-alert{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:10px;padding:6px 14px 6px 8px;max-width:min(80vw,520px);z-index:8}'+
+    '#tn-alert b{font-size:19px;display:block}#tn-alert small{color:#9fb3c8;font-size:13px;display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-alert .joke{color:#fcd34d}'+
     'body.tn-routing #tn-alert{bottom:96px}'+
     '#tn-alert .v{border:0;border-radius:10px;padding:10px 14px;font:600 15px system-ui,sans-serif;cursor:pointer;margin-left:6px}#tn-alert .up{background:#1fa596;color:#fff}#tn-alert .down{background:#3a4352;color:#e8f1fa}'+
     '.tn-inc.user{border-style:dashed}'+
@@ -122,7 +122,11 @@ TN.Incidents.prototype.nearest=function(max){
   return this.list.slice().sort((a,b)=>Math.hypot(a.pts[0][0]-c.x,a.pts[0][1]-c.z)-Math.hypot(b.pts[0][0]-c.x,b.pts[0][1]-c.z)).slice(0,max);};
 TN.Incidents.prototype.drawMarkers=function(){
   if(typeof maplibregl==='undefined') return;
-  const shown=this.nearest(40).filter(i=>i.kind!=='jam'||i.sev>=2),keep=new Set(shown.map(i=>i.id));
+  const c=this.api.getCar&&this.api.getCar(),follow=this.api.following?this.api.following():true;
+  const vis=i=>{if(i.kind==='jam'&&i.sev<2) return false;if(!c||c.x==null) return true;
+    const dx=i.pts[0][0]-c.x,dz=i.pts[0][1]-c.z,d=Math.hypot(dx,dz);if(d>4000) return false;
+    if(follow&&d>150){const h=(c.hd||0)*Math.PI/180;if((dx*Math.sin(h)-dz*Math.cos(h))/d<0.2) return false;}return true;};
+  const shown=this.nearest(40).filter(vis),keep=new Set(shown.map(i=>i.id));
   for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
   for(const it of shown){if(this.markers.has(it.id)) continue;
@@ -132,10 +136,11 @@ TN.Incidents.prototype.drawMarkers=function(){
 };
 TN.Incidents.prototype.clear=function(){for(const m of this.markers.values()){try{m.remove();}catch(e){}}this.markers.clear();this.hide();};
 /* distance from the car to an incident, along the route if there is one, otherwise straight ahead */
-TN.Incidents.prototype.ahead=function(car){
+TN.Incidents.prototype.ahead=function(car,moderate){
   const nav=this.api.nav,R=nav&&nav.active?nav.route:null;let best=null;
   for(const it of this.list){
     if(it.mine) continue;   /* (your own reports: on the map, but no alert) */
+    if((it.kind==='jam'&&it.sev<2)!==!!moderate) continue;   /* (moderate traffic is checked on its own: said, not shown) */
     if(it.kind==='jam'&&it.pts.some(p=>Math.hypot(p[0]-car.x,p[1]-car.z)<40)) continue;   /* (already in that jam) */
     let d=null;
     if(R){/* on the route: the incident is within 25 m of the route line, ahead of the car */
@@ -163,7 +168,7 @@ TN.Incidents.prototype.show=function(it,d,tapped){
   const detail=[jamInfo,it.kind==='jam'?'':it.desc,it.road,it.from&&it.to?it.from+' \u2192 '+it.to:it.from].filter(Boolean).join(' \u00b7 ');
   const who=it.user?'Reported by a driver \u00b7 '+Math.max(1,Math.round((Date.now()-it.t)/60000))+' min ago'+(it.up?' \u00b7 '+it.up+' confirmed':''):'';
   const canVote=it.user&&!it.mine&&!this.reports.voted.has(it.id)&&(d==null||d<500);
-  this.card.innerHTML=(this.fun()?TN.ROCCO(it.kind,64,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc((it.title||TN.ROCCO_TITLE[it.kind])+dist)+'</b>'+
+  this.card.innerHTML=(this.fun()?TN.ROCCO(it.kind,50,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc((it.title||TN.ROCCO_TITLE[it.kind])+dist)+'</b>'+
     (detail?'<small>'+TN.esc(detail)+'</small>':'')+(who?'<small>'+TN.esc(who)+'</small>':'')+(this.fun()?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>'+
     (canVote?'<button class="v up">Still there</button><button class="v down">Gone</button>':'');
   if(canVote){this.card.querySelector('.up').onclick=()=>{this.reports.vote(it.id,true);this.toast('Thanks! Rocco updated it.');this.hide();};
@@ -194,8 +199,20 @@ TN.Incidents.prototype.update=function(car,lng,lat){
   if(this.tapped&&now-this.shownAt<8000) return;
   /* the trip list or the route overview is open: alerts wait until it's closed */
   {const nv=this.api.nav;if(nv&&nv.ov&&nv.ov.style.display!=='none'){if(this.card.style.display!=='none') this.hide();return;}}
-  const a=this.ahead(car);
-  if(a) this.show(a.it,a.d,false);else if(this.card&&this.card.style.display!=='none') this.hide();
+  const a=this.ahead(car),am=this.ahead(car,true);
+  const life=this.life||(this.life=new Map());
+  let showIt=false;
+  if(a){
+    const L=life.get(a.it.id)||{first:0,near:0};
+    if(!L.first){L.first=now;}
+    if(a.d<250&&!L.near) L.near=now;
+    life.set(a.it.id,L);
+    showIt=now-L.first<8000||(L.near&&now-L.near<6000);}
+  if(am&&TN.voice&&!(this.spoken||(this.spoken=new Set())).has(am.it.id)){this.spoken.add(am.it.id);
+    TN.voice.say('Moderate traffic ahead, '+(am.d<950?Math.round(am.d/50)*50+' metres':(am.d/1000).toFixed(1)+' kilometres'));}
+  if(showIt) this.show(a.it,a.d,false);else if(this.card&&this.card.style.display!=='none') this.hide();
+  /* the map badges: every 2 s, the ones within 4 km (and ahead of the car while following it) */
+  if(now-(this.mkT||0)>2000){this.mkT=now;this.drawMarkers();}
 };
 
 /* ---------- driver reports (Firebase over the web: anonymous sign-in + the reports database) ---------- */
