@@ -244,6 +244,28 @@ TN.Track.prototype.frame=function(now,dt){
   const age=Math.min(1,Math.max(0,(now-L.t)/1000));
   const snapped=!!h&&(h.side!=null?h.side:h.r.d)<=TN.width(h.w)/2+6;
   let car=this.car;
+  /* turning at an intersection: when the car is near a junction and its real direction (filtered GPS) differs
+     from the street's by more than 15 degrees, follow the actual path through the corner instead of the street;
+     back on the new street, it settles onto it with the usual glide */
+  let turning=false;
+  if(snapped&&L.v>1.5&&this.hd!=null){
+    const w0=h.w,dEnd=h.dir>0?w0.L-h.r.s:h.r.s,dBack=h.dir>0?h.r.s:w0.L-h.r.s;
+    const deg=k=>(this.net.keys.get(k)||[]).length;
+    const endK=h.dir>0?w0.keys[w0.keys.length-1]:w0.keys[0],backK=h.dir>0?w0.keys[0]:w0.keys[w0.keys.length-1];
+    const nearJ=(dEnd<30&&deg(endK)>1)||(dBack<30&&deg(backK)>1);
+    const off=TN.angDiff(this.hd,h.hd);
+    turning=nearJ&&(off>15||(this.turnMode&&off>8));
+  }
+  this.turnMode=turning;
+  if(turning){
+    const hd=this.hd;
+    const tx=L.x+Math.sin(hd*TN.R)*L.v*age,tz=L.z-Math.cos(hd*TN.R)*L.v*age;
+    if(!car||car.x==null||Math.hypot(car.x-tx,car.z-tz)>30) car={x:tx,z:tz,hd:hd,v:L.v,y:car?car.y:0};
+    else car={x:car.x,z:car.z,hd:car.hd,v:L.v,y:car.y||0};
+    const k=1-Math.exp(-dt*3);car.x+=(tx-car.x)*k;car.z+=(tz-car.z)*k;
+    car.hd=(car.hd+TN.angDiff2(hd,car.hd)*Math.min(1,dt*4)+360)%360;
+    car.w=null;car.snapped=true;car.turning=true;car.cls=h.w.cls;this.car=car;return car;
+  }
   if(!snapped){
     /* off the road network (parking lot, missing road): follow the filtered GPS smoothly */
     const hd=this.hd!=null?this.hd:(car?car.hd:0);
