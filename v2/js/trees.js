@@ -149,6 +149,7 @@ TN.Trees.prototype.update=function(lng,lat,fps){
   const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),R=this.range;
   for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>R+1||Math.abs(y-cy)>R+1) this.free(k);}
   const now=performance.now();if(now-this.lastBuild<300) return;
+  if(TN.workLeft&&TN.workLeft()<4) return;   /* only with this frame's budget left */
   let best=null;
   for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
     const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k);

@@ -214,7 +214,8 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   if(this.job){
     const t0=performance.now(),J=this.job;
     this.net&&(this.net._sg=J.sg);
-    while(J.i<J.list.length&&performance.now()-t0<3){this.addBuilding(J.G,J.list[J.i++],J);}
+    const bud=Math.min(3,TN.workLeft?TN.workLeft():3);if(bud<0.5) return;
+    while(J.i<J.list.length&&performance.now()-t0<bud){this.addBuilding(J.G,J.list[J.i++],J);}
     this.net&&(this.net._sg=null);
     if(J.i>=J.list.length){
       const mesh=this.finish(J.G);if(mesh) this.scene.three.scene.add(mesh);
@@ -224,6 +225,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     return;
   }
   if(now-(this.lastStart||0)<400) return;
+  if(TN.workLeft&&TN.workLeft()<4) return;   /* starting a new area is the heavy part: only with budget left */
   let best=null;
   for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
     const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),d=dx*dx+dy*dy;

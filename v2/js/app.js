@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=47;
+TN.APPBUILD=49;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -335,8 +335,14 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     const pnow=performance.now(),dt=Math.min(0.25,(pnow-last)/1000);worst=Math.max(worst,pnow-last);last=pnow;
     fpsN++;if(pnow-fpsT>=1000){rec.second(fpsN,worst);lastFps=fpsN;fpsN=0;worst=0;fpsT=pnow;}
     if(!ready) return;
-    /* a few milliseconds per frame for the road network rebuild, so it never freezes the view */
-    if(net.job){const tn=performance.now();net.step(6);TN.prof('network',performance.now()-tn);}
+    /* one shared budget for background work each frame (about 7 ms): the road network first, then roads,
+       buildings and trees with what is left; whatever doesn't fit waits for the next frame (no stutter) */
+    TN.frameT0=pnow;
+    /* back after a pause (the browser was hidden, e.g. by the backup camera): the car jumps straight to where it
+       is now, instead of sweeping across the map from where it was */
+    if(dt>=0.25&&pnow-(frameBody.prev||pnow)>3000){dX=null;dispHd=null;camHd=null;if(nav){nav.ps=null;nav.relT=0;nav.offT=0;}track.hdRate=0;}
+    frameBody.prev=pnow;
+    if(net.job){const tn=performance.now();net.step(Math.max(2,Math.min(6,TN.workLeft())));TN.prof('network',performance.now()-tn);}
     const t0=performance.now();
     let car=track.frame(Date.now(),dt);
     TN.prof('track',performance.now()-t0);
@@ -354,7 +360,10 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
          /* steer toward a point ahead of where the car should be */
          const L=Math.max(3,vT*0.7),ch=car.hd*Math.PI/180;
          const tx=car.x+Math.sin(ch)*L,tz=car.z-Math.cos(ch)*L;
-         const want=(Math.atan2(tx-dX,-(tz-dZ))*180/Math.PI+360)%360;
+         let want=(Math.atan2(tx-dX,-(tz-dZ))*180/Math.PI+360)%360;
+         /* steer only within 45 degrees of the road's direction: if the point to aim at ends up behind, the car
+            slows down and lets it catch up instead of turning around */
+         {const o=((want-car.hd+540)%360)-180;if(Math.abs(o)>45) want=(car.hd+Math.sign(o)*45+360)%360;}
          /* turning limit: a real car's turning circle (about 4.5 m), gentler at speed */
          const maxYaw=Math.max(15,Math.min(110,(Math.max(vT,1)*180/Math.PI)/4.5))*dt;
          dH=(dH+Math.max(-maxYaw,Math.min(maxYaw,(((want-dH+540)%360)-180)))+360)%360;

@@ -235,6 +235,7 @@ TN.Track.prototype.pointOn=function(w,s,lat,dir){
 };
 TN.Track.prototype.frame=function(now,dt){
   const L=this.last;if(!L) return null;
+  /* (a quiet GPS, e.g. in a tunnel, keeps the car moving along its road at the last speed, as before) */
   /* parked in a parking space: after 2 s stopped, the car settles between the painted lines of the nearest space */
   if(L.v<0.5){if(!this.stopT) this.stopT=now;}else{this.stopT=0;this.stall=null;}
   if(this.stopT&&now-this.stopT>2000&&this.net.stallNear){

@@ -16,6 +16,8 @@ TN.OMS=1/(2*Math.PI*6371008.8*Math.cos(TN.ORIGIN[1]*Math.PI/180));
 TN.toLocal=(lng,lat)=>[(TN.mercX(lng)-TN.OMX)/TN.OMS,(TN.mercY(lat)-TN.OMY)/TN.OMS];
 TN.fromLocal=(x,z)=>{const mx=TN.OMX+x*TN.OMS,my=TN.OMY+z*TN.OMS;return [mx*360-180,360/Math.PI*Math.atan(Math.exp((180-my*360)*Math.PI/180))-90];};
 TN.CELL=0.005;
+/* background work left in this frame's shared budget (milliseconds) */
+TN.frameT0=0;TN.WORK_MS=7;TN.workLeft=()=>TN.frameT0?Math.max(0,TN.WORK_MS-(performance.now()-TN.frameT0)):5;
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
@@ -120,12 +122,12 @@ TN.Net.prototype.rebuildJob=function*(){
       for(let gz=Math.floor(w.bb[2]/100);gz<=Math.floor(w.bb[3]/100);gz++){
         const k=gx*1e6+gz;let l=idx.get(k);if(!l){l=[];idx.set(k,l);}l.push(w);
       }
-    if(++n%250===0) yield;
+    if(++n%60===0) yield;
   }
   this.keys=keys;this.idx=idx;
   yield* this.heights();
   for(const w of this.ways.values()){w.br=w._br;w.H=w._H||0;w.W=w._W;w.hs=w._hs?w._hs.slice():w._hs;w.cb=null;}
-  this.clearance();
+  yield* this.clearanceJob();
   this.ver++;
 };
 TN.Net.prototype.rebuildIndex=function(){const j=this.rebuildJob();while(!j.next().done);};
@@ -344,10 +346,13 @@ TN.HMODE=(typeof location!=='undefined'&&/[?&]heights=cd/.test(location.search))
 TN.Net.prototype.heights=function*(){if(TN.HMODE==='cd'){yield* this.heightsCD();return;}yield* this.heightsOld();};
 /* clean crossings: wherever a raised road passes less than 5 m above another road, the upper road gets a gentle
    local rise (and a ramp underneath can dip a little), so nothing clips through the road below */
-TN.Net.prototype.clearance=function(){
+TN.Net.prototype.clearance=function(){const j=this.clearanceJob();while(!j.next().done);};
+TN.Net.prototype.clearanceJob=function*(){
   const NEED=5.0,Hh=(w,i)=>w.hs?w.hs[i]:(w.br?w.H:0),hAt=(w,i,u)=>w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*u:(w.br?w.H:0);
   const found=new Map();
+  let cnt=0;
   for(const w of this.ways.values()){
+    if(++cnt%60===0) yield;
     if(w.tun||!(w.hs||(w.br&&w.H>0))) continue;
     const mine=new Set(w.keys);
     for(let i=0;i<w.pts.length;i++){
@@ -455,7 +460,9 @@ TN.Net.prototype.heightsOld=function*(){
      lies on top of that road it stays at that road's height, then rises at most 6% */
   /* (also any narrower road that splits from / merges into a wider one: the main road wins) */
   const rank=v=>(v.ramp?0:1000)+TN.width(v);
+  let n2b=0;
   for(const w of ways){
+    if(++n2b%60===0) yield;   /* pause regularly: no long frame */
     if(w._br||!w._hs) continue;
     const P=w.pts,n=P.length,cap=new Array(n).fill(Infinity);let any=false;
     for(let j=0;j<n;j++){
@@ -528,7 +535,7 @@ TN.Net.prototype.heightsOld=function*(){
         if(bestH>cur+0.05){if(!w._hs) w._hs=w.cum.map(()=>0);w._hs[j]=bestH;changed=true;}
       }
     }
-    for(const w of gnd) if(w._hs) TN.slope(w);
+    {let nv=0;for(const w of gnd){if(++nv%80===0) yield;if(w._hs) TN.slope(w);}}
     if(!changed) break;
   }
   /* 4. road pieces that meet at a point have the same height there (no steps between pieces); repeated until
@@ -550,8 +557,8 @@ TN.Net.prototype.heightsOld=function*(){
     }
     yield;
     /* no dips between two raised parts less than 200 m apart, also when the dip spans several road pieces */
-    for(const w of gnd) if(w._hs&&this.valleyAcross(w)) changed=true;
-    for(const w of gnd) if(w._hs) TN.slope(w);
+    {let nv=0;for(const w of gnd){if(++nv%60===0) yield;if(w._hs&&this.valleyAcross(w)) changed=true;}}
+    {let nv=0;for(const w of gnd){if(++nv%80===0) yield;if(w._hs) TN.slope(w);}}
     if(!changed) break;
   }
   /* a bridge whose ends meet roads that ended up higher than the bridge (it sits on a climb): it slopes with them */

@@ -99,8 +99,9 @@ TN.Scene.prototype.update=function(lng,lat){
   const t0=performance.now();
   /* keep building the current area, a few milliseconds per frame (no stutter) */
   if(this.job){
+    const bud=Math.min(5,TN.workLeft?TN.workLeft():5);if(bud<0.5) return;   /* this frame's budget is used up */
     let r;net._sg=this.job.sg||null;
-    do{r=this.job.g.next();}while(!r.done&&performance.now()-t0<5);
+    do{r=this.job.g.next();}while(!r.done&&performance.now()-t0<bud);
     net._sg=null;
     if(r.done){
       const J=this.job;this.job=null;
