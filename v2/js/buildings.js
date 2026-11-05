@@ -1,5 +1,6 @@
 /* TessyNav v2 — buildings.js
-   Detailed buildings near the car (about 1 km around), on top of the map's plain buildings further away:
+   Detailed buildings around the car (about 1.1 km each way; steps back to 600 m if the screen gets slow), on top of the map's
+   plain buildings further away. A building cut in pieces by the map tiles is styled as the whole building:
    - houses and small buildings get a pitched (hip) roof; larger buildings a flat roof with a low parapet
    - colours by type: brick for houses and plexes, concrete/beige for mid-rise, glassy grey-blue for towers
    - windows drawn by a small graphics program (no images to download), in rows and floors
@@ -10,7 +11,7 @@ var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.Buildings=function(scene,net){
   this.scene=scene;this.net=net||null;this.on=!(typeof location!=='undefined'&&/[?&]buildings=0/.test(location.search));
-  this.cells=new Map();this.job=null;this.mat=null;this.night=0;this.slowT=0;this.range=1;
+  this.cells=new Map();this.job=null;this.mat=null;this.night=0;this.slowT=0;this.range=2;
 };
 TN.Buildings.prototype.material=function(){
   if(this.mat) return this.mat;
@@ -47,6 +48,14 @@ TN.Buildings.prototype.collect=function(ck){
   const [cx,cy]=ck.split(',').map(Number);
   const out=[],seen=new Set();
   let fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});}catch(e){return [];}
+  /* a building on a tile edge arrives in pieces (same id): add up the size of all its pieces, so each piece is
+     styled as the whole building (not as a small house) */
+  const whole=new Map(),seenPiece=new Set();
+  for(const f of fs){if(f.id==null||!f.geometry) continue;const g=f.geometry;
+    const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+    for(const rings of list){const r=rings[0];if(!r||r.length<4) continue;const pk=f.id+':'+r[0][0].toFixed(6)+','+r[0][1].toFixed(6);if(seenPiece.has(pk)) continue;seenPiece.add(pk);
+      let A=0;for(let i=0;i<r.length-1;i++){const p=TN.toLocal(r[i][0],r[i][1]),q=TN.toLocal(r[i+1][0],r[i+1][1]);A+=p[0]*q[1]-q[0]*p[1];}
+      const o=whole.get(f.id)||{a:0,n:0};o.a+=Math.abs(A)/2;o.n++;whole.set(f.id,o);}}
   for(const f of fs){
     const g=f.geometry;if(!g) continue;
     const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
@@ -57,7 +66,8 @@ TN.Buildings.prototype.collect=function(ck){
       /* each building belongs to the area its middle is in (no doubles) */
       if(Math.floor(sx/TN.CELL)!==cx||Math.floor(sy/TN.CELL)!==cy) continue;
       const key=r[0][0].toFixed(6)+','+r[0][1].toFixed(6)+','+H;if(seen.has(key)) continue;seen.add(key);
-      out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B,id:f.id});
+      const wh=f.id!=null?whole.get(f.id):null;
+      out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B,id:f.id,wa:wh?wh.a:0,parts:wh?wh.n:1});
       this.idSeen=(this.idSeen||0)+1;if(f.id==null) this.idMissing=(this.idMissing||0)+1;
     }
   }
@@ -101,8 +111,10 @@ TN.Buildings.prototype.overRem=function(ring){
       for(const t of [0.25,0.5,0.75]) if(inside(a[0]+(c[0]-a[0])*t,a[1]+(c[1]-a[1])*t)) return true;}}
   return false;
 };
-TN.Buildings.prototype.palette=function(H,seed){
+TN.Buildings.prototype.palette=function(H,seed,area){
   const pick=a=>a[seed%a.length];
+  /* low but large (a mall, a warehouse, a school): concrete/beige, not house brick */
+  if(H<=13&&area>900) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
   if(H<=13) return pick(['#a65a43','#8e4b3a','#b46b54','#9c5f4a','#c8b08f','#b9a185']);
   if(H<=32) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
   return pick(['#9fb0bf','#b7c3cd','#8e9eae','#a9b3bb']);
@@ -121,8 +133,9 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   let area=0;for(let i=0;i<n;i++){const a=ring[i],c=ring[(i+1)%n];area+=a[0]*c[1]-c[0]*a[1];}
   if(area<0) ring=ring.slice().reverse();area=Math.abs(area)/2;
   if(area<12) return;
-  const seed=Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;
-  const col=TN.hex(this.palette(b.H,seed));
+  const seed=b.id!=null?(Math.abs(Math.floor(Number(b.id)))%997)+1:Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;
+  const wholeArea=Math.max(area,b.wa||0),pieces=b.parts||1;
+  const col=TN.hex(this.palette(b.H,seed,wholeArea));
   const top=b.H,bot=b.B,ex=0.3;   /* slightly outside the map's own building, so it is covered */
   let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
   const out=ring.map(p=>{const dx=p[0]-cx,dz=p[1]-cz,l=Math.hypot(dx,dz)||1;return [p[0]+dx/l*ex,p[1]+dz/l*ex];});
@@ -138,7 +151,8 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
     const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
     quadWall(a,c,bot,top,run,len,seed,col);run+=len;
   }
-  const pitched=b.H<=13&&area<260&&n<=10&&bot<1;
+  /* pitched roof only for a whole small house in one piece (a piece of a bigger building gets the flat roof) */
+  const pitched=b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1;
   if(pitched){
     /* low-poly hip roof up to the middle */
     const rise=Math.min(3.2,0.32*Math.sqrt(area)),rc=TN.hex(['#4b4542','#5a3f36','#3f4448'][seed%3]);
@@ -184,7 +198,9 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   if(!this.on||!this.scene.three) return;
   if(fps){
     if(fps<45) this.slowT++;else this.slowT=Math.max(0,this.slowT-1);
-    if(this.slowT>300&&this.range>0){this.range=0;this.slowT=0;for(const k of [...this.cells.keys()]) this.free(k);this.job=null;}
+    if(this.slowT>300&&this.range>0){this.range--;this.slowT=0;
+      const cx0=Math.floor(lng/TN.CELL),cy0=Math.floor(lat/TN.CELL);
+      for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx0)>this.range||Math.abs(y-cy0)>this.range) this.free(k);}this.job=null;}
     else if(this.slowT>300&&this.range===0&&fps<35){this.on=false;for(const k of [...this.cells.keys()]) this.free(k);this.job=null;return;}
   }
   const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),R=this.range,now=performance.now();
