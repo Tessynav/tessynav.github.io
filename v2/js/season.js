@@ -28,6 +28,7 @@ TN.Season.prototype.build=function(){
   }
   this.scene.three.scene.add(this.mesh);
   this.o=new THREE.Object3D();
+  this.setNight(this.night);   /* start in the right shade at night */
 };
 TN.Season.prototype.setNight=function(nt){this.night=nt;if(this.mat) this.mat.color.set(TN.mix('#ffffff','#5a6070',nt*0.85));};
 /* how many trees are near: leaves fall mostly where trees are */

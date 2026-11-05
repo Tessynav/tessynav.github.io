@@ -50,7 +50,7 @@ TN.Scene.prototype.mat=function(k){
   if(k==='lot'){
     /* parking lots: drawn first and not hiding anything, so they never flicker against aisles and curbs */
     const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,depthWrite:false});
-    this.mats[k]=m;return m;
+    this.tintMat(k,m);this.mats[k]=m;return m;
   }
   if(k==='glow'){
     /* lamps and pools of light: added light, invisible by day, fading in at dusk */
@@ -62,7 +62,7 @@ TN.Scene.prototype.mat=function(k){
   const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,
     polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
   if(k==='mark') this.beamPatch(m);   /* lane markings light up in the headlights */
-  this.mats[k]=m;return m;
+  this.tintMat(k,m);this.mats[k]=m;return m;
 };
 TN.Scene.prototype.cellMesh=function(tx,ty){return this.meshOf(this.net.buildCell(tx,ty));};
 TN.Scene.prototype.meshOf=function(L){
@@ -124,8 +124,8 @@ TN.Scene.prototype.update=function(lng,lat){
   TN.prof('roads',performance.now()-t0);
 };
 TN.Scene.prototype.setNight=function(nt){
-  this.night=nt;const c=new THREE.Color(TN.mix('#ffffff','#6f7686',nt)),cm=new THREE.Color(TN.mix('#ffffff','#c9d0de',nt));
-  for(const k in this.mats) if(k!=='glow') this.mats[k].color.copy(k==='mark'?cm:c);
+  this.night=nt;
+  for(const k in this.mats) if(k!=='glow') this.tintMat(k,this.mats[k]);
   this.glowOp=Math.max(0,Math.min(1,(nt-0.45)/0.35));   /* street lights only once it is really getting dark */if(this.mats.glow) this.mats.glow.opacity=this.glowOp;
   if(this.headMat) this.headMat.opacity=this.glowOp;   /* headlamps on the car */
   if(this.skyStars) this.skyStars.material.opacity=this.glowOp;
@@ -296,6 +296,10 @@ TN.Scene.prototype.styleMap=function(){
   map.addLayer(this.layer());
 };
 /* ground, grass and water: day colours blend into their night colours */
+/* night shade of a road material: applied the moment it is created, so nothing starts in daytime colours at night */
+TN.Scene.prototype.tintMat=function(k,m){
+  const nt=this.night||0;m.color.set(TN.mix('#ffffff',k==='mark'?'#c9d0de':'#6f7686',nt));
+};
 TN.Scene.prototype.applyGround=function(nt){
   if(!this.dayPaint||Math.abs((this.lastNt==null?-1:this.lastNt)-nt)<=0.01) return;this.lastNt=nt;
   for(const [id,prop,d,n] of this.dayPaint){try{this.map.setPaintProperty(id,prop,TN.mix(d,n,nt));}catch(e){}}
@@ -433,7 +437,7 @@ TN.Scene.prototype.addSky=function(){
     for(let i=0;i<N;i++){const az=rnd()*Math.PI*2,alt=Math.asin(0.06+rnd()*0.94),R=1300;
       pos.push(Math.sin(az)*Math.cos(alt)*R,Math.sin(alt)*R,-Math.cos(az)*Math.cos(alt)*R);}
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-    const m=new THREE.PointsMaterial({color:0xe8eeff,size:2,sizeAttenuation:false,transparent:true,opacity:0,depthWrite:false});
+    const m=new THREE.PointsMaterial({color:0xe8eeff,size:2,sizeAttenuation:false,transparent:true,opacity:this.glowOp||0,depthWrite:false});
     this.skyStars=new THREE.Points(g,m);this.skyStars.frustumCulled=false;this.three.scene.add(this.skyStars);
     const cv=document.createElement('canvas');cv.width=cv.height=128;this.moonCv=cv;
     this.moonTex=new THREE.CanvasTexture(cv);
