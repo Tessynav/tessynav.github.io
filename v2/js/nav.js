@@ -294,19 +294,21 @@ TN.Nav.prototype.traffic=function(show){
       map.on('error',e=>{if(e&&e.sourceId==='tn-traffic'&&!this.trafficErr){this.trafficErr=true;
         let st=e.error&&e.error.status;if(!st&&e.error&&e.error.message){const m=String(e.error.message).match(/\b(40[0-9]|5\d\d)\b/);if(m) st=+m[1];}
         this.note('traffic error',{status:st||null,msg:e.error&&String(e.error.message||'')},false);
-        this.toast(st===401?'Live traffic: the map key was refused (401: key not valid)':st===403?'Live traffic: the map key was refused (403: not allowed from this site)':'Live traffic is not available right now'+(st?' ('+st+')':''));}});
+        /* only a refused key is worth telling (once); a tile cancelled while the map moves, or one that didn't load,
+           is normal and only goes into the recording */
+        if((st===401||st===403)&&!this.tKeyTold){this.tKeyTold=true;this.toast(st===401?'Live traffic: the map key was refused (401)':'Live traffic: the map key was refused (403: not allowed from this site)');}}});
     }
     map.setLayoutProperty('tn-traffic','visibility',show?'visible':'none');
     /* a check that says what happened, about 6 s after the traffic is first shown */
     if(!this.tStat){this.tStat={ok:0,bad:0,status:null};
       map.on('sourcedata',e=>{if(e&&e.sourceId==='tn-traffic'&&e.tile&&e.isSourceLoaded!==undefined) this.tStat.ok++;});
-      map.on('error',e=>{if(e&&e.sourceId==='tn-traffic'){this.tStat.bad++;this.tStat.status=(e.error&&(e.error.status||e.error.message))||'?';}});}
+      map.on('error',e=>{if(e&&e.sourceId==='tn-traffic'){const m=String(e.error&&(e.error.name||e.error.message)||'');if(/abort/i.test(m)) return;this.tStat.bad++;this.tStat.status=(e.error&&(e.error.status||e.error.message))||'?';}});}
     if(show&&!this.tChecked){this.tChecked=true;
       setTimeout(()=>{let n=0;try{n=map.querySourceFeatures('tn-traffic',{sourceLayer:'traffic'}).length;}catch(e){n=-1;}
         let vis='?';try{vis=map.getLayoutProperty('tn-traffic','visibility');}catch(e){}
         const st=this.tStat;this.note('traffic check',{roads:n,tiles:st.ok,failed:st.bad,status:st.status,vis:vis},false);
-        this.toast(n>0?'Live traffic: '+n+' roads received':'Live traffic: no data ('+st.ok+' tiles loaded, '+st.bad+' failed'+(st.status?', '+st.status:'')+')');},6000);}
-  }catch(e){this.toast('Live traffic error: '+(e&&e.message||e));}
+        },6000);}
+  }catch(e){this.note('traffic error',{msg:String(e&&e.message||e)},false);}
 };
 /* ---------- route ---------- */
 TN.Nav.prototype.fetchRoute=async function(from,to){

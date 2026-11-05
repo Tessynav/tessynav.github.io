@@ -12,8 +12,8 @@ TN.TT='SFsP1S1bN56sxYRuHDYyJpLTgg5Pva1k';
 TN.FB={apiKey:'AIzaSyCBRR9gPPRnhNALC2V5uHmbtr7pR0R7EA8',projectId:'tessynav-958f3'};
 
 /* ---------- Rocco ---------- */
-TN.ROCCO_KIND={1:'accident',2:'fog',3:'hazard',4:'rain',5:'ice',7:'lane',8:'closed',9:'works',10:'wind',11:'flood',14:'breakdown'};
-TN.ROCCO_TITLE={pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
+TN.ROCCO_KIND={6:'jam',1:'accident',2:'fog',3:'hazard',4:'rain',5:'ice',7:'lane',8:'closed',9:'works',10:'wind',11:'flood',14:'breakdown'};
+TN.ROCCO_TITLE={jam:'Heavy traffic',pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
   wind:'Strong wind',flood:'Flooding',breakdown:'Stopped vehicle',police:'Police',unknown:'Incident'};
 TN.ROCCO_JOKES={
   accident:['Oops! Someone kissed a bumper.','Fender-bender ahead. Rocco is taking notes.','Bumper cars, but not the fun kind.'],
@@ -28,6 +28,7 @@ TN.ROCCO_JOKES={
   wind:['Hold on to your tuque!','Windy! Rocco\u2019s tail is everywhere.'],
   hazard:['Something on the road. Eyes open!','Rocco spotted trouble ahead.'],
   police:['Smile, you\u2019re on camera!','Rocco says: speed limit, my friend.'],
+  jam:['Rocco brought snacks.','Perfect time for a podcast.','Bumper to bumper. Breathe.','Rocco is counting cars. He\u2019s at 300.'],
   pothole:['Hi! Mind my house.','Rocco\u2019s swimming pool. Go around.','Montreal\u2019s famous craters.'],
   unknown:['Something\u2019s up ahead.']};
 /* Rocco as a drawing: the head with his mask, plus an accessory for each kind of incident */
@@ -58,6 +59,9 @@ TN.ROCCO=function(kind,size,night){
     case 'flood':face=eyes+smile;extra='<ellipse cx="0" cy="44" rx="58" ry="12" fill="#3b82f6" opacity=".8"/><circle cx="-50" cy="36" r="10" fill="none" stroke="#f28c1c" stroke-width="7"/>';break;
     case 'rain':extra='<path d="M-52 -46 Q0 -86 52 -46Z" fill="#1fa596"/><path d="M0 -46 v-14" stroke="#555" stroke-width="3"/><path d="M-60 -20 l-4 10 M60 -20 l4 10 M-48 0 l-4 10 M48 0 l4 10" stroke="#7fb2e5" stroke-width="3"/>';break;
     case 'wind':face=wide+oh;extra='<path d="M-74 -30 Q-50 -36 -40 -26 M-76 -6 Q-56 -12 -46 -2 M46 -24 Q60 -30 74 -22" stroke="#cfd6dd" stroke-width="5" fill="none" stroke-linecap="round"/>';break;
+    case 'jam':face='<path d="M-24 -5 q7 -5 14 0 M10 -5 q7 -5 14 0" stroke="#111" stroke-width="4" fill="none" stroke-linecap="round"/>'+frown;
+      extra='<path d="M36 -30 q6 10 0 16 q-6 -6 0 -16z" fill="#7fb2e5"/><rect x="-74" y="34" width="34" height="14" rx="4" fill="#e5352b"/><rect x="-68" y="27" width="20" height="10" rx="3" fill="#e5352b"/><circle cx="-66" cy="49" r="4" fill="#111"/><circle cx="-48" cy="49" r="4" fill="#111"/>'+
+        '<rect x="40" y="34" width="34" height="14" rx="4" fill="#f2c21c"/><rect x="46" y="27" width="20" height="10" rx="3" fill="#f2c21c"/><circle cx="48" cy="49" r="4" fill="#111"/><circle cx="66" cy="49" r="4" fill="#111"/>';break;
     case 'pothole':return '<svg width="'+z+'" height="'+z+'" viewBox="-80 -80 160 160" aria-hidden="true"><ellipse cx="0" cy="40" rx="74" ry="24" fill="#45494f"/><ellipse cx="0" cy="40" rx="60" ry="16" fill="#17191c"/>'+
       '<g transform="translate(0,6) scale(.8)">'+head+eyes+smile+'</g><path d="M-74 40 Q0 74 74 40 L74 80 L-74 80Z" fill="#45494f"/></svg>';
     case 'hazard':face=wide+oh;extra='<path d="M50 34 L62 6 L74 34Z" fill="#f2c21c" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M62 15 v9 M62 28 v1" stroke="#111" stroke-width="3" stroke-linecap="round"/>';break;
@@ -72,7 +76,7 @@ TN.Incidents=function(api){
 TN.Incidents.prototype.build=function(){
   const st=document.createElement('style');
   st.textContent='.tn-inc{width:34px;height:34px;border-radius:50%;background:#fff;border:3px solid #e5352b;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}'+
-    '.tn-inc.works,.tn-inc.lane{border-color:#f28c1c}.tn-inc.ice,.tn-inc.fog,.tn-inc.flood,.tn-inc.rain,.tn-inc.wind{border-color:#3b82f6}'+
+    '.tn-inc.jam{border-color:#f28c1c}.tn-inc.jam.stand{border-color:#b91c1c}.tn-inc.works,.tn-inc.lane{border-color:#f28c1c}.tn-inc.ice,.tn-inc.fog,.tn-inc.flood,.tn-inc.rain,.tn-inc.wind{border-color:#3b82f6}'+
     '#tn-alert{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:14px;padding:10px 18px 10px 12px;max-width:min(92vw,620px);z-index:8}'+
     '#tn-alert b{font-size:22px;display:block}#tn-alert small{color:#9fb3c8;font-size:14px;display:block;margin-top:2px}#tn-alert .joke{color:#fcd34d}'+
     'body.tn-routing #tn-alert{bottom:96px}'+
@@ -97,11 +101,16 @@ TN.Incidents.prototype.fetch=async function(lng,lat){
     const r=await fetch(u);if(!r.ok){this.err=r.status;return;}
     const j=await r.json();const out=[];
     for(const f of j.incidents||[]){
-      const p=f.properties||{},kind=TN.ROCCO_KIND[p.iconCategory];if(!kind) continue;   /* (plain traffic jams: shown by the traffic colours) */
+      const p=f.properties||{},kind=TN.ROCCO_KIND[p.iconCategory];if(!kind) continue;
+      /* traffic jams: moderate, heavy or standstill (minor slowdowns are left to the traffic colours) */
+      let sev=0;if(kind==='jam'){const ds=((p.events||[]).map(e=>e.description).join(' ')).toLowerCase();
+        sev=/stationary|standstill|stopped/.test(ds)?3:/queu|heavy/.test(ds)?2:(p.magnitudeOfDelay>=3?2:p.magnitudeOfDelay===2?1:0);
+        if(!sev) continue;}
       const g=f.geometry||{},c=g.type==='Point'?[g.coordinates]:g.type==='LineString'?g.coordinates:[];if(!c.length) continue;
       const pts=c.map(q=>TN.toLocal(q[0],q[1]));
       out.push({id:p.id||(kind+c[0].join(',')),kind:kind,pts:pts,ll:c[0],desc:(p.events&&p.events[0]&&p.events[0].description)||'',
-        from:p.from||'',to:p.to||'',road:(p.roadNumbers||[]).join(', '),mag:p.magnitudeOfDelay||0,delay:p.delay||0});
+        from:p.from||'',to:p.to||'',road:(p.roadNumbers||[]).join(', '),mag:p.magnitudeOfDelay||0,delay:p.delay||0,len:p.length||0,sev:sev,
+        title:sev?['','Moderate traffic','Heavy traffic','Standstill'][sev]:null});
     }
     this.tt=out;this.err=null;this.merge();
     if(this.api.note) this.api.note('incidents',{n:out.length});
@@ -113,12 +122,12 @@ TN.Incidents.prototype.nearest=function(max){
   return this.list.slice().sort((a,b)=>Math.hypot(a.pts[0][0]-c.x,a.pts[0][1]-c.z)-Math.hypot(b.pts[0][0]-c.x,b.pts[0][1]-c.z)).slice(0,max);};
 TN.Incidents.prototype.drawMarkers=function(){
   if(typeof maplibregl==='undefined') return;
-  const shown=this.nearest(40),keep=new Set(shown.map(i=>i.id));
+  const shown=this.nearest(40).filter(i=>i.kind!=='jam'||i.sev>=2),keep=new Set(shown.map(i=>i.id));
   for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
   for(const it of shown){if(this.markers.has(it.id)) continue;
-    const el=document.createElement('div');el.className='tn-inc '+it.kind+(it.user?' user':'');el.innerHTML=TN.ROCCO(it.kind,40,night);
-    el.title=TN.ROCCO_TITLE[it.kind];el.onclick=e=>{e.stopPropagation();this.show(it,null,true);};
+    const el=document.createElement('div');el.className='tn-inc '+it.kind+(it.user?' user':'')+(it.sev===3?' stand':'');el.innerHTML=TN.ROCCO(it.kind,40,night);
+    el.title=it.title||TN.ROCCO_TITLE[it.kind];el.onclick=e=>{e.stopPropagation();this.show(it,null,true);};
     this.markers.set(it.id,new maplibregl.Marker({element:el}).setLngLat(it.ll).addTo(this.api.map));}
 };
 TN.Incidents.prototype.clear=function(){for(const m of this.markers.values()){try{m.remove();}catch(e){}}this.markers.clear();this.hide();};
@@ -127,6 +136,7 @@ TN.Incidents.prototype.ahead=function(car){
   const nav=this.api.nav,R=nav&&nav.active?nav.route:null;let best=null;
   for(const it of this.list){
     if(it.mine) continue;   /* (your own reports: on the map, but no alert) */
+    if(it.kind==='jam'&&it.pts.some(p=>Math.hypot(p[0]-car.x,p[1]-car.z)<40)) continue;   /* (already in that jam) */
     let d=null;
     if(R){/* on the route: the incident is within 25 m of the route line, ahead of the car */
       const s0=R.cum[nav.idx]||0;
@@ -147,12 +157,13 @@ TN.Incidents.prototype.show=function(it,d,tapped){
   if(this.alertFor!==it.id){this.joke=(TN.ROCCO_JOKES[it.kind]||TN.ROCCO_JOKES.unknown);this.joke=this.joke[Math.floor(Math.random()*this.joke.length)];this.alertFor=it.id;
     /* said once per incident, when it first comes up ahead */
     if(!tapped&&TN.voice&&d!=null&&!(this.spoken||(this.spoken=new Set())).has(it.id)){this.spoken.add(it.id);
-      TN.voice.say((it.user?(TN.ROCCO_TITLE[it.kind])+' reported':TN.ROCCO_TITLE[it.kind])+' ahead, '+(d<950?Math.round(d/50)*50+' metres':(d/1000).toFixed(1)+' kilometres'));}}
+      TN.voice.say((it.user?(TN.ROCCO_TITLE[it.kind])+' reported':(it.title||TN.ROCCO_TITLE[it.kind]))+' ahead, '+(d<950?Math.round(d/50)*50+' metres':(d/1000).toFixed(1)+' kilometres'));}}
   const dist=d==null?'':' \u00b7 '+(d<950?Math.round(d/50)*50+' m':(d/1000).toFixed(1)+' km');
-  const detail=[it.desc,it.road,it.from&&it.to?it.from+' \u2192 '+it.to:it.from].filter(Boolean).join(' \u00b7 ');
+  const jamInfo=it.kind==='jam'?[(it.delay>=60?'+'+Math.round(it.delay/60)+' min':''),(it.len?(it.len<950?Math.round(it.len/50)*50+' m':(it.len/1000).toFixed(1)+' km')+' long':'')].filter(Boolean).join(' \u00b7 '):'';
+  const detail=[jamInfo,it.kind==='jam'?'':it.desc,it.road,it.from&&it.to?it.from+' \u2192 '+it.to:it.from].filter(Boolean).join(' \u00b7 ');
   const who=it.user?'Reported by a driver \u00b7 '+Math.max(1,Math.round((Date.now()-it.t)/60000))+' min ago'+(it.up?' \u00b7 '+it.up+' confirmed':''):'';
   const canVote=it.user&&!it.mine&&!this.reports.voted.has(it.id)&&(d==null||d<500);
-  this.card.innerHTML=(this.fun()?TN.ROCCO(it.kind,64,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc(TN.ROCCO_TITLE[it.kind]+dist)+'</b>'+
+  this.card.innerHTML=(this.fun()?TN.ROCCO(it.kind,64,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc((it.title||TN.ROCCO_TITLE[it.kind])+dist)+'</b>'+
     (detail?'<small>'+TN.esc(detail)+'</small>':'')+(who?'<small>'+TN.esc(who)+'</small>':'')+(this.fun()?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>'+
     (canVote?'<button class="v up">Still there</button><button class="v down">Gone</button>':'');
   if(canVote){this.card.querySelector('.up').onclick=()=>{this.reports.vote(it.id,true);this.toast('Thanks! Rocco updated it.');this.hide();};
