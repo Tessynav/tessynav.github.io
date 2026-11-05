@@ -217,7 +217,7 @@ TN.Nav.prototype.dropAt=async function(lng,lat){
 /* ---------- live traffic around you (Mapbox traffic) ---------- */
 TN.Nav.prototype.toast=function(msg){
   const t=document.createElement('div');t.className='hud';t.style.cssText='left:50%;top:84px;transform:translateX(-50%);z-index:9;font-size:15px;padding:10px 16px';
-  t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),700);},5000);
+  t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>{try{t.parentNode&&t.parentNode.removeChild(t);}catch(e){}},700);},8000);
 };
 TN.Nav.prototype.traffic=function(show){
   const map=this.api.map;if(!TN.MBX||!map||!map.getStyle) return;
@@ -234,10 +234,19 @@ TN.Nav.prototype.traffic=function(show){
       /* if the traffic data can't load (a key or network problem), say so once instead of silently showing nothing */
       map.on('error',e=>{if(e&&e.sourceId==='tn-traffic'&&!this.trafficErr){this.trafficErr=true;
         const st=e.error&&e.error.status;this.note('traffic error',{status:st||null},false);
-        this.toast(st===401||st===403?'Live traffic: the map key was refused':'Live traffic is not available right now');}});
+        this.toast(st===401?'Live traffic: the map key was refused (401: key not valid)':st===403?'Live traffic: the map key was refused (403: not allowed from this site)':'Live traffic is not available right now'+(st?' ('+st+')':''));}});
     }
     map.setLayoutProperty('tn-traffic','visibility',show?'visible':'none');
-  }catch(e){}
+    /* a check that says what happened, about 6 s after the traffic is first shown */
+    if(!this.tStat){this.tStat={ok:0,bad:0,status:null};
+      map.on('sourcedata',e=>{if(e&&e.sourceId==='tn-traffic'&&e.tile&&e.isSourceLoaded!==undefined) this.tStat.ok++;});
+      map.on('error',e=>{if(e&&e.sourceId==='tn-traffic'){this.tStat.bad++;this.tStat.status=(e.error&&(e.error.status||e.error.message))||'?';}});}
+    if(show&&!this.tChecked){this.tChecked=true;
+      setTimeout(()=>{let n=0;try{n=map.querySourceFeatures('tn-traffic',{sourceLayer:'traffic'}).length;}catch(e){n=-1;}
+        let vis='?';try{vis=map.getLayoutProperty('tn-traffic','visibility');}catch(e){}
+        const st=this.tStat;this.note('traffic check',{roads:n,tiles:st.ok,failed:st.bad,status:st.status,vis:vis},false);
+        this.toast(n>0?'Live traffic: '+n+' roads received':'Live traffic: no data ('+st.ok+' tiles loaded, '+st.bad+' failed'+(st.status?', '+st.status:'')+')');},6000);}
+  }catch(e){this.toast('Live traffic error: '+(e&&e.message||e));}
 };
 /* ---------- route ---------- */
 TN.Nav.prototype.fetchRoute=async function(from,to){
@@ -368,7 +377,7 @@ TN.Nav.prototype.overview=function(){
   }catch(e){}
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
-  this.ov.innerHTML='<div><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+'</small></div><button class="go">Go</button><button class="cancel">Cancel</button>';
+  this.ov.innerHTML='<div><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+'</small></div><button class="go">Go</button><button class="cancel">Cancel</button>';
   this.ov.querySelector('.go').onclick=()=>this.go();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
 };
