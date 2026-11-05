@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=33;
+TN.APPBUILD=34;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -179,6 +179,30 @@ TN.APPBUILD=33;
       }else panel('TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><small>(app.js file inside: build '+TN.APPBUILD+')</small><br><br>You have the latest version.',[['Close',hide]]);
     }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
+  /* the app checks for updates by itself (20 s after opening, then every 10 minutes); a found update shows a dot on
+     the gear and, only when the car is stopped, a small banner: Update now / Later */
+  let pendingUpd=null,updDismissed=null;try{updDismissed=sessionStorage.getItem('tn2_upd_later');}catch(e){}
+  async function bgCheck(){
+    try{const now=await latest();
+      if(now&&now.length&&now.join('|')!==mine.join('|')){pendingUpd=now;
+        const g=document.getElementById('tn-gear');if(g) g.classList.add('upd');
+        const r=document.getElementById('tn-setver');if(r){r.textContent='Update available \u203a';r.style.color='#5fe0b0';}}
+    }catch(e){}
+  }
+  setTimeout(bgCheck,20000);setInterval(bgCheck,600000);
+  try{const st=document.createElement('style');
+   st.textContent='#tn-gear.upd:after{content:"";position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:#ff5a4f;box-shadow:0 0 0 2px rgba(10,18,32,.9)}'+
+     '#tn-updbar{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:none;align-items:center;gap:12px;padding:8px 10px 8px 16px;border-radius:14px;background:rgba(10,18,32,.95);color:#e8f1fa;font:15px sans-serif}'+
+     '#tn-updbar button{border:0;border-radius:9px;padding:7px 12px;font:600 14px sans-serif;cursor:pointer}#tn-updbar .u{background:#1fa596;color:#fff}#tn-updbar .l{background:#3a4352;color:#e8f1fa}';
+   document.head.appendChild(st);
+   const bar=document.createElement('div');bar.id='tn-updbar';bar.innerHTML='<span>Update available</span><button class="u">Update now</button><button class="l">Later</button>';document.body.appendChild(bar);
+   bar.querySelector('.u').onclick=()=>{bar.style.display='none';if(pendingUpd) update(pendingUpd);};
+   bar.querySelector('.l').onclick=()=>{bar.style.display='none';updDismissed=pendingUpd.join('|');try{sessionStorage.setItem('tn2_upd_later',updDismissed);}catch(e){}};
+   setInterval(()=>{
+     if(!pendingUpd||updDismissed===pendingUpd.join('|')){bar.style.display='none';return;}
+     const L=track.last,stopped=!follow||!L||L.v<1.4;
+     bar.style.display=stopped?'flex':'none';
+   },2000);}catch(e){}
   /* after "Update now": did the new files arrive? */
   (function(){
     let target=null,tries=0,prev=null;
