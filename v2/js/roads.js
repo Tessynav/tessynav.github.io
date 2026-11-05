@@ -608,7 +608,7 @@ TN.Net.prototype.onOther=function(way,x,z,h){
 };
 TN.Net.prototype.buildCell=function(tx,ty){const g=this.buildCellJob(tx,ty);let r;do{r=g.next();}while(!r.done);return r.value;};
 TN.Net.prototype.buildCellJob=function*(tx,ty){
-  const L={lot:TN.geo(),curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo()};
+  const L={lot:TN.geo(),curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo(),lamps:[]};
   const net=this;let nn=0,SG=null;
   /* pause point: the fast road lookup belongs to this job only, so it is switched off while paused */
   const pause=function*(){net._sg=null;yield;net._sg=SG;};
@@ -854,6 +854,7 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       TN.box(L.road,x,z,ux,uz,0.18,0.18,y0,top,TN.C.post);
       TN.box(L.road,x+rx*1.1,z+rz*1.1,rx,rz,2.2,0.12,top-0.2,top-0.06,TN.C.post);
       const hx=x+rx*2.2,hz=z+rz*2.2;
+      if(L.lamps) L.lamps.push(hx,top-0.3,hz);
       TN.box(L.road,hx,hz,rx,rz,0.6,0.3,top-0.36,top-0.16,TN.C.lamp);
       /* night: the lamp's lit underside and its pool of light (bright in the middle, fading out) */
       const G=L.glow,gc=TN.C.glowc;

@@ -105,7 +105,7 @@ TN.Scene.prototype.update=function(lng,lat){
       const J=this.job;this.job=null;
       const grp=this.meshOf(r.value);this.freeCell(J.k);
       if(grp) this.three.scene.add(grp);
-      this.cells.set(J.k,{grp:grp});
+      this.cells.set(J.k,{grp:grp,lamps:r.value.lamps||[]});
     }
     TN.prof('roads',performance.now()-t0);
     return;
@@ -295,8 +295,14 @@ TN.Scene.prototype.styleMap=function(){
   map.addLayer({id:'tn-night',type:'fill',source:'tn-night',paint:{'fill-color':'#0b1630','fill-opacity':0}},'tn-buildings');
   map.addLayer(this.layer());
 };
+/* ground, grass and water: day colours blend into their night colours */
+TN.Scene.prototype.applyGround=function(nt){
+  if(!this.dayPaint||Math.abs((this.lastNt==null?-1:this.lastNt)-nt)<=0.01) return;this.lastNt=nt;
+  for(const [id,prop,d,n] of this.dayPaint){try{this.map.setPaintProperty(id,prop,TN.mix(d,n,nt));}catch(e){}}
+};
 TN.Scene.prototype.applyNight=function(nt){
-  if(this.introActive){this.pendingNt=nt;this.setNight(nt);return;}   /* the intro restores the sky when it ends */
+  /* during the opening animation only the sky waits (the intro uses it); the ground goes to night right away */
+  if(this.introActive){this.pendingNt=nt;this.setNight(nt);this.applyGround(nt);return;}
   /* a sky above the horizon: blue by day, deep night blue at night */
   try{
     if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':TN.mix('#5d8fd1','#0d1830',nt),'horizon-color':TN.mix('#cfe0f2','#2a3a5c',nt),
@@ -304,9 +310,7 @@ TN.Scene.prototype.applyNight=function(nt){
   }catch(e){}
   try{
     this.map.setPaintProperty('tn-night','fill-opacity',0);
-    /* ground, grass and water: day colours blend into their night colours */
-    if(this.dayPaint&&Math.abs((this.lastNt==null?-1:this.lastNt)-nt)>0.01){this.lastNt=nt;
-      for(const [id,prop,d,n] of this.dayPaint){try{this.map.setPaintProperty(id,prop,TN.mix(d,n,nt));}catch(e){}}}
+    this.applyGround(nt);
     this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.farBuildingColor(nt));
   }catch(e){}
   this.setNight(nt);
