@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=57;
+TN.APPBUILD=58;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -152,8 +152,8 @@ TN.APPBUILD=57;
 
   /* ---------- recording ---------- */
   $('rec').onclick=async()=>{
-    if(!rec.rec){rec.start();$('rec').textContent='■ Stop';$('rec').style.color='#ff6b6b';return;}
-    const trip=rec.stop();$('rec').textContent='● Record';$('rec').style.color='';
+    if(!rec.rec){rec.start();$('rec').textContent='■ Stop';$('rec').style.color='#ff6b6b';$('rec').classList.add('on');return;}
+    const trip=rec.stop();$('rec').textContent='● Record';$('rec').style.color='';$('rec').classList.remove('on');
     uploadTrip(trip);
   };
   async function uploadTrip(trip){

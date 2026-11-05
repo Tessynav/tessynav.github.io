@@ -37,7 +37,8 @@ TN.Nav.prototype.build=function(){
    '#tn-ov .row .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}'+
    '#tn-ov .row button{display:flex;align-items:center;justify-content:center;border:0;border-radius:8px;padding:7px 10px;font:600 15px system-ui,sans-serif;background:#3a4352;color:#e8f1fa;cursor:pointer}#tn-ov .row button:disabled{opacity:.3}'+
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
-   '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
+   '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar.jvon .a{width:116px;height:116px;flex-shrink:0;border-radius:10px;overflow:hidden;border:2px solid #378ADD}'+
+   '#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
    '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:#9fb3c8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
    '#tn-bar .dline{display:flex;align-items:center;gap:14px}#tn-bar .lanes{display:flex;gap:3px}#tn-bar .lanes:empty{display:none}#tn-bar .lanes span{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:rgba(255,255,255,.08)}#tn-bar .lanes span.on{background:rgba(59,130,246,.35)}'+
@@ -48,7 +49,8 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
    '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
    '#tn-mute{right:16px;top:76px;width:50px;height:50px;padding:0;border:0;display:none;align-items:center;justify-content:center;cursor:pointer}body.tn-routing #tn-mute{display:flex}'+
-   '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgba(10,18,32,.88);color:#fcd34d}body.tn-routing #tn-stopbtn{display:block}'+
+   '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgba(10,18,32,.88);color:#fcd34d}body.tn-routing #tn-stopbtn{display:none}'+
+   'body.tn-routing #trips{display:none!important}body.tn-routing #rec:not(.on){display:none!important}'+
    'body.tn-routing.tn-addstop #tn-search{display:flex}body.tn-routing.tn-addstop #tn-bar{display:none!important}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
    '#tn-limit{left:168px;bottom:24px;display:none;flex-direction:column;align-items:center;justify-content:center;width:58px;height:70px;padding:0;background:#fff;color:#111;border:3px solid #111;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35)}'+
@@ -516,6 +518,31 @@ TN.Nav.prototype.openTrip=function(){
   box.querySelector('.cancel').onclick=()=>this.closeTrip();
 };
 TN.Nav.prototype.closeTrip=function(){this.ov.style.display='none';this.ov.classList.remove('tripbox');};
+/* the junction from above: our roads around it in grey, the route in blue with an arrow, the approach pointing up;
+   the exit number on a green sign for highway exits */
+TN.Nav.prototype.junctionSvg=function(nx){
+  const R=this.route,net=this.api.net;let ia=0;while(ia<R.cum.length-1&&R.cum[ia]<nx.at) ia++;
+  const M=R.pts[ia];let ib=ia;while(ib>0&&R.cum[ia]-R.cum[ib]<35) ib--;
+  const B=R.pts[ib];let h=Math.atan2(M[0]-B[0],-(M[1]-B[1]));if(ib===ia) h=0;
+  const fx=Math.sin(h),fz=-Math.cos(h),rx=Math.cos(h),rz=Math.sin(h),K=48/80;
+  const P=p=>{const dx=p[0]-M[0],dz=p[1]-M[1];return [50+(dx*rx+dz*rz)*K,60-(dx*fx+dz*fz)*K];};
+  const f1=v=>v.toFixed(1);let roads='';const seen=new Set();
+  const wid={motorway:9,trunk:8,primary:7,secondary:6,tertiary:6,motorway_link:5,trunk_link:5,primary_link:5};
+  if(net&&net.near) net.near(M[0],M[1],95,(w,k)=>{const key=w.id+':'+k;if(seen.has(key)||k>=w.pts.length-1) return;seen.add(key);
+    const a=P(w.pts[k]),b=P(w.pts[k+1]);roads+='<path d="M'+f1(a[0])+' '+f1(a[1])+'L'+f1(b[0])+' '+f1(b[1])+'" stroke="#5f656e" stroke-width="'+(wid[w.cls]||4.5)+'" stroke-linecap="round"/>';});
+  /* the route: 80 m before to 70 m after */
+  let path='',last=null,prev=null;
+  for(let i=Math.max(0,ia-200);i<Math.min(R.pts.length,ia+200);i++){const d=R.cum[i]-R.cum[ia];if(d<-80||d>70) continue;
+    const q=P(R.pts[i]);path+=(path?'L':'M')+f1(q[0])+' '+f1(q[1]);prev=last;last=q;}
+  if(!path) return '';
+  let arrow='';if(last&&prev){const ang=Math.atan2(last[1]-prev[1],last[0]-prev[0]),L=9;
+    const a1=[last[0]-L*Math.cos(ang-0.6),last[1]-L*Math.sin(ang-0.6)],a2=[last[0]-L*Math.cos(ang+0.6),last[1]-L*Math.sin(ang+0.6)];
+    arrow='<path d="M'+f1(a1[0])+' '+f1(a1[1])+'L'+f1(last[0])+' '+f1(last[1])+'L'+f1(a2[0])+' '+f1(a2[1])+'" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';}
+  const ex=(nx.exits||'').split(';')[0];
+  const sign=ex?'<rect x="4" y="80" width="'+(10+ex.length*7)+'" height="15" rx="3" fill="#0d7a3d"/><text x="9" y="91.5" fill="#fff" font-size="10" font-weight="700" font-family="system-ui,sans-serif">'+TN.esc(ex)+'</text>':'';
+  return '<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true"><rect width="100" height="100" fill="#1b2533"/>'+roads+
+    '<path d="'+path+'" stroke="#378ADD" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+arrow+sign+'</svg>';
+};
 TN.Nav.prototype.go=function(){
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
@@ -527,7 +554,7 @@ TN.Nav.prototype.go=function(){
 };
 TN.Nav.prototype.end=function(why){
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
-  this.active=false;this.route=null;this.bird=0;document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
+  this.active=false;this.route=null;this.bird=0;this.jvStep=null;if(this.bar) this.bar.classList.remove('jvon');document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);
@@ -652,7 +679,7 @@ TN.Nav.prototype.update=function(dt){
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
   const I=this.instr(nx),dNext=Math.max(0,nx.at-s);
-  if(this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'#ffffff');this.lastIcon=I.a;}
+  if(this.jvStep==null&&this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'#ffffff');this.lastIcon=I.a;}
   this.bar.querySelector('.dist').textContent=nx.type==='arrive'&&dNext<30?'Arriving':fmtDist(dNext);
   /* the exit number as a green highway exit sign (where the map has one) */
   const exn=(nx.type==='off ramp'||nx.type==='fork')&&nx.exits?String(nx.exits).split(';')[0]:'';
@@ -664,9 +691,16 @@ TN.Nav.prototype.update=function(dt){
      html=nx.lanes.map(l=>{const ind=(l.indications||['straight']);const pick=l.valid&&l.valid_indication?l.valid_indication:ind.find(x=>x===nx.mod)||ind[0];
        return '<span class="'+(l.valid?'on':'')+'">'+TN.ICON(ic[pick]||'straight',19,l.valid?'#ffffff':'#5d6b80')+'</span>';}).join('');}
    if(le.innerHTML!==html) le.innerHTML=html;}
-  /* bird's-eye view: the camera rises before highway exits, forks and roundabouts, and comes back after */
+  /* before highway exits, forks, roundabouts and big junctions: a drawing of the junction from above in the bar
+     (in place of the arrow, the bar a little taller); the camera's bird's-eye view only if chosen in settings */
   {const big=['off ramp','fork','roundabout','rotary','merge'].indexOf(nx.type)>=0||(nx.lanes&&nx.lanes.length>=3&&dNext<300);
-   const want=big&&dNext<350&&dNext>-60?1:0;this.bird=(this.bird||0)+(want-(this.bird||0))*Math.min(1,dt*0.8);}
+   const near=big&&dNext<350&&dNext>-40;
+   const birdOn=TN.settings&&TN.settings.birdseye===true;
+   const want=near&&birdOn?1:0;this.bird=(this.bird||0)+(want-(this.bird||0))*Math.min(1,dt*0.8);
+   const k=R.steps.indexOf(nx);
+   if(near&&!birdOn){if(this.jvStep!==k){this.jvStep=k;let svg='';try{svg=this.junctionSvg(nx);}catch(e){}
+       if(svg){this.bar.querySelector('.a').innerHTML=svg;this.bar.classList.add('jvon');this.lastIcon=null;}}}
+   else if(this.jvStep!=null){this.jvStep=null;this.bar.classList.remove('jvon');this.lastIcon=null;}}
   /* spoken instructions: Mapbox's own (timed by distance before the turn), or our own at about 400 m, 150 m and
      just before the turn; each said once */
   if(TN.voice&&nx){const k=R.steps.indexOf(nx);
