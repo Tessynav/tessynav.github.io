@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=56;
+TN.APPBUILD=57;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -21,7 +21,7 @@ TN.APPBUILD=56;
   if(settings){try{settings.build();}catch(e){}}
   /* navigation: search, route, directions */
   const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
-    gps:()=>track.last?{x:track.last.x,z:track.last.z,v:track.last.v,hd:track.hd,t:track.last.t}:null,gpsHd:()=>track.hd,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);},
+    gps:()=>track.last?{x:track.last.x,z:track.last.z,v:track.last.v,hd:track.hd,t:track.last.t,raw:track.last.hd}:null,gpsHd:()=>track.hd,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);},
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   /* road incidents with Rocco (TomTom) */
@@ -356,7 +356,10 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
          it should be (a point a little ahead on its path), within a real turning circle. Corrections happen by
          steering, never by sliding, so it can't move sideways (corners, roundabouts, parking lots). */
       {const vT=track.last?track.last.v:0;
-       if(dX==null||Math.hypot(car.x-dX,car.z-dZ)>25){dX=car.x;dZ=car.z;dH=car.hd;dV=vT;}
+       /* (just released from the route after leaving it: placed straight at the real position if it's more than
+          8 m away, rather than driving across a median to get there) */
+       const justRel=nav&&nav.relAt&&Date.now()-nav.relAt<1500;
+       if(dX==null||Math.hypot(car.x-dX,car.z-dZ)>(justRel?8:25)){dX=car.x;dZ=car.z;dH=car.hd;dV=vT;if(justRel) nav.relAt=0;}
        const hr=dH*Math.PI/180,sx=Math.sin(hr),sz=-Math.cos(hr);
        const ex=car.x-dX,ez=car.z-dZ,along=ex*sx+ez*sz,dist=Math.hypot(ex,ez);
        /* stopped: ease straight into place (settling between the lines of a parking space, small corrections) */

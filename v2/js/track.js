@@ -68,7 +68,7 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
   if(hPrev!=null&&this.hd!=null&&tPrev&&t>tPrev&&v>1.5){const r=(((this.hd-hPrev+540)%360)-180)/((t-tPrev)/1000);
     this.hdRate=(this.hdRate||0)+(Math.max(-60,Math.min(60,r))-(this.hdRate||0))*0.5;}
   else if(v<=1.5) this.hdRate=0;
-  this.last={t:t,x:fx,z:fz,v:sp!=null?sp:v,acc:acc||5,rx:x,rz:z};
+  this.last={t:t,x:fx,z:fz,v:sp!=null?sp:v,acc:acc||5,rx:x,rz:z,hd:(heading!=null&&!isNaN(heading))?heading:null};
   this.match();
   return this.last;
 };
