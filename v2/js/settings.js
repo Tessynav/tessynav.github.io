@@ -39,8 +39,8 @@ TN.Settings.prototype.applyAll=function(){for(const k in TN.SETDEF) this.apply(k
 /* the gear button and the panel */
 TN.Settings.prototype.build=function(){
   const st=document.createElement('style');
-  st.textContent='#tn-gear{right:16px;top:64px;width:46px;height:46px;padding:0;font-size:24px;display:flex;align-items:center;justify-content:center}'+
-  '#tn-set{position:absolute;right:16px;top:118px;width:310px;max-height:calc(100% - 140px);overflow:auto;background:rgba(10,18,32,.95);border-radius:14px;padding:8px 16px 12px;color:#e8f1fa;font:15px sans-serif;z-index:7;display:none}'+
+  st.textContent='#tn-gear{right:16px;top:16px;width:50px;height:50px;padding:0;font-size:26px;display:flex;align-items:center;justify-content:center}'+
+  '#tn-set{position:absolute;right:16px;top:72px;width:310px;max-height:calc(100% - 140px);overflow:auto;background:rgba(10,18,32,.95);border-radius:14px;padding:8px 16px 12px;color:#e8f1fa;font:15px sans-serif;z-index:7;display:none}'+
   '#tn-set .h{font-size:11px;letter-spacing:.07em;color:#9fb3c8;margin:12px 0 2px}#tn-set .r{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)}'+
   '#tn-set .sub{font-size:12px;color:#9fb3c8}#tn-set .t{width:46px;height:28px;border-radius:14px;background:#1fa596;position:relative;flex-shrink:0;cursor:pointer}'+
   '#tn-set .t:after{content:"";position:absolute;top:4px;left:22px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}#tn-set .t.off{background:#4a5260}#tn-set .t.off:after{left:4px}'+
