@@ -1,7 +1,9 @@
 /* TessyNav v2 — rem.js
    REM trains on the elevated guideway (drawn by roads.js): white two-car trains with a teal stripe that glide
    along the line, stop now and then like at a station, and continue; lit windows and headlights at night.
-   For now the trains run on a made-up rhythm near you (not their real positions).
+   Stations: found from the map's railway stations that sit right beside the REM line: platforms, a white canopy on
+   columns, a stair tower, and a floating name label (always facing you, readable from about 1.5 km).
+   Trains stop 10 seconds at each station. The trains themselves run on a made-up rhythm near you.
    Built to stay light: at most 3 trains, only within about 2 km. ?rem=0 switches the trains off. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
@@ -9,6 +11,7 @@ TN.Rem=function(scene,net){
   this.scene=scene;this.net=net;this.trains=[];this.spawnT=0;
   this.on=!(typeof location!=='undefined'&&/[?&]rem=0/.test(location.search));
   this.geo=null;this.matBody=null;this.matWin=null;this.night=0;
+  this.stations=new Map();this.stT=0;this.labels=null;
 };
 TN.Rem.prototype.build=function(){
   if(this.geo) return;
@@ -34,6 +37,7 @@ TN.Rem.prototype.setNight=function(nt){
   this.night=nt;
   if(this.matWin) this.matWin.color.set(TN.mix('#2c3a48','#ffe2a6',Math.max(0,Math.min(1,(nt-0.45)/0.35))));
   if(this.matBody) this.matBody.color.set(TN.mix('#ffffff','#8e97aa',nt));
+  if(this.stMat) this.stMat.color.set(TN.mix('#ffffff','#7d8494',nt));
 };
 TN.Rem.prototype.spawn=function(cx,cz){
   const net=this.net,c=[];
@@ -57,7 +61,78 @@ TN.Rem.prototype.nextPiece=function(t){
     if(d>bs){bs=d;best={w:v,s:j===0?0:v.L,dir:j===0?1:-1};}}
   return bs>0.3?best:null;
 };
+/* ---------- stations ---------- */
+TN.Rem.prototype.findStations=function(cx,cz){
+  const map=this.scene.map,net=this.net;if(!map||typeof map.querySourceFeatures!=='function'||!net.rem) return;
+  let fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'poi'});}catch(e){return;}
+  for(const f of fs){
+    const pr=f.properties||{};if(pr.class!=='railway'||!f.geometry||f.geometry.type!=='Point') continue;
+    const name=pr['name:latin']||pr.name||'';if(!name) continue;
+    const g=f.geometry.coordinates,q=TN.toLocal(g[0],g[1]);if(Math.abs(q[0]-cx)>3000||Math.abs(q[1]-cz)>3000) continue;
+    const key=name+'@'+Math.round(q[0]/150)+','+Math.round(q[1]/150);if(this.stations.has(key)) continue;
+    /* only stations right beside the REM line */
+    let best=null;
+    for(const w of net.rem.values()){const b=w.bb;if(q[0]<b[0]-80||q[0]>b[1]+80||q[1]<b[2]-80||q[1]>b[3]+80) continue;
+      for(let i=0;i<w.pts.length-1;i++){const a=w.pts[i],c=w.pts[i+1],dx=c[0]-a[0],dz=c[1]-a[1],L2=dx*dx+dz*dz||1;
+        const t=Math.max(0,Math.min(1,((q[0]-a[0])*dx+(q[1]-a[1])*dz)/L2)),px=a[0]+dx*t,pz=a[1]+dz*t,d=Math.hypot(q[0]-px,q[1]-pz);
+        if(d<70&&(!best||d<best.d)) best={w:w,i:i,t:t,d:d,x:px,z:pz};}}
+    if(!best) continue;
+    /* skip if another station with this name is already close (the map can have several points per station) */
+    let dup=false;for(const st of this.stations.values()) if(st.name===name&&Math.hypot(st.x-best.x,st.z-best.z)<250) dup=true;
+    if(dup) continue;
+    this.stations.set(key,this.buildStation(name,best));
+  }
+};
+TN.Rem.prototype.buildStation=function(name,b){
+  const net=this.net,w=b.w,a=w.pts[b.i],c=w.pts[b.i+1];let ux=c[0]-a[0],uz=c[1]-a[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
+  const nx=-uz,nz=ux,s0=w.cum[b.i]+b.t*(w.cum[b.i+1]-w.cum[b.i]),h=net.remHeights(w)[b.i]||0;
+  /* the tracks at the station: their sideways spread decides side platforms or an island platform */
+  let lo=0,hi=0;
+  for(const v of net.rem.values()){const bb=v.bb;if(b.x<bb[0]-25||b.x>bb[1]+25||b.z<bb[2]-25||b.z>bb[3]+25) continue;
+    for(let i=0;i<v.pts.length-1;i++){const p=v.pts[i],q=v.pts[i+1],mx=(p[0]+q[0])/2-b.x,mz=(p[1]+q[1])/2-b.z;
+      if(Math.abs(mx*ux+mz*uz)>40) continue;const o=mx*nx+mz*nz;if(Math.abs(o)<20){lo=Math.min(lo,o);hi=Math.max(hi,o);}}}
+  const G=TN.geo(),cx=b.x+nx*(lo+hi)/2,cz=b.z+nz*(lo+hi)/2,half=(hi-lo)/2,Lh=40,yp=h+1.0,yc=h+5.2;
+  const P=(along,off,y)=>[cx+ux*along+nx*off,y,cz+uz*along+nz*off];
+  const slab=(o0,o1,y0,y1,col)=>{TN.quad(G,P(-Lh,o0,y1),P(Lh,o0,y1),P(Lh,o1,y1),P(-Lh,o1,y1),col);
+    TN.quad(G,P(-Lh,o0,y0),P(Lh,o0,y0),P(Lh,o0,y1),P(-Lh,o0,y1),col);TN.quad(G,P(-Lh,o1,y0),P(Lh,o1,y0),P(Lh,o1,y1),P(-Lh,o1,y1),col);};
+  const plat=TN.hex('#e6e8ea'),edge=TN.hex('#f2c94c'),canopy=TN.hex('#f4f5f6'),col=TN.hex('#9aa3ab'),tower=TN.hex('#d8dbde');
+  if(half>4.5){slab(-half+3.2,half-3.2,h,yp,plat);}           /* island platform between the tracks */
+  else{slab(-half-6,-half-3,h,yp,plat);slab(half+3,half+6,h,yp,plat);}   /* side platforms */
+  const outer=half>4.5?half+1:half+6.5;
+  /* white canopy on columns over the platforms and tracks */
+  slab(-outer-1,outer+1,yc,yc+0.35,canopy);
+  for(let al=-Lh+4;al<=Lh-4;al+=10) for(const o of [-outer,outer]){const p=P(al,o,0);TN.box(G,p[0],p[2],ux,uz,0.3,0.3,yp,yc,col);}
+  /* stair and elevator tower down to the street at one end */
+  {const p=P(Lh+3,outer+2,0);TN.box(G,p[0],p[2],ux,uz,5,4,0,yc+1.5,tower);}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));g.setIndex(G.i);
+  if(!this.stMat){this.stMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide});this.stMat.color.set(TN.mix('#ffffff','#7d8494',this.night));}
+  const mesh=new THREE.Mesh(g,this.stMat);mesh.frustumCulled=false;this.scene.three.scene.add(mesh);
+  return {name:name,x:cx,z:cz,y:yc,mesh:mesh,w:w,s:s0,ux:ux,uz:uz};
+};
+/* floating name labels: always facing you, readable from about 1.5 km */
+TN.Rem.prototype.updateLabels=function(cx,cz){
+  if(typeof document==='undefined') return;
+  if(!this.labels){this.labels=new Map();
+    const st=document.createElement('style');st.textContent='.tn-rem{position:absolute;z-index:6;pointer-events:none;transform:translate(-50%,-100%);display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:rgba(255,255,255,.95);color:#1c2430;font:600 18px sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25)}.tn-rem b{background:#1fa596;color:#fff;font:700 11px sans-serif;padding:4px 7px;border-radius:7px}.tn-rem.n{background:rgba(16,24,38,.92);color:#e8f1fa}';
+    document.head.appendChild(st);}
+  const M=this.scene.three&&this.scene.three.camera?this.scene.three.camera.projectionMatrix:null;if(!M) return;
+  const cv=this.scene.map.getCanvas(),W=cv.clientWidth,H=cv.clientHeight,v=new THREE.Vector4();
+  for(const [k,st] of this.stations){
+    let el=this.labels.get(k);
+    if(!el){el=document.createElement('div');el.className='tn-rem';el.innerHTML='<b>REM</b>'+st.name.replace(/[<>&]/g,'');document.body.appendChild(el);this.labels.set(k,el);}
+    const d=Math.hypot(st.x-cx,st.z-cz);
+    v.set(st.x,st.y+7,st.z,1).applyMatrix4(M);
+    if(d>1500||v.w<=0){el.style.display='none';continue;}
+    const x=(v.x/v.w*0.5+0.5)*W,y=(-v.y/v.w*0.5+0.5)*H;
+    if(x<-100||x>W+100||y<-60||y>H+60){el.style.display='none';continue;}
+    el.style.display='flex';el.style.left=x+'px';el.style.top=y+'px';
+    el.style.opacity=String(Math.min(1,(1500-d)/200));el.style.fontSize=Math.round(16+6*Math.max(0,1-d/1500))+'px';
+    el.classList.toggle('n',this.night>0.45);
+  }
+};
 TN.Rem.prototype.update=function(dt,cx,cz){
+  this.stT-=dt;if(this.stT<=0&&this.scene.three&&this.net.rem&&this.net.rem.size){this.stT=3;try{this.findStations(cx,cz);}catch(e){}}
+  try{this.updateLabels(cx,cz);}catch(e){}
   const net=this.net;
   if(!this.on||!this.scene.three||!net.rem||!net.rem.size){for(const t of this.trains) this.free(t);this.trains=[];return;}
   this.build();
@@ -68,14 +143,21 @@ TN.Rem.prototype.update=function(dt,cx,cz){
     const t=this.trains[k];
     if(!net.rem.has(t.w.id)){this.free(t);this.trains.splice(k,1);continue;}
     /* stop now and then (like at a station), otherwise run at about 70 km/h, slowing in and out of stops */
+    /* the next station ahead on this piece (if any): the train stops there for 10 seconds */
+    if(t.stW!==t.w||t.stD!==t.dir){t.stW=t.w;t.stD=t.dir;t.stAt=null;
+      for(const st of this.stations.values()){const P=t.w.pts;
+        for(let i=0;i<P.length-1;i++){const a=P[i],c=P[i+1],dx=c[0]-a[0],dz=c[1]-a[1],L2=dx*dx+dz*dz||1;
+          const u=Math.max(0,Math.min(1,((st.x-a[0])*dx+(st.z-a[1])*dz)/L2)),d=Math.hypot(st.x-a[0]-dx*u,st.z-a[1]-dz*u);
+          if(d<14){const ss=t.w.cum[i]+u*(t.w.cum[i+1]-t.w.cum[i]);if((ss-t.s)*t.dir>2&&(t.stAt==null||Math.abs(ss-t.s)<Math.abs(t.stAt-t.s))) t.stAt=ss;}}}
+      if(t.stAt!=null) t.next=Math.abs(t.stAt-t.s);else if(this.stations.size) t.next=1e9;}
     if(t.wait>0){t.wait-=dt;t.v=0;}
     else{
       t.v=Math.min(19,t.v+dt*1.2);if(t.next<60) t.v=Math.max(3,Math.min(t.v,Math.sqrt(2*1.0*Math.max(1,t.next))));
       const ds=t.v*dt;t.s+=t.dir*ds;t.next-=ds;
-      if(t.next<=0){t.wait=20;t.next=1100+Math.random()*900;}
+      if(t.next<=0){t.wait=t.stAt!=null?10:20;t.stAt=null;t.stW=null;t.next=this.stations.size?1e9:1100+Math.random()*900;}
       if(t.s<0||t.s>t.w.L){
         const over=t.s<0?-t.s:t.s-t.w.L,n=this.nextPiece(t);
-        if(n){t.w=n.w;t.dir=n.dir;t.s=n.dir>0?over:n.w.L-over;}
+        if(n){t.w=n.w;t.dir=n.dir;t.s=n.dir>0?over:n.w.L-over;t.stW=null;if(this.stations.size&&t.next>5000) t.next=1e9;}
         else{t.s=Math.max(0,Math.min(t.w.L,t.s));t.dir=-t.dir;t.wait=15;t.next=1100+Math.random()*900;}
       }
     }
