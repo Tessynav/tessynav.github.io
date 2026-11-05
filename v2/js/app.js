@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=28;
+TN.APPBUILD=29;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -14,6 +14,7 @@ TN.APPBUILD=28;
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
+  const season=TN.Season?new TN.Season(scene,trees):null;
   TN.app={map:map,net:net,track:track,scene:scene,rec:rec};
   const brk={t:0,v:0,d:0,k:0,moved:0};
   let follow=false,watchId=null,ready=false,camHd=null,gZoom=20.5,gPitch=55,camY=0,sKmh=0,autoZoom=20.5,zMaxNow=24;
@@ -195,7 +196,7 @@ TN.APPBUILD=28;
     let nt=Math.min(1,Math.max(0,(6-alt)/12));
     {const mm=typeof location!=='undefined'&&location.search.match(/[?&]night=([0-9.]+)/);if(mm) nt=Math.min(1,Math.max(0,parseFloat(mm[1])));}
     lastNt=nt;
-    if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);if(rem) rem.setNight(nt);}
+    if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);if(rem) rem.setNight(nt);if(season) season.setNight(nt);}
   }
   setInterval(night,60000);
 
@@ -272,6 +273,7 @@ TN.APPBUILD=28;
       if(trees){try{trees.update(ac.lng,ac.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(ac.lng,ac.lat,lastFps);}catch(e){}}
       if(rem){try{const q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
+      if(season){try{if(follow&&car&&car.x!=null) season.update(dt,car.x,car.y||0,car.z,lastFps);else{const q=TN.toLocal(ac.lng,ac.lat);season.update(dt,q[0],0,q[1],lastFps);}}catch(e){}}
       /* brake lights: on while slowing down clearly, and while stopped after driving (like a held brake) */
       {const L=track.last;if(L&&L.t!==brk.t){
         if(brk.t){const dts=(L.t-brk.t)/1000;if(dts>0.05&&dts<2){const a=(brk.v-L.v)/dts;brk.d+=(a-brk.d)*Math.min(1,dts*3);}}
@@ -295,6 +297,7 @@ TN.APPBUILD=28;
       if(trees){try{trees.update(c.lng,c.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(c.lng,c.lat,lastFps);}catch(e){}}
       if(rem){try{const q=TN.toLocal(c.lng,c.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
+      if(season){try{const q=TN.toLocal(c.lng,c.lat);season.update(dt,q[0],0,q[1],lastFps);}catch(e){}}
     }
   }
   requestAnimationFrame(loop);
