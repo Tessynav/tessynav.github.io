@@ -225,7 +225,16 @@ TN.Nav.prototype.traffic=function(show){
   try{
     if(!map.getSource('tn-traffic')){
       if(!show) return;
-      map.addSource('tn-traffic',{type:'vector',tiles:['https://api.mapbox.com/v4/mapbox.mapbox-traffic-v1/{z}/{x}/{y}.vector.pbf?access_token='+TN.MBX],maxzoom:16});
+      /* the traffic tiles are fetched by the page itself (not the map's background helper), so the request carries
+         this site's address and the key's site restriction accepts it */
+      let url='https://api.mapbox.com/v4/mapbox.mapbox-traffic-v1/{z}/{x}/{y}.vector.pbf?access_token='+TN.MBX;
+      if(typeof maplibregl!=='undefined'&&maplibregl.addProtocol&&!TN.tnTrafficProto){
+        try{maplibregl.addProtocol('tntraffic',async(params,abort)=>{
+          const r=await fetch(params.url.replace('tntraffic://','https://'),{signal:abort&&abort.signal,referrerPolicy:'strict-origin-when-cross-origin'});
+          if(!r.ok){const e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
+          return {data:await r.arrayBuffer()};});TN.tnTrafficProto=true;}catch(e){}}
+      if(TN.tnTrafficProto) url=url.replace('https://','tntraffic://');
+      map.addSource('tn-traffic',{type:'vector',tiles:[url],maxzoom:16});
       map.addLayer({id:'tn-traffic',type:'line',source:'tn-traffic','source-layer':'traffic',minzoom:9,
         filter:['in',['get','congestion'],['literal',['low','moderate','heavy','severe']]],
         layout:{'line-join':'round','line-cap':'round'},
@@ -233,7 +242,8 @@ TN.Nav.prototype.traffic=function(show){
           'line-width':['interpolate',['linear'],['zoom'],10,['match',['get','congestion'],'low',1,1.8],16,['match',['get','congestion'],'low',3,5]],'line-opacity':0.9}});
       /* if the traffic data can't load (a key or network problem), say so once instead of silently showing nothing */
       map.on('error',e=>{if(e&&e.sourceId==='tn-traffic'&&!this.trafficErr){this.trafficErr=true;
-        const st=e.error&&e.error.status;this.note('traffic error',{status:st||null},false);
+        let st=e.error&&e.error.status;if(!st&&e.error&&e.error.message){const m=String(e.error.message).match(/\b(40[0-9]|5\d\d)\b/);if(m) st=+m[1];}
+        this.note('traffic error',{status:st||null,msg:e.error&&String(e.error.message||'')},false);
         this.toast(st===401?'Live traffic: the map key was refused (401: key not valid)':st===403?'Live traffic: the map key was refused (403: not allowed from this site)':'Live traffic is not available right now'+(st?' ('+st+')':''));}});
     }
     map.setLayoutProperty('tn-traffic','visibility',show?'visible':'none');
