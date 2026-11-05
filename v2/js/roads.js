@@ -1043,12 +1043,16 @@ TN.Net.prototype.drawSignal=function(L,m,done){
     const head=(hx,hz,y0,sz)=>{
       /* housing, then the three lamps in front of it, facing the traffic (-d) */
       TN.box(G,hx,hz,S.rx,S.rz,0.36*sz,0.26*sz,y0,y0+1.0*sz,TN.C.sigbox);
-      const fx=hx-S.dx*(0.15*sz),fz=hz-S.dz*(0.15*sz),r=0.11*sz;
+      /* lamps clearly in front of the housing (no flicker); at night a matching glow keeps them bright,
+         equal for all three so no colour looks lit */
+      const fx=hx-S.dx*(0.2*sz),fz=hz-S.dz*(0.2*sz),r=0.11*sz,GL=L.glow;
       [[TN.C.sigred,0.80],[TN.C.sigyel,0.50],[TN.C.siggrn,0.20]].forEach(([c,v])=>{
         const cy=y0+v*sz,ring=[];for(let k=0;k<8;k++){const a=k/8*Math.PI*2;ring.push([Math.cos(a)*r,Math.sin(a)*r]);}
         for(let k=0;k<8;k++){const p=ring[k],q=ring[(k+1)%8];
           const C=[fx,cy,fz],A=[fx+S.rx*p[0],cy+p[1],fz+S.rz*p[0]],B=[fx+S.rx*q[0],cy+q[1],fz+S.rz*q[0]];
-          for(const tri of [[C,A,B],[C,B,A]]){const b=G.n;for(const v2 of tri){G.p.push(v2[0],v2[1],v2[2]);G.c.push(c[0],c[1],c[2]);}G.i.push(b,b+1,b+2);G.n+=3;}}
+          for(const tri of [[C,A,B],[C,B,A]]){const b=G.n;for(const v2 of tri){G.p.push(v2[0],v2[1],v2[2]);G.c.push(c[0],c[1],c[2]);}G.i.push(b,b+1,b+2);G.n+=3;}
+          if(GL){const C2=[fx-S.dx*0.01,cy,fz-S.dz*0.01],A2=[A[0]-S.dx*0.01,A[1],A[2]-S.dz*0.01],B2=[B[0]-S.dx*0.01,B[1],B[2]-S.dz*0.01];
+            for(const tri of [[C2,A2,B2],[C2,B2,A2]]){const b=GL.n;for(const v2 of tri){GL.p.push(v2[0],v2[1],v2[2]);GL.c.push(c[0]*0.6,c[1]*0.6,c[2]*0.6);}GL.i.push(b,b+1,b+2);GL.n+=3;}}}
       });
     };
     const n=S.hw>5&&!S.ow?1:(S.hw>5?2:1);
