@@ -15,6 +15,7 @@ TN.Nav=function(api){
   this.note=(k,d,sh)=>{try{api.note&&api.note(k,d,sh);}catch(e){}};
   this.api=api;this.route=null;this.mesh=null;this.mat=null;this.idx=0;this.offT=0;this.lastReroute=0;this.arriveT=0;
   this.recent=[];try{this.recent=JSON.parse(localStorage.getItem('tn2_recent')||'[]')||[];}catch(e){}
+  this.places={home:null,work:null,favs:[]};try{const P=JSON.parse(localStorage.getItem('tn2_places')||'null');if(P) this.places=Object.assign(this.places,P);}catch(e){}
 };
 /* ---------- screen ---------- */
 TN.Nav.prototype.build=function(){
@@ -28,6 +29,9 @@ TN.Nav.prototype.build=function(){
    '#tn-res .r{display:flex;align-items:center;gap:12px;padding:14px 12px;border-radius:12px;cursor:pointer;font-size:17px}'+
    '#tn-res .r:active,#tn-res .r:hover{background:rgba(255,255,255,.08)}#tn-res .r small{display:block;color:#9fb3c8;font-size:13px;margin-top:2px}'+
    '#tn-res .d{margin-left:auto;color:#9fb3c8;font-size:14px;white-space:nowrap}#tn-res .msg{padding:12px;color:#9fb3c8}'+
+   '#tn-res .hd{font-size:12px;letter-spacing:.06em;color:#7d8da3;padding:10px 12px 2px}#tn-res .del{display:flex;padding:8px;margin:-8px -4px -8px 4px;border-radius:8px}#tn-res .del:active{background:rgba(255,255,255,.1)}'+
+   '#tn-ov .save{background:#3a4352;color:#fcd34d;display:inline-flex;align-items:center;gap:6px}'+
+   '#tn-savemenu{position:fixed;z-index:12;padding:6px;min-width:230px}#tn-savemenu .r{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;font-size:16px}#tn-savemenu .r:active{background:rgba(255,255,255,.08)}'+
    '#tn-ov{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:18px;padding:14px 18px;font-size:16px}'+
    '#tn-ov small{color:#9fb3c8;font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
    '#tn-ov .go{background:#1fa596;color:#fff}#tn-ov .cancel,#tn-ov .stop{background:#3a4352;color:#e8f1fa}'+
@@ -82,7 +86,8 @@ TN.Nav.prototype.build=function(){
   this.bar.querySelector('.dst').onclick=ev=>{ev.stopPropagation();this.openTrip();};
   document.addEventListener('pointerdown',e=>{if(!this.box.contains(e.target)&&!this.res.contains(e.target)){this.res.style.display='none';
     /* (tapping outside while adding a stop: back to the route, nothing added) */
-    if(this.addingStop&&!(this.stopBtn&&this.stopBtn.contains(e.target))&&!(this.ov&&this.ov.contains(e.target))) this.cancelAddStop();}},true);
+    if(this.addingStop&&!(this.stopBtn&&this.stopBtn.contains(e.target))&&!(this.ov&&this.ov.contains(e.target))) this.cancelAddStop();
+    if(this.setting){this.setting=null;this.input.placeholder='Search a place or address';}}},true);
 };
 TN.Nav.prototype.closeSearch=function(){this.res.style.display='none';this.input.blur();this.syncX();if(!this.addingStop) this.input.placeholder='Search a place or address';};
 TN.Nav.prototype.syncX=function(){const x=this.box&&this.box.querySelector('.x');if(x) x.style.display=this.input.value?'flex':'none';};
@@ -109,6 +114,10 @@ TN.ICON=(name,size,color)=>{const c=color||'currentColor',z=size||22,P={
   search:'<circle cx="10" cy="10" r="6.5" fill="none" stroke="'+c+'" stroke-width="2.4"/><path d="M15 15l5.5 5.5" stroke="'+c+'" stroke-width="2.6" stroke-linecap="round"/>',
   x:'<path d="M6 6l12 12M18 6L6 18" stroke="'+c+'" stroke-width="2.6" stroke-linecap="round"/>',
   pin:'<path d="M12 22s7-7.2 7-12.2A7 7 0 0 0 5 9.8C5 14.8 12 22 12 22z" fill="#ff5a4f"/><circle cx="12" cy="9.8" r="2.6" fill="#fff"/>',
+  home:'<path d="M3 11.5L12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" fill="'+c+'"/>',
+  work:'<rect x="3" y="8" width="18" height="12" rx="2" fill="'+c+'"/><path d="M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8" fill="none" stroke="'+c+'" stroke-width="2"/>',
+  star:'<path d="M12 2.8l2.8 6 6.5.7-4.9 4.4 1.4 6.4L12 17l-5.8 3.3 1.4-6.4L2.7 9.5l6.5-.7z" fill="'+c+'"/>',
+  staro:'<path d="M12 2.8l2.8 6 6.5.7-4.9 4.4 1.4 6.4L12 17l-5.8 3.3 1.4-6.4L2.7 9.5l6.5-.7z" fill="none" stroke="'+c+'" stroke-width="2" stroke-linejoin="round"/>',
   recent:'<circle cx="12" cy="12" r="8.5" fill="none" stroke="'+c+'" stroke-width="2.2"/><path d="M12 7.5V12l3 2" stroke="'+c+'" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
   straight:'<path d="M12 21V4M6 10l6-6 6 6" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   left:'<path d="M17 21v-7a4 4 0 0 0-4-4H5M10 5L5 10l5 5" stroke="'+c+'" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -121,9 +130,46 @@ TN.ICON=(name,size,color)=>{const c=color||'currentColor',z=size||22,P={
   }[name]||'';return '<svg width="'+z+'" height="'+z+'" viewBox="0 0 24 24" style="display:block">'+P+'</svg>';};
 TN.esc=t=>String(t==null?'':t).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 TN.distLL=(a,b)=>{const R=6371000,p=Math.PI/180,dLa=(b[1]-a[1])*p,dLo=(b[0]-a[0])*p,s=Math.sin(dLa/2)**2+Math.cos(a[1]*p)*Math.cos(b[1]*p)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(s));};
-TN.Nav.prototype.showRecent=function(){
-  if(!this.recent.length&&!this.addingStop){this.res.style.display='none';return;}
-  this.list(this.recent.map(r=>Object.assign({},r,{recent:true})));
+TN.Nav.prototype.showRecent=function(){this.showStart();};
+TN.Nav.prototype.savePlaces=function(){try{localStorage.setItem('tn2_places',JSON.stringify(this.places));}catch(e){}};
+TN.Nav.prototype.slim=it=>({name:it.name,sub:it.sub||'',lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat});
+/* the list before typing: Home and Work (with the time to get there now), Favorites, Recent */
+TN.Nav.prototype.showStart=function(){
+  const R=this.res,P=this.places,h=this.here(),items=[];let html='';
+  const row=(cls,icon,name,sub,right,extra)=>'<div class="r '+cls+'"'+(extra||'')+'><span>'+icon+'</span><div>'+TN.esc(name)+'<small>'+TN.esc(sub||'')+'</small></div>'+right+'</div>';
+  if(this.addingStop) html+='<div class="r cancelstop" style="color:#ff8a80">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>';
+  if(this.setting) html+='<div class="r cancelset" style="color:#ff8a80">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel<small>Keep '+(this.setting==='home'?'Home':'Work')+' as it is</small></div></div>';
+  else for(const k of ['home','work']){const pl=P[k],lab=k==='home'?'Home':'Work',col=k==='home'?'#60a5fa':'#f59e0b';
+    if(pl){const t=this.etaFor(k);items.push(pl);
+      html+=row('slot','',lab,pl.name+(pl.sub?' \u00b7 '+pl.sub:''),'<span class="d" style="color:#5dcaa5">'+(t?t+' min':fmtDist(TN.distLL(h,[pl.lng,pl.lat])))+'</span><span class="del" data-del="'+k+'" title="Change">'+TN.ICON('x',16,'#5d6b80')+'</span>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON(k,22,col)+'</span>');}
+    else html+=row('setslot','',lab,'Tap to set','<span class="d">Set</span>',' data-set="'+k+'"').replace('<span></span>','<span>'+TN.ICON(k,22,col)+'</span>');}
+  if(!this.setting&&P.favs.length){html+='<div class="hd">FAVORITES</div>';
+    P.favs.forEach((f,fi)=>{items.push(f);html+=row('fav','',f.name,f.sub,'<span class="d">'+fmtDist(TN.distLL(h,[f.lng,f.lat]))+'</span><span class="del" data-fav="'+fi+'" title="Remove">'+TN.ICON('x',16,'#5d6b80')+'</span>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON('star',20,'#fcd34d')+'</span>');});}
+  if(this.recent.length){html+='<div class="hd">RECENT</div>';
+    this.recent.forEach(r=>{items.push(r);html+=row('rec','',r.name,r.sub,'<span class="d">'+fmtDist(TN.distLL(h,[r.lng,r.lat]))+'</span>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON('recent',22,'#9fb3c8')+'</span>');});}
+  if(!html){R.style.display='none';return;}
+  this.results=items;R.innerHTML=html;R.style.display='block';
+  R.querySelectorAll('.r[data-i]').forEach(r=>r.onclick=ev=>{if(ev.target.closest('.del')) return;this.pick(items[+r.dataset.i]);});
+  R.querySelectorAll('[data-set]').forEach(r=>r.onclick=()=>this.startSetting(r.dataset.set));
+  R.querySelectorAll('[data-del]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();this.startSetting(b.dataset.del);});
+  R.querySelectorAll('[data-fav]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();const f=P.favs[+b.dataset.fav];P.favs.splice(+b.dataset.fav,1);this.savePlaces();this.toast((f?f.name:'Favorite')+' removed');this.showStart();});
+  const cs=R.querySelector('.cancelstop');if(cs) cs.onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};
+  const ct=R.querySelector('.cancelset');if(ct) ct.onclick=ev=>{ev.stopPropagation();this.setting=null;this.input.placeholder='Search a place or address';this.showStart();};
+};
+/* setting Home or Work: the next place picked is saved there */
+TN.Nav.prototype.startSetting=function(k){
+  this.setting=k;this.input.value='';this.input.placeholder=k==='home'?'Search your home address':'Search your work address';this.syncX();this.input.focus();this.showStart();
+};
+/* the time to get Home / to Work right now (live traffic), refreshed every 3 minutes */
+TN.Nav.prototype.etaFor=function(k){
+  const pl=this.places[k];if(!pl||!TN.MBX) return null;this.etaC=this.etaC||{};const c=this.etaC[k],now=Date.now(),h=this.here();
+  if(c&&c.key===pl.lng+','+pl.lat&&now-c.t<180000&&TN.distLL(h,c.from)<500) return c.min;
+  if(!c||now-c.t>15000){this.etaC[k]={t:now,key:pl.lng+','+pl.lat,from:h,min:c&&c.key===pl.lng+','+pl.lat?c.min:null};
+    const to=TN.routeTo(pl);
+    fetch('https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+h[0].toFixed(6)+','+h[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+'?overview=false&access_token='+TN.MBX)
+      .then(r=>r.ok?r.json():null).then(j=>{if(j&&j.routes&&j.routes[0]){this.etaC[k].min=Math.max(1,Math.round(j.routes[0].duration/60));
+        if(this.res.style.display!=='none'&&!this.input.value) this.showStart();}}).catch(()=>{});}
+  return c&&c.key===pl.lng+','+pl.lat?c.min:null;
 };
 TN.Nav.prototype.search=async function(q){
   const h=this.here(),my=++this.qn;this.qn=my;
@@ -160,6 +206,9 @@ TN.Nav.prototype.pick=async function(it){
   }
   this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
   try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
+  if(this.setting){const k=this.setting;this.setting=null;this.places[k]=this.slim(it);this.savePlaces();
+    this.input.value='';this.input.placeholder='Search a place or address';this.syncX();this.res.style.display='none';this.input.blur();
+    this.toast((k==='home'?'Home':'Work')+' saved: '+it.name);if(this.etaC) delete this.etaC[k];return;}
   if(this.addingStop){this.addingStop=false;document.body.classList.remove('tn-addstop');
     this.stops.push({name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat});this.stopPins();
     this.plan(this.active);   /* while driving: the route changes at once; before Go: a new overview */
@@ -546,11 +595,26 @@ TN.Nav.prototype.overview=function(){
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
   this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+'</small>'+
-    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button></div>';
+    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
+  this.ov.querySelector('.save').onclick=ev=>{ev.stopPropagation();this.saveMenu(ev.currentTarget);};
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
   this.tripButtons(this.ov);
+};
+TN.Nav.prototype.isFav=function(p){return !!(p&&this.places.favs.some(f=>Math.abs(f.lat-p.lat)<1e-5&&Math.abs(f.lng-p.lng)<1e-5));};
+TN.Nav.prototype.saveMenu=function(btn){
+  let m=document.getElementById('tn-savemenu');if(m){m.remove();return;}
+  m=document.createElement('div');m.id='tn-savemenu';m.className='hud';const fav=this.isFav(this.dest);
+  m.innerHTML='<div class="r" data-k="home">'+TN.ICON('home',20,'#60a5fa')+'<span>Set as Home</span></div><div class="r" data-k="work">'+TN.ICON('work',20,'#f59e0b')+'<span>Set as Work</span></div>'+
+    '<div class="r" data-k="fav">'+TN.ICON(fav?'star':'staro',20,'#fcd34d')+'<span>'+(fav?'Remove from favorites':'Add to favorites')+'</span></div>';
+  const b=btn.getBoundingClientRect();m.style.left=Math.max(8,b.left)+'px';m.style.bottom=(innerHeight-b.top+8)+'px';document.body.appendChild(m);
+  m.querySelectorAll('.r').forEach(r=>r.onclick=()=>{const k=r.dataset.k,d=this.dest;m.remove();if(!d) return;
+    if(k==='fav'){if(this.isFav(d)){this.places.favs=this.places.favs.filter(f=>!(Math.abs(f.lat-d.lat)<1e-5&&Math.abs(f.lng-d.lng)<1e-5));this.toast(d.name+' removed from favorites');}
+      else{this.places.favs.unshift(this.slim(d));this.places.favs=this.places.favs.slice(0,20);this.toast(d.name+' added to favorites');}}
+    else{this.places[k]=this.slim(d);if(this.etaC) delete this.etaC[k];this.toast((k==='home'?'Home':'Work')+' saved: '+d.name);}
+    this.savePlaces();if(!this.active&&this.route) this.overview();});
+  setTimeout(()=>{const off=e=>{if(!m.contains(e.target)){m.remove();document.removeEventListener('pointerdown',off,true);}};document.addEventListener('pointerdown',off,true);},0);
 };
 /* the trip in order: stops numbered 1, 2, 3..., the destination last; arrows to reorder, x to remove */
 TN.Nav.prototype.tripList=function(){
