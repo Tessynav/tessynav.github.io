@@ -50,6 +50,7 @@ TN.Scene.prototype.mat=function(k){
   if(k==='lot'){
     /* parking lots: drawn first and not hiding anything, so they never flicker against aisles and curbs */
     const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,depthWrite:false});
+    if(TN.snowPatch) TN.snowPatch(m,0.6);   /* (snow on the ground: lots turn white) */
     this.tintMat(k,m);this.mats[k]=m;return m;
   }
   if(k==='glow'){
@@ -63,6 +64,7 @@ TN.Scene.prototype.mat=function(k){
     polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
   if(k==='mark') this.beamPatch(m);   /* lane markings light up in the headlights */
   TN.cutPatch(m,{high:true});   /* a bridge or overpass right above the car is cut away so the car stays visible */
+  if(TN.snowPatch&&(k==='road'||k==='curb')) TN.snowPatch(m,k==='road'?0.3:0.85);   /* (snow on the ground: sidewalks white, roads lighter) */
   this.tintMat(k,m);this.mats[k]=m;return m;
 };
 TN.Scene.prototype.cellMesh=function(tx,ty){return this.meshOf(this.net.buildCell(tx,ty));};
@@ -317,7 +319,11 @@ TN.Scene.prototype.tintMat=function(k,m){
 };
 TN.Scene.prototype.applyGround=function(nt){
   if(!this.dayPaint||Math.abs((this.lastNt==null?-1:this.lastNt)-nt)<=0.01) return;this.lastNt=nt;
-  for(const [id,prop,d,n] of this.dayPaint){try{this.map.setPaintProperty(id,prop,TN.mix(d,n,nt));}catch(e){}}
+  /* snow on the ground: the land turns white (water stays water) */
+  const sg=this.snowG||0;
+  for(const [id,prop,d,n] of this.dayPaint){const wat=d==='#2f9fd6';
+    const dd=sg>0&&!wat?TN.mix(d,'#eef2f5',0.9*sg):d,nn=sg>0&&!wat?TN.mix(n,'#394150',0.8*sg):n;
+    try{this.map.setPaintProperty(id,prop,TN.mix(dd,nn,nt));}catch(e){}}
 };
 TN.Scene.prototype.reapplyNight=function(){if(this.wxNt!=null) this.applyNight(this.wxNt);};
 TN.Scene.prototype.applyNight=function(nt){

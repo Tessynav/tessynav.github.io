@@ -28,18 +28,18 @@ TN.Weather.prototype.fromCode=function(code,cloud){
 TN.Weather.prototype.check=async function(lat,lng){
   if(this.test){
     const T={rain:[63,90],snow:[73,95],fog:[45,90],cloudy:[3,95],clear:[0,0]}[this.test]||[0,0];
-    this.set(this.fromCode(T[0],T[1]));return;
+    const w=this.fromCode(T[0],T[1]);w.snowDepth=this.test==='snow'?0.1:0;this.set(w);return;
   }
   try{
-    const u='https://api.open-meteo.com/v1/forecast?latitude='+lat.toFixed(3)+'&longitude='+lng.toFixed(3)+'&current=weather_code,cloud_cover&timezone=auto';
+    const u='https://api.open-meteo.com/v1/forecast?latitude='+lat.toFixed(3)+'&longitude='+lng.toFixed(3)+'&current=weather_code,cloud_cover,snow_depth&timezone=auto';
     const r=await fetch(u,{cache:'no-store'});if(!r.ok) return;const j=await r.json();
-    if(j&&j.current) this.set(this.fromCode(j.current.weather_code,j.current.cloud_cover));
+    if(j&&j.current){const w=this.fromCode(j.current.weather_code,j.current.cloud_cover);w.snowDepth=+j.current.snow_depth||0;this.set(w);}
   }catch(e){}
 };
 TN.Weather.prototype.set=function(w){
   const changed=w.kind!==this.kind||Math.abs(w.cloud-this.cloud)>0.1;
   Object.assign(this,w);
-  const S=this.scene;S.weather={cloud:this.on?this.cloud:0,rain:this.on?this.rain:0,fog:this.on?this.fog:0};
+  const S=this.scene;S.weather={cloud:this.on?this.cloud:0,rain:this.on?this.rain:0,fog:this.on?this.fog:0,snowDepth:this.on?(this.snowDepth||0):0};
   if(changed&&S.reapplyNight) S.reapplyNight();
   /* snowfall follows the real weather (the calendar decides only when the weather is not snowy) */
   if(this.season&&this.season.setMode){

@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=60;
+TN.APPBUILD=62;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -15,6 +15,7 @@ TN.APPBUILD=60;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
   const season=TN.Season?new TN.Season(scene,trees):null;
+  const ground=TN.Ground?new TN.Ground(scene,net,trees,season):null;   /* fallen leaves, snowy ground and car */
   const water=TN.Water?new TN.Water(scene):null;
   /* the settings menu (gear button) */
   const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,night:()=>night()}):null;
@@ -25,6 +26,8 @@ TN.APPBUILD=60;
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   /* road incidents with Rocco (TomTom) */
+  /* shadows that follow the real sun (buildings and the car), and the car's soft contact shadow */
+  TN.shadows=TN.Shadows?new TN.Shadows(scene):null;
   const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,getCar:()=>track.car,following:()=>follow,roadsBase:'https://tessynav.github.io/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
   if(incidents){try{incidents.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */
@@ -382,6 +385,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
        }
        car=Object.assign({},car,{x:dX,z:dZ,hd:dH});dispHd=dH;}
       scene.placeCar(car.x,car.z,car.y||0,dispHd);
+      if(ground){try{ground.update({x:car.x,z:car.z,hd:dispHd},dt);}catch(e){}}
+      if(TN.shadows){try{const sl=TN.fromLocal(car.x,car.z);TN.shadows.update(sl[0],sl[1],{x:car.x,z:car.z,y:car.y,hd:dispHd,br:car.br});}catch(e){}}
       try{scene.updateBeam(car);}catch(e){}
       if(nav){try{nav.update(dt);}catch(e){}}
       /* without a route: the speed limit of the road the car is on (from the road tiles) */

@@ -377,6 +377,9 @@ TN.Nav.prototype.traffic=function(show){
   }catch(e){this.note('traffic error',{msg:String(e&&e.message||e)},false);}
 };
 /* ---------- route ---------- */
+/* route preferences (settings): roads to avoid, for the next route asked */
+TN.avoidList=function(){const S=TN.settings||{},a=[];if(S.avoidToll) a.push('toll');if(S.avoidHwy) a.push('motorway');if(S.avoidFerry) a.push('ferry');if(S.avoidUnpaved) a.push('unpaved');return a;};
+TN.avoidParam=function(){const a=TN.avoidList();return a.length?'&exclude='+a.join(','):'';};
 /* where to route to: the place's routable point when known, otherwise the place itself */
 TN.routeTo=p=>p.rlng!=null?[p.rlng,p.rlat]:[p.lng,p.lat];
 TN.llDist=(a,b)=>{const k=111320,dx=(a[0]-b[0])*k*Math.cos(a[1]*Math.PI/180),dy=(a[1]-b[1])*k;return Math.hypot(dx,dy);};
@@ -420,7 +423,7 @@ TN.Nav.prototype.fetchRouteOnce=async function(from,to){
     const via=(this.stops||[]).map(p=>{const r=TN.routeTo(p);return r[0].toFixed(6)+','+r[1].toFixed(6);});
     const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60'+';'.repeat(via.length+1):'';
     const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+[from[0].toFixed(6)+','+from[1].toFixed(6)].concat(via,[to[0].toFixed(6)+','+to[1].toFixed(6)]).join(';')+
-      '?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language=en&voice_instructions=true&voice_units=metric'+brg+'&access_token='+TN.MBX;
+      '?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language=en&voice_instructions=true&voice_units=metric'+brg+TN.avoidParam()+'&access_token='+TN.MBX;
     const r=await fetch(u);if(r.ok){const j=await r.json();if(j.routes&&j.routes[0]){j.routes[0].traffic=true;return j.routes[0];}}
   }catch(e){}}
   return this.fetchRouteFree(from,to);
@@ -534,7 +537,7 @@ TN.Nav.prototype.draw=function(from){
   /* (lifted 0.22 m above the road with only a light "on top" setting: a strong one made it draw over the car's
      lower body on bridges, so the car looked sunk) */
   if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});}
-  const pos=[],idx=[],col=[],hw=1.3;let n=0;const tc=new THREE.Color();
+  const pos=[],idx=[],col=[],rd=[],hw=1.3;let n=0;const tc=new THREE.Color();
   const a0=Math.max(0,from|0);
   let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
   this.fitRange(Math.max(0,a0-40),a1);this.drawVer=this.api.net.ver;
@@ -545,12 +548,23 @@ TN.Nav.prototype.draw=function(from){
     const cx=p[0]+m[1]-uz*lo,cz=p[1]+m[2]+ux*lo;
     pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
     tc.set(TN.TRAFFIC_COL[R.cong?R.cong[i]:'unknown']||'#3b82f6');col.push(tc.r,tc.g,tc.b,tc.r,tc.g,tc.b);
+    rd.push(R.cum[i],R.cum[i]);
     if(i>a0) idx.push(n-2,n-1,n+1,n-2,n+1,n);
     n+=2;
   }
   if(this.mesh){S.three.scene.remove(this.mesh);this.mesh.geometry.dispose();}
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setIndex(idx);
-  this.mesh=new THREE.Mesh(g,this.mat);this.mesh.frustumCulled=false;this.mesh.renderOrder=4;S.three.scene.add(this.mesh);this.drawn=a0;
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setAttribute('rd',new THREE.Float32BufferAttribute(rd,1));g.setIndex(idx);
+  this.mesh=new THREE.Mesh(g,TN.settings&&TN.settings.rainbow?this.rainbowMat():this.mat);this.mesh.frustumCulled=false;this.mesh.renderOrder=4;S.three.scene.add(this.mesh);this.drawn=a0;
+};
+/* the rainbow road material: the colour comes from the distance along the route, shifted a little every frame (the
+   graphics card does the colours; the app only moves one number) */
+TN.Nav.prototype.rainbowMat=function(){
+  if(this.rmat) return this.rmat;
+  this.rmat=new THREE.ShaderMaterial({uniforms:{shift:{value:0},op:{value:0.85}},transparent:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2,
+    vertexShader:'attribute float rd;varying float vR;void main(){vR=rd;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader:'uniform float shift;uniform float op;varying float vR;vec3 hue(float h){vec3 k=vec3(1.0,2.0/3.0,1.0/3.0);vec3 p=abs(fract(vec3(h)+k)*6.0-3.0);return clamp(p-1.0,0.0,1.0);}'+
+      'void main(){gl_FragColor=vec4(mix(vec3(1.0),hue(fract(vR/90.0-shift)),0.85),op);}'});
+  return this.rmat;
 };
 /* the route as a map line: stays thick and visible at any zoom (overview, and far ahead beyond the 3D roads) */
 TN.Nav.prototype.mapLine=function(coords){
@@ -594,7 +608,7 @@ TN.Nav.prototype.overview=function(){
   }catch(e){}
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
-  this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+'</small>'+
+  this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+(TN.avoidList().length?' \u00b7 avoiding '+TN.avoidList().map(x=>({toll:'tolls',motorway:'highways',ferry:'ferries',unpaved:'unpaved roads'})[x]).join(', '):'')+'</small>'+
     (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
   this.ov.querySelector('.save').onclick=ev=>{ev.stopPropagation();this.saveMenu(ev.currentTarget);};
@@ -812,6 +826,9 @@ TN.Nav.prototype.reroute=async function(){
   this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.gdH=[];
 };
 TN.Nav.prototype.update=function(dt){
+  if(this.mesh){const rb=!!(TN.settings&&TN.settings.rainbow);
+    if(rb){const m=this.rainbowMat();if(this.mesh.material!==m) this.mesh.material=m;m.uniforms.shift.value=(m.uniforms.shift.value+dt*0.35)%1;m.uniforms.op.value=this.mat?this.mat.opacity:0.85;}
+    else if(this.mat&&this.mesh.material!==this.mat) this.mesh.material=this.mat;}
   if(!this.route||!this.active) return;
   const R=this.route,c=this.api.getCar();if(!c||c.x==null) return;
   /* where the car is along the route: from the real GPS position when there is one (the matched car can
