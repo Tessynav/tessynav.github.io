@@ -4,7 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.SETDEF={theme:'rocco',voice:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={theme:'rocco',voice:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -85,8 +85,8 @@ TN.Settings.prototype.build=function(){
     {id:'car',t:'Car on the route',sum:()=>on('glueRoute')?'Glued everywhere':list([on('glueTurns')?'Glued in turns':'Normal tracking',on('wideLanes')&&'follows my lane']),
      html:()=>'<div class="sub" style="margin:8px 0 2px">How the car is drawn while you follow a route</div>'+tog('glueTurns','Glue the car in turns','Follows the route\u2019s curve through turns; steady on straight roads (recommended)')+
        tog('glueRoute','Glue the car everywhere','Always on the route line (can drift sideways on straight roads)')+tog('wideLanes','Follow my lane on wide roads','Highways and bridges with 3+ lanes: the car takes your lane (moves sideways more)')},
-    {id:'alert',t:'Alerts',sum:()=>{const a=['incidents','cameras','rail','limits'].filter(k=>on(k)).length;return a+' of 4 on'+(on('fun')?' \u00b7 Fun mode':'');},
-     html:()=>'<div class="h">ON YOUR WAY</div>'+tog('incidents','Road incidents','Accidents, closures, works and traffic on your way')+tog('cameras','Speed cameras','Fixed, red-light and mobile zones (Quebec)')+tog('rail','Railway crossings','Before level crossings on your way')+
+    {id:'alert',t:'Alerts',sum:()=>{const a=['incidents','cameras','rail','schools','limits'].filter(k=>on(k)).length;return a+' of 5 on'+(on('fun')?' \u00b7 Fun mode':'');},
+     html:()=>'<div class="h">ON YOUR WAY</div>'+tog('incidents','Road incidents','Accidents, closures, works and traffic on your way')+tog('cameras','Speed cameras','Fixed, red-light and mobile zones (Quebec)')+tog('rail','Railway crossings','Before level crossings on your way')+tog('schools','School zones','Schools on your way: weekdays 7:00 to 17:00, September to June')+
        '<div class="h">ON SCREEN</div>'+tog('limits','Speed limit sign','Turns red when you are over')+tog('fun','Fun mode','Rocco the raccoon and his jokes on alert cards')},
     {id:'map',t:'Map and view',sum:()=>list([({auto:'Light: auto',day:'Always day',night:'Always night'})[S.time]||'Light: auto',on('traffic')&&'live traffic']),
      html:()=>'<div class="h">TIME OF DAY</div><div class="r"><div>Light</div><div class="seg" data-k="time"><span data-v="auto">Auto</span><span data-v="day">Day</span><span data-v="night">Night</span></div></div>'+

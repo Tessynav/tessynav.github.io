@@ -98,6 +98,12 @@ TN.Net.prototype.addPackJob=function*(key,P){
     this.rem.set(r[0],{id:r[0],name:'REM',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],bb:[x0,x1,z0,z1],rem:true,ground:true,br:false});
     this.remVer=(this.remVer||0)+1;
   }
+  /* schools (road tiles v8): [id, outline lng/lat... (or one point), name], for school zone alerts */
+  rec.sc=new Set();this.schools=this.schools||new Map();
+  for(const r of P.sc||[]){rec.sc.add(r[0]);if(this.schools.has(r[0])) continue;
+    const f=r[1],pts=[];for(let i=0;i<f.length;i+=2) pts.push(TN.toLocal(f[i],f[i+1]));if(!pts.length) continue;
+    let cx=0,cz=0;for(const q of pts){cx+=q[0];cz+=q[1];}
+    this.schools.set(r[0],{id:r[0],pts:pts,c:[cx/pts.length,cz/pts.length],name:r[2]||'',point:pts.length<3});}
   /* stop signs, yield signs and crosswalks: [lng, lat, kind s/y/c, direction f/b/''] */
   rec.mk=new Set();this.marks=this.marks||new Map();
   for(const m of P.n||[]){if(++n%200===0) yield;const k=m[0]+','+m[1]+','+m[2];rec.mk.add(k);if(this.marks.has(k)) continue;
@@ -114,6 +120,7 @@ TN.Net.prototype.dropPack=function(key,later){
   this.packs.delete(key);(this.changed=this.changed||[]).push(key);
   const keep=new Set();for(const r of this.packs.values()) for(const id of r.ids) keep.add(id);
   for(const id of rec.ids) if(!keep.has(id)) this.ways.delete(id);
+  if(rec.sc&&this.schools){const ks=new Set();for(const r of this.packs.values()) if(r.sc) for(const id of r.sc) ks.add(id);for(const id of rec.sc) if(!ks.has(id)) this.schools.delete(id);}
   if(rec.rm&&this.rem){const kr=new Set();for(const r of this.packs.values()) if(r.rm) for(const id of r.rm) kr.add(id);
     for(const id of rec.rm) if(!kr.has(id)){this.rem.delete(id);this.remVer=(this.remVer||0)+1;}}
   if(rec.mk&&this.marks){const km=new Set();for(const r of this.packs.values()) if(r.mk) for(const k of r.mk) km.add(k);
