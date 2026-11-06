@@ -825,6 +825,19 @@ TN.Nav.prototype.reroute=async function(){
   if(this.mat) this.mat.opacity=0.85;
   this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.gdH=[];
 };
+/* how much the car should follow the route's curve right now (0 on straight roads, 1 in a turn): gluing starts
+   70 m before a turn on the route, is full from 30 m before to 25 m after it, and ends 50 m after */
+TN.Nav.prototype.turnWeight=function(){
+  const R=this.route;if(!R||!R.steps||this.ps==null) return 0;
+  let w=0;const s=this.ps;
+  for(const st of R.steps){
+    if(st.type==='depart'||st.type==='arrive'||st.type==='new name'||st.type==='continue') continue;
+    if(st.mod==='straight') continue;
+    const d=st.at-s;if(d>70||d<-50) continue;
+    const k=d>=0?(d<=30?1:(70-d)/40):(d>=-25?1:(50+d)/25);const sm=k*k*(3-2*k);
+    if(sm>w) w=sm;}
+  return w;
+};
 TN.Nav.prototype.update=function(dt){
   if(this.mesh){const rb=!!(TN.settings&&TN.settings.rainbow);
     if(rb){const m=this.rainbowMat();if(this.mesh.material!==m) this.mesh.material=m;m.uniforms.shift.value=(m.uniforms.shift.value+dt*0.35)%1;m.uniforms.op.value=this.mat?this.mat.opacity:0.85;}

@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=64;
+TN.APPBUILD=65;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -356,8 +356,15 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       /* navigating: the car is drawn on the route path (smooth turns like Google Maps / Waze) */
       /* navigating: the car keeps its normal tracking (the same as without a route); gluing it onto the route line
          is optional (Settings), it made the car and the line shift sideways */
-      if(nav&&TN.settings&&TN.settings.glueRoute){try{const pc=nav.place(car,track.last,Date.now(),dt);if(pc){car=pc;}}catch(e){}}
-      else if(nav&&nav.ps!=null){nav.ps=null;nav.latS=null;nav.laneI=null;}
+      /* navigating: on straight roads the car keeps its normal tracking (steady); in turns it follows the route's curve,
+         blended in and out gradually (Settings: glue Off / In turns / Always) */
+      const glueAll=!!(TN.settings&&TN.settings.glueRoute),glueTurns=!(TN.settings&&TN.settings.glueTurns===false);
+      if(nav&&nav.active&&(glueAll||glueTurns)){try{const pc=nav.place(car,track.last,Date.now(),dt);
+          if(glueAll){if(pc) car=pc;frameBody.gw=0;}
+          else{const w=pc?nav.turnWeight():0;frameBody.gw=(frameBody.gw||0)+(w-(frameBody.gw||0))*Math.min(1,dt*2.5);const k=frameBody.gw;
+            if(pc&&k>0.01){const dh=((pc.hd-car.hd+540)%360)-180;
+              car=Object.assign({},car,{x:car.x+(pc.x-car.x)*k,z:car.z+(pc.z-car.z)*k,y:(car.y||0)+((pc.y||0)-(car.y||0))*k,hd:(car.hd+dh*k+360)%360});}}}catch(e){}}
+      else if(nav&&nav.ps!=null){nav.ps=null;nav.latS=null;nav.laneI=null;frameBody.gw=0;}
       /* the car on screen is DRIVEN like a real car: it only moves forward along its nose and steers toward where
          it should be (a point a little ahead on its path), within a real turning circle. Corrections happen by
          steering, never by sliding, so it can't move sideways (corners, roundabouts, parking lots). */
