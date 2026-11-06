@@ -4,7 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.SETDEF={voice:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={theme:'rocco',voice:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -16,6 +16,18 @@ TN.Settings.prototype.set=function(k,v){this.s[k]=v;TN.settings=this.s;this.save
   /* while recording, every setting change is noted with its time (to compare before and after) */
   try{if(TN.recorder&&TN.recorder.rec) TN.recorder.note('setting',{k:k,v:v});}catch(e){}};
 /* make one setting take effect right away */
+/* themes: one shared colour set for the whole app (search box, bar, alert cards, buttons, settings) */
+TN.THEMES={
+  rocco:{'panel-rgb':'43 45 49',text:'#f3f1ec',sub:'#b9b6ae',tip:'#f2b55a',link:'#f2b55a',accent:'#e8913a','on-accent':'#2b1a08',btn:'#45474d',off:'#55575d',line:'rgba(255,255,255,.09)',joke:'#f2b55a',danger:'#ff8a80'},
+  futuristic:{'panel-rgb':'10 18 32',text:'#e8f1fa',sub:'#9fb3c8',tip:'#9fd7f0',link:'#7fd3c8',accent:'#1fa596','on-accent':'#ffffff',btn:'#3a4352',off:'#4a5260',line:'rgba(255,255,255,.08)',joke:'#fcd34d',danger:'#ff8a80'},
+  teslaDay:{'panel-rgb':'241 242 244',text:'#171a20',sub:'#5c5e62',tip:'#3e6ae1',link:'#3e6ae1',accent:'#3e6ae1','on-accent':'#ffffff',btn:'#dfe1e5',off:'#c3c5c9',line:'rgba(0,0,0,.09)',joke:'#9a5b00',danger:'#c62828'},
+  teslaNight:{'panel-rgb':'27 28 31',text:'#f2f2f2',sub:'#a2a3a5',tip:'#7f9cf5',link:'#7f9cf5',accent:'#3e6ae1','on-accent':'#ffffff',btn:'#34363b',off:'#4a4c51',line:'rgba(255,255,255,.08)',joke:'#fcd34d',danger:'#ff8a80'}};
+TN.applyTheme=function(name,night){
+  const key=name==='tesla'?(night?'teslaNight':'teslaDay'):(TN.THEMES[name]?name:'rocco');
+  if(TN._themeKey===key) return;TN._themeKey=key;
+  const T=TN.THEMES[key],r=document.documentElement.style;for(const k in T) r.setProperty('--tn-'+k,T[k]);
+  document.documentElement.dataset.theme=key;
+};
 TN.Settings.prototype.apply=function(k){
   const m=this.m,s=this.s,sc=m.scene;
   try{
@@ -34,6 +46,9 @@ TN.Settings.prototype.apply=function(k){
     if(k==='lights'){sc.lightsOff=!s.lights;sc.setNight(sc.night||0);}
     if(k==='cut'){sc.cutOn=!!s.cut;}
     if(k==='weather'&&m.weather){m.weather.setOn(!!s.weather);}
+    if(k==='theme'){const nt=()=>{const sc2=this.m.scene;return sc2?(sc2.night||0)>0.5:false;};TN.applyTheme(s.theme,nt());
+      /* (the Tesla theme follows the map's day and night: checked every few seconds) */
+      if(!this.themeT) this.themeT=setInterval(()=>{if(this.s.theme==='tesla') TN.applyTheme('tesla',nt());},4000);}
     if(k==='record'){for(const id of ['rec','trips']){const b=document.getElementById(id);if(b) b.style.display=s.record?'':'none';}}
     if(k==='zoombtns'){for(const id of ['zin','zout']){const b=document.getElementById(id);if(b) b.style.display=s.zoombtns?'':'none';}}
     if(k==='time'||k==='nightLevel'){if(m.night) m.night();}
@@ -44,14 +59,14 @@ TN.Settings.prototype.applyAll=function(){for(const k in TN.SETDEF) this.apply(k
 TN.Settings.prototype.build=function(){
   const st=document.createElement('style');
   st.textContent='#tn-gear{right:16px;top:16px;width:50px;height:50px;padding:0;font-size:26px;display:flex;align-items:center;justify-content:center}'+
-  '#tn-set{position:absolute;right:16px;top:72px;width:340px;max-height:calc(100% - 140px);overflow:auto;background:rgba(10,18,32,.95);border-radius:14px;padding:8px 16px 12px;color:#e8f1fa;font:15px sans-serif;z-index:7;display:none}'+
-  '#tn-set .h{font-size:11px;letter-spacing:.07em;color:#9fb3c8;margin:12px 0 2px}#tn-set .r{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)}'+
-  '#tn-set .sub{font-size:12px;color:#9fb3c8}#tn-set .t{width:46px;height:28px;border-radius:14px;background:#1fa596;position:relative;flex-shrink:0;cursor:pointer}'+
-  '#tn-set .t:after{content:"";position:absolute;top:4px;left:22px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}#tn-set .t.off{background:#4a5260}#tn-set .t.off:after{left:4px}'+
-  '#tn-set .seg{display:flex;border-radius:8px;overflow:hidden;border:1px solid #4a5260}#tn-set .seg span{padding:6px 11px;font-size:13px;cursor:pointer}#tn-set .seg span.on{background:#1fa596}'+
-  '#tn-set .ttlrow{display:flex;align-items:center;gap:10px;margin:6px 0 6px}#tn-set .ttl{font-size:18px;font-weight:600}#tn-set .tip{font-size:12px;color:#9fd7f0;margin-top:2px;line-height:1.35}#tn-gear .tn-rocco{display:block}#tn-set .cat{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer}#tn-set .cat:active{background:rgba(255,255,255,.06)}'+
-  '#tn-set .ct{flex:1;font-size:16px}#tn-set .chev{color:#9fb3c8;font-size:22px}#tn-set .back{font-size:17px;font-weight:600;padding:8px 0 4px;cursor:pointer;color:#7fd3c8}#tn-set .back span{color:#e8f1fa}'+
-  '#tn-set input[type=range]{width:100%;accent-color:#1fa596}#tn-set .lbls{display:flex;justify-content:space-between;font-size:11px;color:#9fb3c8}#tn-set .lnk{cursor:pointer;color:#7fd3c8}';
+  '#tn-set{position:absolute;right:16px;top:72px;width:340px;max-height:calc(100% - 140px);overflow:auto;background:rgb(var(--tn-panel-rgb) / .97);border-radius:14px;padding:8px 16px 12px;color:var(--tn-text);font:15px sans-serif;z-index:7;display:none}'+
+  '#tn-set .h{font-size:11px;letter-spacing:.07em;color:var(--tn-sub);margin:12px 0 2px}#tn-set .r{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--tn-line)}'+
+  '#tn-set .sub{font-size:12px;color:var(--tn-sub)}#tn-set .t{width:46px;height:28px;border-radius:14px;background:var(--tn-accent);position:relative;flex-shrink:0;cursor:pointer}'+
+  '#tn-set .t:after{content:"";position:absolute;top:4px;left:22px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}#tn-set .t.off{background:var(--tn-off)}#tn-set .t.off:after{left:4px}'+
+  '#tn-set .seg{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--tn-off)}#tn-set .seg span{padding:6px 11px;font-size:13px;cursor:pointer}#tn-set .seg span.on{background:var(--tn-accent);color:var(--tn-on-accent)}'+
+  '#tn-set .ttlrow{display:flex;align-items:center;gap:10px;margin:6px 0 6px}#tn-set .ttl{font-size:18px;font-weight:600}#tn-set .tip{font-size:12px;color:var(--tn-tip);margin-top:2px;line-height:1.35}#tn-gear .tn-rocco{display:block}#tn-set .cat{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--tn-line);cursor:pointer}#tn-set .cat:active{background:rgba(255,255,255,.06)}'+
+  '#tn-set .ct{flex:1;font-size:16px}#tn-set .chev{color:var(--tn-sub);font-size:22px}#tn-set .back{font-size:17px;font-weight:600;padding:8px 0 4px;cursor:pointer;color:var(--tn-link)}#tn-set .back span{color:var(--tn-text)}'+
+  '#tn-set input[type=range]{width:100%;accent-color:var(--tn-accent)}#tn-set .lbls{display:flex;justify-content:space-between;font-size:11px;color:var(--tn-sub)}#tn-set .lnk{cursor:pointer;color:var(--tn-link)}';
   document.head.appendChild(st);
   const g=document.createElement('button');g.id='tn-gear';g.className='hud';g.setAttribute('aria-label','Settings');if(TN.roccoSVG) g.innerHTML=TN.roccoSVG(38);else g.textContent='\u2699';   /* (Rocco is the settings button) */document.body.appendChild(g);
   const p=document.createElement('div');p.id='tn-set';document.body.appendChild(p);this.panel=p;
@@ -81,8 +96,9 @@ TN.Settings.prototype.build=function(){
      html:()=>'<div class="h">THE CITY</div>'+tog('buildings','Detailed buildings')+tog('trees','Trees')+tog('rem','REM trains and labels')+tog('water','Animated water')+
        '<div class="h">LIGHT AND SEASONS</div>'+tog('shadows','Shadows','Follow the real sun; the car always has a soft shadow')+tog('lights','Street light glow','At night')+tog('weather','Real weather','Rain, snow, fog and clouds from the live weather')+tog('leaves','Leaves and snow','Falling, on the ground and on the car (autumn leaves; snow when there is some)')+
        '<div class="h">FOR FUN</div>'+tog('rainbow','Rainbow road','The route line flows through the colours (hides traffic colours on it)')},
-    {id:'app',t:'App',sum:()=>'Version, recording, intro',
-     html:()=>tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+'<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>'}];
+    {id:'app',t:'App',sum:()=>({rocco:'Rocco theme',tesla:'Tesla theme',futuristic:'Futuristic theme'})[S.theme||'rocco']+' \u00b7 version, recording',
+     html:()=>'<div class="h">LOOK</div><div class="r"><div>Theme</div><div class="seg" data-k="theme"><span data-v="rocco">Rocco</span><span data-v="tesla">Tesla</span><span data-v="futuristic">Futuristic</span></div></div>'+
+       '<div class="sub" style="margin:2px 0 6px">Tesla: light by day, dark at night</div><div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+'<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>'}];
   const show=id=>{
     if(!id){const fun=!(TN.settings&&TN.settings.fun===false);
       p.innerHTML='<div class="ttlrow">'+(TN.roccoSVG?TN.roccoSVG(44):'')+'<div><div class="ttl">Settings</div>'+(fun&&TN.roccoTip?'<div class="tip">Tip: '+TN.roccoTip()+'</div>':'')+'</div></div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
@@ -91,7 +107,7 @@ TN.Settings.prototype.build=function(){
     p.innerHTML='<div class="back">\u2039 <span>'+c.t+'</span></div>'+c.html();p.scrollTop=0;
     p.querySelector('.back').onclick=()=>show(null);
     p.querySelectorAll('.t').forEach(t=>t.onclick=()=>{const k=t.dataset.k,v=!this.s[k];t.classList.toggle('off',!v);this.set(k,v);});
-    const sg=p.querySelector('.seg');if(sg){const mark=()=>sg.querySelectorAll('span').forEach(x=>x.classList.toggle('on',x.dataset.v===this.s.time));mark();sg.querySelectorAll('span').forEach(x=>x.onclick=()=>{this.set('time',x.dataset.v);mark();});}
+    p.querySelectorAll('.seg').forEach(sg=>{const key=sg.dataset.k;const mark=()=>sg.querySelectorAll('span').forEach(x=>x.classList.toggle('on',x.dataset.v===this.s[key]));mark();sg.querySelectorAll('span').forEach(x=>x.onclick=()=>{this.set(key,x.dataset.v);mark();});});
     const rg=p.querySelector('input[type=range]');if(rg) rg.oninput=()=>this.set('nightLevel',rg.value/100);
     const vb=p.querySelector('#tn-setver');if(vb) vb.onclick=()=>{p.style.display='none';const v=document.getElementById('ver');if(v) v.click();};
   };

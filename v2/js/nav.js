@@ -21,42 +21,42 @@ TN.Nav=function(api){
 TN.Nav.prototype.build=function(){
   const st=document.createElement('style');
   st.textContent=
-   '#tn-search{right:82px;top:16px;width:min(40vw,520px);padding:0;display:flex;align-items:center;background:rgba(10,18,32,.97)}'+
+   '#tn-search{right:82px;top:16px;width:min(40vw,520px);padding:0;display:flex;align-items:center;background:rgb(var(--tn-panel-rgb) / .97)}'+
    '#status{max-width:calc(100vw - min(40vw,520px) - 130px)!important}'+
-   '#tn-search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#e8f1fa;font:18px system-ui,sans-serif;padding:14px 16px 14px 6px}'+
+   '#tn-search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--tn-text);font:18px system-ui,sans-serif;padding:14px 16px 14px 6px}'+
    '#tn-search .i{padding-left:16px;flex-shrink:0}#tn-search .x{padding:0 14px;cursor:pointer;display:none;flex-shrink:0;align-items:center}'+
    '#tn-res{right:82px;top:76px;width:min(40vw,520px);padding:6px;display:none;max-height:56vh;overflow:auto}'+
    '#tn-res .r{display:flex;align-items:center;gap:12px;padding:14px 12px;border-radius:12px;cursor:pointer;font-size:17px}'+
-   '#tn-res .r:active,#tn-res .r:hover{background:rgba(255,255,255,.08)}#tn-res .r small{display:block;color:#9fb3c8;font-size:13px;margin-top:2px}'+
-   '#tn-res .d{margin-left:auto;color:#9fb3c8;font-size:14px;white-space:nowrap}#tn-res .msg{padding:12px;color:#9fb3c8}'+
+   '#tn-res .r:active,#tn-res .r:hover{background:var(--tn-line)}#tn-res .r small{display:block;color:var(--tn-sub);font-size:13px;margin-top:2px}'+
+   '#tn-res .d{margin-left:auto;color:var(--tn-sub);font-size:14px;white-space:nowrap}#tn-res .msg{padding:12px;color:var(--tn-sub)}'+
    '#tn-res .hd{font-size:12px;letter-spacing:.06em;color:#7d8da3;padding:10px 12px 2px}#tn-res .del{display:flex;padding:8px;margin:-8px -4px -8px 4px;border-radius:8px}#tn-res .del:active{background:rgba(255,255,255,.1)}'+
-   '#tn-ov .save{background:#3a4352;color:#fcd34d;display:inline-flex;align-items:center;gap:6px}'+
-   '#tn-savemenu{position:fixed;z-index:12;padding:6px;min-width:230px}#tn-savemenu .r{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;font-size:16px}#tn-savemenu .r:active{background:rgba(255,255,255,.08)}'+
+   '#tn-ov .save{background:var(--tn-btn);color:var(--tn-joke);display:inline-flex;align-items:center;gap:6px}'+
+   '#tn-savemenu{position:fixed;z-index:12;padding:6px;min-width:230px}#tn-savemenu .r{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;font-size:16px}#tn-savemenu .r:active{background:var(--tn-line)}'+
    '#tn-ov{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:18px;padding:14px 18px;font-size:16px}'+
-   '#tn-ov small{color:#9fb3c8;font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
-   '#tn-ov .go{background:#1fa596;color:#fff}#tn-ov .cancel,#tn-ov .stop{background:#3a4352;color:#e8f1fa}'+
+   '#tn-ov small{color:var(--tn-sub);font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
+   '#tn-ov .go{background:var(--tn-accent);color:var(--tn-on-accent)}#tn-ov .cancel,#tn-ov .stop{background:var(--tn-btn);color:var(--tn-text)}'+
    '#tn-ov{flex-wrap:wrap;max-width:min(94vw,640px)}#tn-ov .btns{display:flex;gap:10px;align-items:center}#tn-ov.tripbox{flex-direction:column;align-items:stretch}'+
    '#tn-ov .trip{margin-top:8px;display:flex;flex-direction:column;gap:4px}#tn-ov .row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border-radius:10px;padding:4px 6px}'+
    '#tn-ov .row .num{width:26px;height:26px;border-radius:50%;background:#f59e0b;color:#111;font:700 13px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;flex-shrink:0}#tn-ov .row .num.fin{background:transparent;font-size:18px}'+
    '#tn-ov .row .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}'+
-   '#tn-ov .row button{display:flex;align-items:center;justify-content:center;border:0;border-radius:8px;padding:7px 10px;font:600 15px system-ui,sans-serif;background:#3a4352;color:#e8f1fa;cursor:pointer}#tn-ov .row button:disabled{opacity:.3}'+
+   '#tn-ov .row button{display:flex;align-items:center;justify-content:center;border:0;border-radius:8px;padding:7px 10px;font:600 15px system-ui,sans-serif;background:var(--tn-btn);color:var(--tn-text);cursor:pointer}#tn-ov .row button:disabled{opacity:.3}'+
    '#tn-bar{left:16px;right:82px;top:16px;display:none;align-items:center;gap:16px;padding:12px 18px}'+
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar.jvon .a{width:116px;height:116px;flex-shrink:0;border-radius:10px;overflow:hidden;border:2px solid #378ADD}'+
    '#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
-   '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:#9fb3c8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
-   '#tn-bar .dline{display:flex;align-items:center;gap:14px}#tn-bar .lanes{display:flex;gap:3px}#tn-bar .lanes:empty{display:none}#tn-bar .lanes span{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:rgba(255,255,255,.08)}#tn-bar .lanes span.on{background:rgba(59,130,246,.35)}'+
+   '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:var(--tn-sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
+   '#tn-bar .dline{display:flex;align-items:center;gap:14px}#tn-bar .lanes{display:flex;gap:3px}#tn-bar .lanes:empty{display:none}#tn-bar .lanes span{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:var(--tn-line)}#tn-bar .lanes span.on{background:rgba(59,130,246,.35)}'+
    '#tn-bar .pb{position:absolute;left:18px;right:18px;bottom:9px;height:6px;border-radius:3px;background:#2a3444}'+
    '#tn-bar .pb .car{position:absolute;top:50%;left:0;width:13px;height:13px;border-radius:50%;background:#fff;border:3px solid #3b82f6;transform:translate(-50%,-50%);box-sizing:border-box}'+
    '#tn-bar .etabox{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;max-width:40%}'+
-   '#tn-bar .dst{border:1px solid rgba(252,211,77,.55);background:rgba(252,211,77,.12);color:#fcd34d;border-radius:999px;padding:5px 12px;font:600 14px system-ui,sans-serif;cursor:pointer;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
-   '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:#cfe3f5;font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:#fff}'+
-   '#tn-end{right:16px;bottom:228px;display:none;background:rgba(10,18,32,.88);color:#ff8a80}'+
+   '#tn-bar .dst{border:1px solid rgba(252,211,77,.55);background:rgba(252,211,77,.12);color:var(--tn-joke);border-radius:999px;padding:5px 12px;font:600 14px system-ui,sans-serif;cursor:pointer;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+   '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:var(--tn-text);font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:var(--tn-text)}'+
+   '#tn-end{right:16px;bottom:228px;display:none;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-danger)}'+
    '#tn-mute{right:16px;top:76px;width:50px;height:50px;padding:0;border:0;display:none;align-items:center;justify-content:center;cursor:pointer}body.tn-routing #tn-mute{display:flex}'+
-   '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgba(10,18,32,.88);color:#fcd34d}body.tn-routing #tn-stopbtn{display:none}'+
+   '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-joke)}body.tn-routing #tn-stopbtn{display:none}'+
    'body.tn-routing #trips{display:none!important}body.tn-routing #rec:not(.on){display:none!important}'+
    'body.tn-routing.tn-addstop #tn-search{display:flex}body.tn-routing.tn-addstop #tn-bar{display:none!important}'+
-   '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:#9fb3c8}'+
+   '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:var(--tn-sub)}'+
    '#tn-limit{left:168px;bottom:24px;display:none;flex-direction:column;align-items:center;justify-content:center;width:58px;height:70px;padding:0;background:#fff;color:#111;border:3px solid #111;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35)}'+
    '#tn-limit small{font:700 10px system-ui,sans-serif;letter-spacing:.05em}#tn-limit b{font:800 28px system-ui,sans-serif;line-height:1}'+
    '#tn-limit.over{border-color:#e11d1d;background:#ffe9e9;animation:tnpulse 1s infinite}@keyframes tnpulse{50%{transform:scale(1.07)}}'+
@@ -71,7 +71,7 @@ TN.Nav.prototype.build=function(){
   this.stopBtn=el('tn-stopbtn','','+ Stop','button');this.stopBtn.onclick=()=>this.addStop();
   this.muteBtn=el('tn-mute','','','button');
   const muteDraw=()=>{const on=!(TN.settings&&TN.settings.voice===false);this.muteBtn.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#e8f1fa"/>'+
-    (on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="#e8f1fa" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="#ff8a80" stroke-width="2.2" stroke-linecap="round"/>')+'</svg>';};
+    (on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="#ff8a80" stroke-width="2.2" stroke-linecap="round"/>')+'</svg>';};
   muteDraw();this.muteBtn.onclick=()=>{const on=!(TN.settings&&TN.settings.voice===false);TN.settings.voice=!on;try{const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');st.voice=!on;localStorage.setItem('tn2_settings',JSON.stringify(st));}catch(e){}
     if(on&&TN.voice) TN.voice.stop();else if(TN.voice) TN.voice.say('Voice on',true);muteDraw();};this.roadName=el('tn-roadname');
   this.limit=el('tn-limit','','<small>MAX</small><b></b>');
@@ -96,15 +96,15 @@ const fmtDist=m=>m<950?(m<100?Math.max(10,Math.round(m/10)*10):Math.round(m/50)*
 TN.Nav.prototype.list=function(items,msg){
   this.results=items;const R=this.res;R.style.display='block';
   const q=(this.input&&this.input.value||'').trim();
-  const allRow=q.length>=3&&!(items[0]&&items[0].recent)?'<div class="r all" style="color:#7fd3c8">'+TN.ICON('pin',24)+'<div>Show all nearby on map<small>Every \u201c'+TN.esc(q)+'\u201d around you</small></div></div>':'';
-  if(!items.length){R.innerHTML=(this.addingStop?'<div class="r cancelstop" style="color:#ff8a80">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>':'')+allRow+'<div class="msg">'+(msg||'No results')+'</div>';
+  const allRow=q.length>=3&&!(items[0]&&items[0].recent)?'<div class="r all" style="color:var(--tn-link)">'+TN.ICON('pin',24)+'<div>Show all nearby on map<small>Every \u201c'+TN.esc(q)+'\u201d around you</small></div></div>':'';
+  if(!items.length){R.innerHTML=(this.addingStop?'<div class="r cancelstop" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>':'')+allRow+'<div class="msg">'+(msg||'No results')+'</div>';
     const cs=R.querySelector('.cancelstop');if(cs) cs.onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};
     const ar=R.querySelector('.all');if(ar) ar.onclick=()=>this.showAll(q);return;}
   const h=this.here();
   R.innerHTML=items.map((it,i)=>{const d=it.lng!=null?TN.distLL(h,[it.lng,it.lat]):(it.dist||0);
     return '<div class="r" data-i="'+i+'"><span>'+(it.recent?TN.ICON('recent',22,'#9fb3c8'):TN.ICON('pin',24))+'</span><div>'+TN.esc(it.name)+'<small>'+TN.esc(it.sub||'')+'</small></div><span class="d">'+fmtDist(d)+'</span></div>';}).join('');
   if(allRow) R.innerHTML=allRow+R.innerHTML;
-  if(this.addingStop){R.innerHTML='<div class="r cancelstop" style="color:#ff8a80">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>'+R.innerHTML;
+  if(this.addingStop){R.innerHTML='<div class="r cancelstop" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>'+R.innerHTML;
     R.querySelector('.cancelstop').onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};}
   R.querySelectorAll('.r[data-i]').forEach(r=>r.onclick=()=>this.pick(items[+r.dataset.i]));
   const ar=R.querySelector('.all');if(ar) ar.onclick=()=>this.showAll(q);
@@ -137,8 +137,8 @@ TN.Nav.prototype.slim=it=>({name:it.name,sub:it.sub||'',lng:it.lng,lat:it.lat,rl
 TN.Nav.prototype.showStart=function(){
   const R=this.res,P=this.places,h=this.here(),items=[];let html='';
   const row=(cls,icon,name,sub,right,extra)=>'<div class="r '+cls+'"'+(extra||'')+'><span>'+icon+'</span><div>'+TN.esc(name)+'<small>'+TN.esc(sub||'')+'</small></div>'+right+'</div>';
-  if(this.addingStop) html+='<div class="r cancelstop" style="color:#ff8a80">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>';
-  if(this.setting) html+='<div class="r cancelset" style="color:#ff8a80">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel<small>Keep '+(this.setting==='home'?'Home':'Work')+' as it is</small></div></div>';
+  if(this.addingStop) html+='<div class="r cancelstop" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>';
+  if(this.setting) html+='<div class="r cancelset" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel<small>Keep '+(this.setting==='home'?'Home':'Work')+' as it is</small></div></div>';
   else for(const k of ['home','work']){const pl=P[k],lab=k==='home'?'Home':'Work',col=k==='home'?'#60a5fa':'#f59e0b';
     if(pl){const t=this.etaFor(k);items.push(pl);
       html+=row('slot','',lab,pl.name+(pl.sub?' \u00b7 '+pl.sub:''),'<span class="d" style="color:#5dcaa5">'+(t?t+' min':fmtDist(TN.distLL(h,[pl.lng,pl.lat])))+'</span><span class="del" data-del="'+k+'" title="Change">'+TN.ICON('x',16,'#5d6b80')+'</span>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON(k,22,col)+'</span>');}
@@ -635,7 +635,7 @@ TN.Nav.prototype.tripList=function(){
   const all=this.stops.concat([this.dest]),n=all.length;
   return '<div class="trip">'+all.map((p,i)=>'<div class="row"><span class="num'+(i===n-1?' fin':'')+'">'+(i===n-1?TN.ICON('flag',18,'#ffffff'):(i+1))+'</span>'+
     '<span class="nm">'+TN.esc(p.name)+'</span>'+
-    '<button data-a="up" data-i="'+i+'"'+(i===0?' disabled':'')+'>'+TN.ICON('straight',16,'#e8f1fa')+'</button><button data-a="down" data-i="'+i+'"'+(i===n-1?' disabled':'')+'><span style="display:block;transform:rotate(180deg)">'+TN.ICON('straight',16,'#e8f1fa')+'</span></button>'+
+    '<button data-a="up" data-i="'+i+'"'+(i===0?' disabled':'')+'>'+TN.ICON('straight',16,'currentColor')+'</button><button data-a="down" data-i="'+i+'"'+(i===n-1?' disabled':'')+'><span style="display:block;transform:rotate(180deg)">'+TN.ICON('straight',16,'currentColor')+'</span></button>'+
     (n>1?'<button data-a="del" data-i="'+i+'">'+TN.ICON('x',16,'#ff8a80')+'</button>':'')+'</div>').join('')+'</div>';
 };
 TN.Nav.prototype.tripButtons=function(box,driving){
@@ -862,7 +862,7 @@ TN.Nav.prototype.update=function(dt){
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
   const I=this.instr(nx),dNext=Math.max(0,nx.at-s);
-  if(this.jvStep==null&&this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'#ffffff');this.lastIcon=I.a;}
+  if(this.jvStep==null&&this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'currentColor');this.lastIcon=I.a;}
   this.bar.querySelector('.dist').textContent=nx.type==='arrive'&&dNext<30?'Arriving':fmtDist(dNext);
   /* the exit number as a green highway exit sign (where the map has one) */
   const exn=(nx.type==='off ramp'||nx.type==='fork')&&nx.exits?String(nx.exits).split(';')[0]:'';
@@ -873,7 +873,7 @@ TN.Nav.prototype.update=function(dt){
      const ic={'straight':'straight','left':'left','right':'right','slight left':'sleft','slight right':'sright','sharp left':'left','sharp right':'right','uturn':'uturn'};
      html=nx.lanes.map(l=>{const ind=(l.indications||['straight']);const mine=ind.find(x=>x===nx.mod)||ind.find(x=>nx.mod&&x.indexOf(nx.mod.replace('slight ','').replace('sharp ',''))>=0);
        const pick=l.valid&&mine?mine:(l.valid&&l.valid_indication?l.valid_indication:(mine||ind[0]));
-       return '<span class="'+(l.valid?'on':'')+'">'+TN.ICON(ic[pick]||'straight',19,l.valid?'#ffffff':'#5d6b80')+'</span>';}).join('');}
+       return '<span class="'+(l.valid?'on':'')+'">'+TN.ICON(ic[pick]||'straight',19,l.valid?'currentColor':'#5d6b80')+'</span>';}).join('');}
    if(le.innerHTML!==html) le.innerHTML=html;}
   /* before highway exits, forks, roundabouts and big junctions: a drawing of the junction from above in the bar
      (in place of the arrow, the bar a little taller); the camera's bird's-eye view only if chosen in settings */
