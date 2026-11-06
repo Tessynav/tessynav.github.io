@@ -12,7 +12,9 @@ TN.Settings=function(m){
   this.m=m;this.s=TN.settings;this.panel=null;
 };
 TN.Settings.prototype.save=function(){try{localStorage.setItem('tn2_settings',JSON.stringify(this.s));}catch(e){}};
-TN.Settings.prototype.set=function(k,v){this.s[k]=v;TN.settings=this.s;this.save();this.apply(k);};
+TN.Settings.prototype.set=function(k,v){this.s[k]=v;TN.settings=this.s;this.save();this.apply(k);
+  /* while recording, every setting change is noted with its time (to compare before and after) */
+  try{if(TN.recorder&&TN.recorder.rec) TN.recorder.note('setting',{k:k,v:v});}catch(e){}};
 /* make one setting take effect right away */
 TN.Settings.prototype.apply=function(k){
   const m=this.m,s=this.s,sc=m.scene;

@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=67;
+TN.APPBUILD=68;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -159,8 +159,15 @@ TN.APPBUILD=67;
   map.on('pitchstart',e=>{if(e.originalEvent) follow=false;});
 
   /* ---------- recording ---------- */
+  TN.recorder=rec;
+  /* while recording, the button shows the time since the recording started (minutes:seconds), so a moment can be
+     pointed out ("at 12:30 I turned on ..."); the same time is what the recording uses */
+  let recTick=null;
+  const recTime=()=>{const s=Math.max(0,Math.floor((Date.now()-rec.t0)/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
   $('rec').onclick=async()=>{
-    if(!rec.rec){rec.start();$('rec').textContent='■ Stop';$('rec').style.color='#ff6b6b';$('rec').classList.add('on');return;}
+    if(!rec.rec){rec.start();$('rec').textContent='■ Stop 0:00';$('rec').style.color='#ff6b6b';$('rec').classList.add('on');
+      recTick=setInterval(()=>{if(rec.rec) $('rec').textContent='■ Stop '+recTime();},1000);return;}
+    if(recTick){clearInterval(recTick);recTick=null;}
     const trip=rec.stop();$('rec').textContent='● Record';$('rec').style.color='';$('rec').classList.remove('on');
     uploadTrip(trip);
   };
