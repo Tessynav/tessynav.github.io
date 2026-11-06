@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=63;
+TN.APPBUILD=64;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -28,7 +28,7 @@ TN.APPBUILD=63;
   /* road incidents with Rocco (TomTom) */
   /* shadows that follow the real sun (buildings and the car), and the car's soft contact shadow */
   TN.shadows=TN.Shadows?new TN.Shadows(scene):null;
-  const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,getCar:()=>track.car,following:()=>follow,roadsBase:'https://tessynav.github.io/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
+  const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,net:net,getCar:()=>track.car,following:()=>follow,roadsBase:'https://tessynav.github.io/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
   if(incidents){try{incidents.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */
   const weather=TN.Weather?new TN.Weather(scene,season):null;
