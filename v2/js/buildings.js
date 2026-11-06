@@ -217,6 +217,52 @@ TN.Buildings.prototype.free=function(k){
   if(e.ids){const map=this.scene.map;for(const id of e.ids){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}}}
   this.cells.delete(k);
 };
+/* ---------- our own building tiles (Overture: OpenStreetMap plus the buildings it's missing) ---------- */
+TN.BTILES='https://tessynav.github.io/tessynav-buildings/';
+TN.Buildings.prototype.tilesIndex=function(){
+  if(this.tidx||this.tidxLoading||Date.now()-(this.tidxT||0)<600000) return this.tidx;
+  this.tidxLoading=true;this.tidxT=Date.now();
+  fetch(TN.BTILES+'index.json?d='+new Date().toISOString().slice(0,10)).then(r=>r.ok?r.json():null).then(j=>{this.tidxLoading=false;if(j&&j.v===1&&j.regions) this.tidx=j;}).catch(()=>{this.tidxLoading=false;});
+  return null;
+};
+TN.Buildings.prototype.covered=function(lng,lat){const I=this.tilesIndex();return !!(I&&I.regions.some(r=>lng>=r.bbox[0]&&lng<r.bbox[2]&&lat>=r.bbox[1]&&lat<r.bbox[3]));};
+/* the buildings of one area from the tiles: undefined = not covered (use the map), null = still loading, [] = none */
+TN.Buildings.prototype.tileList=function(ck,lng,lat){
+  if(!this.covered(lng,lat)){if(this.tileMode){this.tileMode=false;try{this.scene.map.setLayoutProperty('tn-buildings','visibility','visible');}catch(e){}}return undefined;}
+  if(!this.tileMode){this.tileMode=true;try{this.scene.map.setLayoutProperty('tn-buildings','visibility','none');}catch(e){}}   /* (the map's plain copies would double ours) */
+  const [cx,cy]=ck.split(',').map(Number),key=Math.floor(cx/4)+'_'+Math.floor(cy/4);
+  const P=(this.tp||(this.tp=new Map())).get(key);
+  if(!P){this.loadPack(key);return null;}
+  if(P.st==='loading') return null;
+  if(P.st==='none') return [];
+  P.used=Date.now();
+  /* decoded only when that area is needed */
+  const raw=P.raw.get(ck);if(!raw) return [];
+  if(!raw.done){const ox=P.o[0],oy=P.o[1],out=[];
+    for(const r of raw.recs){let x=r[2],y=r[3];const ring=[TN.toLocal(ox+x/1e6,oy+y/1e6)];
+      for(let k=4;k<r.length;k+=2){x+=r[k];y+=r[k+1];ring.push(TN.toLocal(ox+x/1e6,oy+y/1e6));}
+      let A=0;for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length];A+=a[0]*b[1]-b[0]*a[1];}
+      out.push({ring:ring,H:r[0]/10,B:r[1]/10,id:null,wa:Math.abs(A)/2,parts:1});}
+    raw.list=out;raw.recs=null;raw.done=true;}
+  return raw.list;
+};
+TN.Buildings.prototype.packWaiting=function(ck){
+  const [cx,cy]=ck.split(',').map(Number),key=Math.floor(cx/4)+'_'+Math.floor(cy/4),P=(this.tp||(this.tp=new Map())).get(key);
+  if(!P){this.loadPack(key);return true;}return P.st==='loading';
+};
+TN.Buildings.prototype.loadPack=function(key){
+  const T=this.tp;T.set(key,{st:'loading'});
+  /* keep the 40 most recently used tiles */
+  if(T.size>40){let old=null,ot=1e18;for(const [k,v] of T){if(v.st!=='loading'&&(v.used||0)<ot){ot=v.used||0;old=k;}}if(old) T.delete(old);}
+  fetch(TN.BTILES+'b/'+key+'.json').then(r=>{if(r.status===404) return 'none';return r.ok?r.json():null;}).then(j=>{
+    if(j==='none'){T.set(key,{st:'none',used:Date.now()});return;}
+    if(!j||!j.b){T.delete(key);return;}
+    /* grouped by area (by each building's first corner), decoded later when the area is built */
+    const raw=new Map(),C=TN.CELL;
+    for(const r of j.b){const lng=j.o[0]+r[2]/1e6,lat=j.o[1]+r[3]/1e6,ck=Math.floor(lng/C)+','+Math.floor(lat/C);let e=raw.get(ck);if(!e){e={recs:[],done:false};raw.set(ck,e);}e.recs.push(r);}
+    T.set(key,{st:'ok',o:j.o,raw:raw,used:Date.now()});
+  }).catch(()=>{T.delete(key);});
+};
 TN.Buildings.prototype.update=function(lng,lat,fps){
   if(!this.on||!this.scene.three) return;
   if(fps){
@@ -248,7 +294,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   }
   if(now-(this.lastStart||0)<400) return;
   if(TN.workLeft&&TN.workLeft()<4) return;   /* starting a new area is the heavy part: only with budget left */
-  let best=null;
+  let best=null;const tileHere=this.covered(lng,lat);
   for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
     const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),d=dx*dx+dy*dy;
     /* an area that came out empty (often because its detailed map tiles, the ones with buildings, hadn't loaded
@@ -256,10 +302,14 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
        once the car is in it or next to it, so it never stays empty by mistake */
     if(e){const wait=d<=1?4000:Math.min(30000,4000*Math.pow(2,Math.min(e.tries,3)));
       if(e.n||now-e.t<wait) continue;this.free(k);if(!best||d<best.d) best={k:k,d:d,tries:e.tries+1};continue;}
-    if(!best||d<best.d) best={k:k,d:d,tries:0};
+    if(!best||d<best.d){if(tileHere&&this.packWaiting(k)) continue;best={k:k,d:d,tries:0};}   /* (tile still on its way: build the ready areas meanwhile) */
   }
   if(!best) return;
-  this.lastStart=now;const t0=performance.now(),list=this.collect(best.k);
+  /* inside the area covered by our own building tiles (Overture), the buildings come from there; elsewhere (or if
+     the tiles can't be reached) from the map, as before */
+  const tl=this.tileList(best.k,lng,lat);
+  if(tl===null){this.lastStart=now;return;}   /* (that tile is still on its way: try again shortly) */
+  this.lastStart=now;const t0=performance.now(),list=tl||this.collect(best.k);
   if(!this.noIdMode&&(this.idSeen||0)>200&&(this.idMissing||0)>this.idSeen*0.5){
     this.noIdMode=true;this.range=Math.max(this.range,2);
     try{this.scene.map.setLayoutProperty('tn-buildings','visibility','none');}catch(e){}

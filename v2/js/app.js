@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=62;
+TN.APPBUILD=63;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -354,7 +354,10 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     TN.prof('track',performance.now()-t0);
     if(car&&car.x!=null){
       /* navigating: the car is drawn on the route path (smooth turns like Google Maps / Waze) */
-      if(nav){try{const pc=nav.place(car,track.last,Date.now(),dt);if(pc){car=pc;}}catch(e){}}
+      /* navigating: the car keeps its normal tracking (the same as without a route); gluing it onto the route line
+         is optional (Settings), it made the car and the line shift sideways */
+      if(nav&&TN.settings&&TN.settings.glueRoute){try{const pc=nav.place(car,track.last,Date.now(),dt);if(pc){car=pc;}}catch(e){}}
+      else if(nav&&nav.ps!=null){nav.ps=null;nav.latS=null;nav.laneI=null;}
       /* the car on screen is DRIVEN like a real car: it only moves forward along its nose and steers toward where
          it should be (a point a little ahead on its path), within a real turning circle. Corrections happen by
          steering, never by sliding, so it can't move sideways (corners, roundabouts, parking lots). */
