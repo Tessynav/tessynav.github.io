@@ -185,23 +185,62 @@ TN.Incidents.prototype.drawMarkers=function(){
 };
 TN.Incidents.prototype.clear=function(){for(const m of this.markers.values()){try{m.remove();}catch(e){}}this.markers.clear();this.hide();};
 /* distance from the car to an incident, along the route if there is one, otherwise straight ahead */
+/* the stretch of road ahead of you, as a line with distances: the route (when navigating), otherwise the road you're on
+   followed through the road network (at each junction the most natural continuation, preferring the same street) */
+TN.Incidents.prototype.wayAhead=function(car,maxL){
+  const nav=this.api.nav,R=nav&&nav.active?nav.route:null,pts=[],cum=[];
+  if(R){const i0=nav.idx||0,s0=R.cum[i0]||0;for(let i=i0;i<R.pts.length&&R.cum[i]-s0<=maxL+50;i++){pts.push(R.pts[i]);cum.push(R.cum[i]-s0);}return pts.length>1?{pts,cum}:null;}
+  const T=(this.api.getCar&&this.api.getCar())||car,net=this.api.net;let w=T.w||car.w,dir=T.dir||car.dir||1,s=T.w?T.s:car.s;
+  if(!net||!w||!w.pts||s==null){
+    /* (no road known right now, e.g. in the middle of a turn: a straight line ahead in your direction) */
+    const hr=(car.hd||0)*Math.PI/180,fx=Math.sin(hr),fz=-Math.cos(hr);
+    for(let d=0;d<=maxL;d+=10){pts.push([car.x+fx*d,car.z+fz*d]);cum.push(d);}return {pts,cum};}
+  let acc=0,prev=[car.x,car.z];pts.push(prev);cum.push(0);
+  const add=q=>{acc+=Math.hypot(q[0]-prev[0],q[1]-prev[1]);pts.push(q);cum.push(acc);prev=q;};
+  for(let hop=0;hop<10&&acc<maxL;hop++){
+    let endI;
+    if(dir>0){for(let i=0;i<w.pts.length&&acc<maxL;i++) if(w.cum[i]>s+0.5) add(w.pts[i]);endI=w.pts.length-1;}
+    else{for(let i=w.pts.length-1;i>=0&&acc<maxL;i--) if(w.cum[i]<s-0.5) add(w.pts[i]);endI=0;}
+    if(acc>=maxL) break;
+    const a=w.pts[dir>0?Math.max(0,endI-1):Math.min(w.pts.length-1,endI+1)],b=w.pts[endI];let hx=b[0]-a[0],hz=b[1]-a[1];const hl=Math.hypot(hx,hz)||1;hx/=hl;hz/=hl;
+    const lst=(net.keys&&net.keys.get(w.keys[endI]))||[];let best=null;
+    for(const [v,i] of lst){if(v===w||v.tun===undefined&&!v.pts) continue;
+      for(const d of [1,-1]){
+        if(d>0&&i>=v.pts.length-1) continue;if(d<0&&i<=0) continue;if(d<0&&v.ow) continue;
+        const q=v.pts[i+d];let vx=q[0]-v.pts[i][0],vz=q[1]-v.pts[i][1];const vl=Math.hypot(vx,vz)||1;vx/=vl;vz/=vl;
+        const cos=vx*hx+vz*hz;if(cos<0.5) continue;   /* (no sharp turns: more than 60 degrees is not "straight on") */
+        const sc=cos+(v.name&&v.name===w.name?0.3:0);if(!best||sc>best.sc) best={v,d,i,sc};}}
+    if(!best) break;
+    w=best.v;dir=best.d;s=w.cum[best.i];}
+  return pts.length>1?{pts,cum}:null;
+};
+/* the closest incident on your way: within 12 m of the way ahead, and (for those that follow a road: traffic,
+   closures, works) going in your direction; first alert at about 1.5 km at highway speed, 600 m in the city */
 TN.Incidents.prototype.ahead=function(car,moderate){
-  const nav=this.api.nav,R=nav&&nav.active?nav.route:null;let best=null;
+  const now=Date.now();
+  if(car.v!=null&&(car.v||0)<2&&!(this.api.nav&&this.api.nav.active)) return null;   /* (no route and parked: no alerts) */
+  const maxD=(car.v||0)>19.5?1500:600;
+  if(!this.wayC||now-this.wayC.t>500||Math.hypot(car.x-this.wayC.x,car.z-this.wayC.z)>15){this.wayC={t:now,x:car.x,z:car.z,way:this.wayAhead(car,maxD)};}
+  const W=this.wayC.way;if(!W) return null;
+  const P=W.pts,C=W.cum;let best=null;
   for(const it of this.list){
     if(it.mine) continue;   /* (your own reports: on the map, but no alert) */
     if(it.cam&&it.dir>=0&&Math.abs((((car.hd||0)-it.dir)+540)%360-180)>75) continue;   /* (camera facing the other way) */
     if((it.kind==='jam'&&it.sev<2)!==!!moderate) continue;   /* (moderate traffic is checked on its own: said, not shown) */
     if(it.kind==='jam'&&it.pts.some(p=>Math.hypot(p[0]-car.x,p[1]-car.z)<40)) continue;   /* (already in that jam) */
+    /* (quick skip: nothing of it near the way ahead) */
+    const p0=it.pts[0];if(Math.hypot(p0[0]-car.x,p0[1]-car.z)>maxD+3000) continue;
+    const follows=it.pts.length>=2&&!it.rail&&!it.cam&&!it.user;
     let d=null;
-    if(R){/* on the route: the incident is within 25 m of the route line, ahead of the car */
-      const s0=R.cum[nav.idx]||0;
-      for(const p of it.pts){for(let i=nav.idx;i<R.pts.length&&R.cum[i]-s0<3000;i+=3){const q=R.pts[i];if(Math.hypot(q[0]-p[0],q[1]-p[1])<25){const dd=R.cum[i]-s0;if(dd>=0&&(d==null||dd<d)) d=dd;break;}}}}
-    else{/* no route: within about 30 degrees of straight ahead, closer than 1.2 km (only while driving) */
-      if((car.v||0)<2) continue;
-      const hr=car.hd*Math.PI/180,fx=Math.sin(hr),fz=-Math.cos(hr);
-      for(const p of it.pts){const vx=p[0]-car.x,vz=p[1]-car.z,dist=Math.hypot(vx,vz);if(dist<20||dist>1200) continue;
-        if((vx*fx+vz*fz)/dist>0.87&&(d==null||dist<d)) d=dist;}}
-    if(d!=null&&d<(R?3000:1200)&&(!best||d<best.d)) best={it:it,d:d};
+    for(let k=0;k<it.pts.length;k++){const p=it.pts[k];
+      let ix=0,iz=0;if(follows){const q=it.pts[Math.min(it.pts.length-1,k+1)],o=it.pts[Math.max(0,k-1)];ix=q[0]-o[0];iz=q[1]-o[1];const l=Math.hypot(ix,iz)||1;ix/=l;iz/=l;}
+      for(let i=0;i<P.length-1;i++){const a=P[i],b=P[i+1],sx=b[0]-a[0],sz=b[1]-a[1],l2=sx*sx+sz*sz||1;
+        const u=Math.max(0,Math.min(1,((p[0]-a[0])*sx+(p[1]-a[1])*sz)/l2)),qx=a[0]+sx*u,qz=a[1]+sz*u;
+        if(Math.hypot(p[0]-qx,p[1]-qz)>12) continue;
+        if(follows){const l=Math.sqrt(l2);if((ix*sx+iz*sz)/l<0.7) continue;}   /* (cross street or the other direction) */
+        const dd=C[i]+(C[i+1]-C[i])*u;if(dd>=0&&dd<=maxD&&(d==null||dd<d)) d=dd;break;}
+      if(d!=null&&d<50) break;}
+    if(d!=null&&(!best||d<best.d)) best={it:it,d:d};
   }
   return best;
 };
