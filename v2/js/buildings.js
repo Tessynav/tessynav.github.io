@@ -248,7 +248,11 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   let best=null;
   for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
     const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),d=dx*dx+dy*dy;
-    if(e){if(e.n||e.tries>=3||now-e.t<4000) continue;this.free(k);if(!best||d<best.d) best={k:k,d:d,tries:e.tries+1};continue;}
+    /* an area that came out empty (often because its detailed map tiles, the ones with buildings, hadn't loaded
+       yet: far away the map only loads simpler tiles) is tried again: every 4, 8, 16, then 30 s, and every 4 s
+       once the car is in it or next to it, so it never stays empty by mistake */
+    if(e){const wait=d<=1?4000:Math.min(30000,4000*Math.pow(2,Math.min(e.tries,3)));
+      if(e.n||now-e.t<wait) continue;this.free(k);if(!best||d<best.d) best={k:k,d:d,tries:e.tries+1};continue;}
     if(!best||d<best.d) best={k:k,d:d,tries:0};
   }
   if(!best) return;
