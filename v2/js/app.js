@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=66;
+TN.APPBUILD=67;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -67,21 +67,26 @@ TN.APPBUILD=66;
     covered=idx.regions.some(r=>lng>=r.bbox[0]&&lng<=r.bbox[2]&&lat>=r.bbox[1]&&lat<=r.bbox[3]);
     for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
       const k=(px+dx)+'_'+(py+dy);
-      if(net.packs.has(k)||loading.has(k)) continue;
+      /* (not again if it's already here, on its way, waiting to be added, or being added right now) */
+      if(net.packs.has(k)||loading.has(k)||pending.some(q=>q[0]===k)||(net.inAdd&&net.inAdd.has(k))) continue;
       loading.add(k);
       fetch(ROADS+'p/'+k+'.json').then(r=>r.status===404?{w:[],b:[]}:(r.ok?r.json():null)).then(P=>{
         loading.delete(k);if(P) pending.push([k,P]);
       }).catch(()=>loading.delete(k));
     }
     /* forget packs far behind */
-    if(!net.job) for(const k of [...net.packs.keys()]){const [x,y]=k.split('_').map(Number);if(Math.abs(x-px)>2||Math.abs(y-py)>2){net.dropPack(k,true);net._dirty=true;}}
+    if(!net.job) for(const k of [...net.packs.keys()]){const [x,y]=k.split('_').map(Number);if(Math.abs(x-px)>2||Math.abs(y-py)>2){net.dropPack(k,true);if(!net._dirty) net.dirtyT=Date.now();net._dirty=true;}}
   }
   setInterval(()=>{
     /* add the packs that arrived, then rebuild the network in small steps (see the main loop) */
     if(net.job||(!pending.length&&!net._dirty)) return;
     const t0=performance.now();
     /* (the new tiles are added in small slices by the main loop, together with the network rebuild) */
-    net._dirty=false;net.startAdd(pending.splice(0));
+    const fresh=pending.splice(0).filter(q=>!net.packs.has(q[0]));
+    if(!fresh.length&&!net._dirty) return;   /* (nothing new: no rebuild) */
+    /* tiles dropped far behind: forgetting them waits for the next new tiles (one rebuild instead of two), at most a minute */
+    if(!fresh.length&&Date.now()-(net.dirtyT||0)<60000) return;
+    net._dirty=false;net.startAdd(fresh);
     TN.prof('network',performance.now()-t0);
   },600);
 

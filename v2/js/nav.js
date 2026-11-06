@@ -755,7 +755,9 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      in, changes only once the GPS has clearly been in another lane for 1.5 s, and the car and the whole line move
      to that lane together */
   {const f=R.fit&&R.fit[j];
-   const wide=f&&!f.miss&&f.ow&&2*f.hw>=9.5;
+   /* (lane picking only when the car is glued to the line everywhere: otherwise the car rides in the middle of wide
+      roads, and the line must stay in that same middle, not in a lane guessed from the GPS) */
+   const wide=f&&!f.miss&&f.ow&&2*f.hw>=9.5&&!!(TN.settings&&TN.settings.glueRoute);
    if(wide&&L.v>3&&now-L.t<3000){
      const cx0=px+mi(1),cz0=pz+mi(2),latG=(L.x-cx0)*(-uz)+(L.z-cz0)*ux;
      this.latF=this.latF==null?latG:this.latF+(latG-this.latF)*Math.min(1,dt*1.0);

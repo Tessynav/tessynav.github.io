@@ -106,7 +106,8 @@ TN.Net.prototype.addPackJob=function*(key,P){
 };
 /* new tiles and the network rebuild after them, as one sliced job */
 TN.Net.prototype.startAdd=function(list){
-  const self=this;this.job=(function*(){for(const [k,P] of list) yield* self.addPackJob(k,P);yield* self.rebuildJob();})();
+  const self=this;this.inAdd=new Set(list.map(q=>q[0]));
+  this.job=(function*(){for(const [k,P] of list) yield* self.addPackJob(k,P);yield* self.rebuildJob();self.inAdd=null;})();
 };
 TN.Net.prototype.dropPack=function(key,later){
   const rec=this.packs.get(key);if(!rec) return;

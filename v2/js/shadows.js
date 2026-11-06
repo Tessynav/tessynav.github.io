@@ -5,7 +5,7 @@
    - buildings: each building's shadow is a flat shape on the ground built once with the building; when the sun
      moves, the graphics card stretches every shadow in the new direction (nothing is rebuilt)
    - the car: a soft contact shadow under it, always, plus its own sun shadow, both following it every frame
-   Overlapping shadows don't get darker (they share the same flat level, so each spot is darkened only once). */
+   Overlapping shadows are blended (slightly darker where they overlap): steadier than letting them compete. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 /* where the sun is: azimuth (degrees from north, clockwise) and elevation (degrees above the horizon) */
@@ -28,10 +28,13 @@ TN.Shadows=function(scene){
 };
 TN.Shadows.prototype.material=function(){
   if(this.mat) return this.mat;
-  this.mat=new THREE.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:true,depthFunc:THREE.LessDepth,
+  /* no depth writing: shadows never compete with each other at the same height (that made overlaps flicker as the
+     camera moved); overlaps are just a little darker. Pulled slightly towards the camera so flat ground details
+     (lots, markings) never fight with them either. */
+  this.mat=new THREE.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-6,
     vertexShader:['attribute float hgt;uniform vec2 sun;',
       'void main(){vec3 p=position;p.xz+=hgt*sun;p.y=0.22;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}'].join('\n'),
-    fragmentShader:['uniform float str;','void main(){gl_FragColor=vec4(0.04,0.06,0.10,0.30*str);}'].join('\n')});
+    fragmentShader:['uniform float str;','void main(){gl_FragColor=vec4(0.04,0.06,0.10,0.22*str);}'].join('\n')});
   return this.mat;
 };
 /* a building's shadow shape: its walls stretched away from the sun, and its roof outline moved to where the sun puts it */
@@ -56,7 +59,9 @@ TN.Shadows.prototype.forget=function(m){if(this.meshes) this.meshes.delete(m);};
 TN.Shadows.prototype.blobTex=function(){
   if(this.tex) return this.tex;
   const c=document.createElement('canvas');c.width=64;c.height=128;const x=c.getContext('2d');
-  const g=x.createRadialGradient(32,64,6,32,64,60);g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(0.55,'rgba(0,0,0,0.75)');g.addColorStop(1,'rgba(0,0,0,0)');
+  /* a soft oval: darkest in the middle, fading to nothing well before the edges (no hard border). The canvas is
+     stretched 2x vertically, so the gradient is centred at (32,32) and reaches 30 units: inside the image on all sides */
+  const g=x.createRadialGradient(32,32,3,32,32,30);g.addColorStop(0,'rgba(0,0,0,0.9)');g.addColorStop(0.5,'rgba(0,0,0,0.55)');g.addColorStop(1,'rgba(0,0,0,0)');
   x.save();x.scale(1,2);x.fillStyle=g;x.fillRect(0,0,64,64);x.restore();
   this.tex=new THREE.CanvasTexture(c);return this.tex;
 };
@@ -83,11 +88,11 @@ TN.Shadows.prototype.update=function(lng,lat,car){
   const C=this.car,y=(car.y||0)+0.24,hr=-(car.hd||0)*Math.PI/180;
   C.contact.visible=this.on;C.contact.position.set(car.x,y,car.z);C.contact.rotation.z=hr;C.contact.scale.set(2.5,5.2,1);
   C.contact.material.opacity=0.42*(1-0.35*(this.scene.night||0));
-  const L=1.5*this.lenK;   /* (the car is about 1.5 m tall) */
+  const L=Math.min(4,1.5*this.lenK);   /* (the car is about 1.5 m tall; capped so a low sun doesn't stretch it into a slab) */
   C.sun.visible=this.on&&this.strength>0.08&&!car.br;
   if(C.sun.visible){C.sun.position.set(car.x+this.dir[0]*L*0.5,y-0.005,car.z+this.dir[1]*L*0.5);
     /* stretched towards where the sun throws it, as long as the car plus its shadow */
     const ang=Math.atan2(this.dir[0],-this.dir[1]);C.sun.rotation.z=-ang;
     const along=Math.abs(Math.cos(ang+hr)),wide=2.0+2.6*(1-along),len=2.0+2.6*along+L;C.sun.scale.set(wide,len,1);
-    C.sun.material.opacity=0.32*this.strength;}
+    C.sun.material.opacity=0.22*this.strength;}
 };

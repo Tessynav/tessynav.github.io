@@ -350,7 +350,18 @@ TN.Track.prototype.frame=function(now,dt){
   car.gl=car.gl==null?gl:car.gl+(gl-car.gl)*(1-Math.exp(-dt/1.5));
   /* like Codriver: no lane guessing (the GPS can't tell lanes apart). One-way roads and highways: the car rides in
      the middle of its carriageway. Two-way streets: in the middle of the right half. Steady, no lane jumps. */
-  const target=w.ow?0:Math.max(1.2,W/4);
+  let target=w.ow?0:Math.max(1.2,W/4);
+  /* optional (Settings -> Follow my lane on wide roads, off by default): on one-way roads with 3 lanes or more, the
+     car takes the lane the GPS has clearly been in, whole lanes only, changing after 2 s near another lane's centre.
+     Closer to your real lane on wide highways and bridges, but it moves sideways more than the steady middle. */
+  if(TN.settings&&TN.settings.wideLanes&&w.ow&&W>=9.5&&L.v>4){
+    const n=Math.max(3,Math.round(W/3.5)),lw=W/n,cen=k=>-W/2+lw*(k+0.5);
+    const cand=Math.max(0,Math.min(n-1,Math.round((car.gl+W/2)/lw-0.5)));
+    if(car.laneK==null||car.laneK>=n||car.laneW!==w.id&&Math.abs((car.laneN||n)-n)>0){car.laneK=cand;car.laneT=0;}
+    else if(cand!==car.laneK&&Math.abs(car.gl-cen(cand))<lw*0.4&&(L.acc||5)<10){car.laneT=(car.laneT||0)+dt;if(car.laneT>2){car.laneK=cand;car.laneT=0;}}
+    else car.laneT=0;
+    car.laneW=w.id;car.laneN=n;target=cen(car.laneK);
+  }else{car.laneK=null;}
   if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2) car.ease.lat0=Math.sign(car.ease.lat0)*W/2;
   if(car.ease){
     /* after moving onto another road piece (a split, a merge, a turn), the car glides to its new place over the

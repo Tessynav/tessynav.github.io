@@ -93,9 +93,11 @@ TN.Scene.prototype.update=function(lng,lat){
   if(net.ver!==this.netVer){
     this.netVer=net.ver;const ch=net.changed||[];net.changed=[];
     const P=net.PACK||4;
-    if(!ch.length){for(const e of this.cells.values()) e.old=true;}
-    else for(const [k,e] of this.cells){const [x,y]=k.split(',').map(Number),px=Math.floor(x/P),py=Math.floor(y/P);
-      if(ch.some(c=>{const [a,b]=c.split('_').map(Number);return Math.abs(a-px)<=1&&Math.abs(b-py)<=1;})) e.old=true;}
+    if(!ch.length){/* (no tile changed: the road areas stay as they are) */}
+    /* every road is stored in every tile it passes through, so a new (or dropped) tile can only change the areas
+       inside it or right along its border (a road ending at the edge, a junction there): only those are rebuilt */
+    else for(const [k,e] of this.cells){const [x,y]=k.split(',').map(Number);
+      if(ch.some(c=>{const [a,b]=c.split('_').map(Number);return x>=a*P-1&&x<=a*P+P&&y>=b*P-1&&y<=b*P+P;})) e.old=true;}
   }
   for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>3||Math.abs(y-cy)>3) this.freeCell(k);}
   const t0=performance.now();
