@@ -7,6 +7,7 @@ var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.Rec=function(){this.rec=null;this.t0=0;this.timer=null;};
 TN.Rec.prototype.start=function(){
   this.t0=Date.now();
+  if(typeof TN.PROF==='object') TN.PROF={};   /* (timings start from zero: the first second used to include everything since the app opened) */
   this.rec={v:1,start:this.t0,app:'v2',info:{ua:navigator.userAgent,w:innerWidth,h:innerHeight,dpr:devicePixelRatio,view:'street',date:new Date().toISOString()},
     g:[],f:[],p:[],e:[],x:[],dur:0};
   this.timer=setInterval(()=>this.save(),20000);

@@ -394,6 +394,9 @@ TN.Nav.prototype.plan=async function(reroute){
   }
 };
 TN.Nav.prototype.setRoute=function(rt){
+  /* a new route starts from scratch: where the car is along it, its lane, the release timers (a leftover position
+     from a previous route made the car look for itself in the wrong part of the new one, for the whole trip) */
+  this.pi=0;this.ps=null;this.latS=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;
   /* the route line in local metres, densified to about every 5 m, with distances along it */
   const C=rt.geometry.coordinates,pts=[];
   /* each corner of the route becomes a real arc, about as wide as a car drives (up to 12 m radius, tighter
@@ -616,7 +619,7 @@ TN.Nav.prototype.go=function(){
 };
 TN.Nav.prototype.end=function(why){
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
-  this.active=false;this.route=null;this.bird=0;this.jvStep=null;if(this.input) this.input.placeholder='Search a place or address';if(this.bar) this.bar.classList.remove('jvon');document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
+  this.active=false;this.route=null;this.bird=0;this.jvStep=null;this.pi=0;this.ps=null;this.latS=null;this.relT=0;if(this.input) this.input.placeholder='Search a place or address';if(this.bar) this.bar.classList.remove('jvon');document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);
@@ -630,6 +633,9 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   /* where the GPS is along the route (searching around the last place) */
   let bi=this.pi||this.idx||0,bd=1e18;
   for(let i=Math.max(0,bi-60);i<Math.min(R.pts.length,bi+200);i++){const d=(R.pts[i][0]-L.x)**2+(R.pts[i][1]-L.z)**2;if(d<bd){bd=d;bi=i;}}
+  /* not found near where expected (more than 18 m away): look along the whole route, at most once a second */
+  if(bd>324&&now-(this.fullT||0)>1000){this.fullT=now;for(let i=0;i<R.pts.length;i++){const d=(R.pts[i][0]-L.x)**2+(R.pts[i][1]-L.z)**2;if(d<bd){bd=d;bi=i;}}}
+  if(bi>R.pts.length-1) bi=R.pts.length-1;
   const gd=Math.sqrt(bd);
   /* clearly not on the route (missed a turn): show where the car really is, at once.
      Judged from the real GPS direction, not the matched car (which can briefly sit on a wrong street). */
@@ -671,7 +677,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   {const f=R.fit&&R.fit[j];
    if(f&&!f.miss&&L.v>3&&now-L.t<3000){
      const cx0=px+mi(1),cz0=pz+mi(2),latG=(L.x-cx0)*(-uz)+(L.z-cz0)*ux;
-     const lim=Math.max(0.5,f.hw-1.6),lo0=f.ow?-lim:0.5;
+     const lim=Math.max(0.5,f.hw-2.0),lo0=f.ow?-lim:0.5;   /* (the car's centre stays 2 m inside the road edge: wheels on the road) */
      const want=Math.max(lo0,Math.min(lim,latG));
      this.latS=this.latS==null?lo:this.latS+(want-this.latS)*Math.min(1,dt*0.4);}
    else if(this.latS!=null) this.latS+=(lo-this.latS)*Math.min(1,dt*0.2);
