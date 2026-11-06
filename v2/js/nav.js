@@ -145,14 +145,17 @@ TN.Nav.prototype.pick=async function(it){
   this.closeSearch();this.input.value=it.name;
   if(it.lng==null&&it.mbid){
     try{const r=await fetch('https://api.mapbox.com/search/searchbox/v1/retrieve/'+encodeURIComponent(it.mbid)+'?session_token='+this.sess+'&access_token='+TN.MBX);
-      const j=await r.json(),f=j.features&&j.features[0];if(f){it.lng=f.geometry.coordinates[0];it.lat=f.geometry.coordinates[1];}}catch(e){}
+      const j=await r.json(),f=j.features&&j.features[0];if(f){it.lng=f.geometry.coordinates[0];it.lat=f.geometry.coordinates[1];
+        /* where cars actually reach the place (an entrance or drop-off point), when Mapbox knows it */
+        const rp=f.properties&&f.properties.coordinates&&f.properties.coordinates.routable_points;
+        if(rp&&rp.length){const d=rp.find(p=>p.name==='default')||rp[0];if(d&&d.latitude!=null){it.rlng=d.longitude;it.rlat=d.latitude;}}}}catch(e){}
     this.sess=null;   /* a new search session next time */
     if(it.lng==null){this.ov.style.display='flex';this.ov.innerHTML='<div>Could not open that place</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};return;}
   }
-  this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
+  this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
   try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
   if(this.addingStop){this.addingStop=false;document.body.classList.remove('tn-addstop');
-    this.stops.push({name:it.name,sub:it.sub,lng:it.lng,lat:it.lat});this.stopPins();
+    this.stops.push({name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat});this.stopPins();
     this.plan(this.active);   /* while driving: the route changes at once; before Go: a new overview */
     return;}
   this.stops=[];this.stopPins();
@@ -313,9 +316,47 @@ TN.Nav.prototype.traffic=function(show){
   }catch(e){this.note('traffic error',{msg:String(e&&e.message||e)},false);}
 };
 /* ---------- route ---------- */
+/* where to route to: the place's routable point when known, otherwise the place itself */
+TN.routeTo=p=>p.rlng!=null?[p.rlng,p.rlat]:[p.lng,p.lat];
+TN.llDist=(a,b)=>{const k=111320,dx=(a[0]-b[0])*k*Math.cos(a[1]*Math.PI/180),dy=(a[1]-b[1])*k;return Math.hypot(dx,dy);};
+/* does this route end badly? arriving on a highway, or passing close to the destination, going away and coming back */
+TN.badEnding=function(rt,to){
+  const C=rt.geometry&&rt.geometry.coordinates;if(!C||C.length<2) return null;
+  const lg=rt.legs&&rt.legs[rt.legs.length-1],st=lg&&lg.steps||[];
+  let hwy=false;for(let i=Math.max(0,st.length-3);i<st.length;i++){const its=st[i].intersections||[];
+    if(its.slice(-2).some(x=>(x.classes||[]).indexOf('motorway')>=0)) hwy=true;}
+  let first=-1;for(let i=0;i<C.length;i++){if(TN.llDist(C[i],to)<120){first=i;break;}}
+  let after=0;if(first>=0) for(let i=first;i<C.length-1;i++) after+=TN.llDist(C[i],C[i+1]);
+  const loop=first>=0&&after>600;
+  return hwy||loop?{hwy:hwy,loop:loop,after:Math.round(after)}:null;
+};
+/* the nearest point on a local street (not a highway or its ramps) around a place: from our road data if that
+   area is loaded, otherwise asked from OpenStreetMap */
+TN.Nav.prototype.localStreet=async function(to){
+  const bad=/^(motorway|trunk)(_link)?$/,net=this.api.net,q=TN.toLocal(to[0],to[1]);let best=null;
+  if(net&&net.near) net.near(q[0],q[1],250,(w,k)=>{if(bad.test(w.cls||'')||w.br||k>=w.pts.length-1) return;
+    const r=TN.seg(w,k,q[0],q[1]);if(!best||r.d<best.d) best={d:r.d,x:r.qx,z:r.qz};});
+  if(best) return TN.fromLocal(best.x,best.z);
+  try{const oq='[out:json][timeout:10];way(around:250,'+to[1]+','+to[0]+')[highway~"^(primary|secondary|tertiary|residential|unclassified|living_street|service|primary_link|secondary_link|tertiary_link)$"];out geom;';
+    const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(oq));if(!r.ok) return null;const j=await r.json();
+    let b=null;for(const e of j.elements||[]) for(const g of e.geometry||[]){const d=TN.llDist([g.lon,g.lat],to);if(!b||d<b.d) b={d:d,p:[g.lon,g.lat]};}
+    return b?b.p:null;}catch(e){return null;}
+};
 TN.Nav.prototype.fetchRoute=async function(from,to){
+  const rt=await this.fetchRouteOnce(from,to);
+  /* a bad ending (like a station beside a highway, reached by crossing a bridge and coming back): ask again with
+     the destination on the nearest local street, and keep that route if it's better */
+  try{const bad=TN.badEnding(rt,to);
+    if(bad){const alt=await this.localStreet(to);
+      if(alt&&TN.llDist(alt,to)>3){const rt2=await this.fetchRouteOnce(from,alt);const bad2=TN.badEnding(rt2,alt);
+        const better=rt2&&(!bad2||rt2.duration<rt.duration*0.9);
+        this.note('route ending check',{hwy:bad.hwy,loop:bad.loop,after:bad.after,alt:!!alt,used:!!better,min:Math.round(rt.duration/60),min2:rt2?Math.round(rt2.duration/60):null},false);
+        if(better){rt2.adjusted=true;return rt2;}}}}catch(e){}
+  return rt;
+};
+TN.Nav.prototype.fetchRouteOnce=async function(from,to){
   if(TN.MBX){try{
-    const via=(this.stops||[]).map(p=>p.lng.toFixed(6)+','+p.lat.toFixed(6));
+    const via=(this.stops||[]).map(p=>{const r=TN.routeTo(p);return r[0].toFixed(6)+','+r[1].toFixed(6);});
     const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60'+';'.repeat(via.length+1):'';
     const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+[from[0].toFixed(6)+','+from[1].toFixed(6)].concat(via,[to[0].toFixed(6)+','+to[1].toFixed(6)]).join(';')+
       '?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language=en&voice_instructions=true&voice_units=metric'+brg+'&access_token='+TN.MBX;
@@ -324,13 +365,13 @@ TN.Nav.prototype.fetchRoute=async function(from,to){
   return this.fetchRouteFree(from,to);
 };
 TN.Nav.prototype.fetchRouteFree=async function(from,to){
-  const pts=[from].concat((this.stops||[]).map(p=>[p.lng,p.lat]),[to]);
+  const pts=[from].concat((this.stops||[]).map(p=>TN.routeTo(p)),[to]);
   const u='https://router.project-osrm.org/route/v1/driving/'+pts.map(p=>p[0].toFixed(6)+','+p[1].toFixed(6)).join(';')+'?overview=full&geometries=geojson&steps=true';
   const r=await fetch(u);if(!r.ok) throw new Error('route');const j=await r.json();
   if(!j.routes||!j.routes[0]) throw new Error('no route');return j.routes[0];
 };
 TN.Nav.prototype.plan=async function(reroute){
-  const from=this.here(),to=[this.dest.lng,this.dest.lat];
+  const from=this.here(),to=TN.routeTo(this.dest);
   if(!reroute){this.ov.style.display='flex';this.ov.innerHTML='<div>Calculating the route\u2026</div>';}
   try{
     const rt=await this.fetchRoute(from,to);this.setRoute(rt);
