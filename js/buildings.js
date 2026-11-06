@@ -1,260 +1,271 @@
-/* TessyNav buildings v3: smart styles, windows, shadows, lit windows, fixed roof facing */
-const BC=0.005;
-const bCells=new Map(),bMeshes=new Map(),bDirty=new Set();
-const bNight={value:0};
-let bMat=null,bReady=false,bFailed=false,bThreeOn=false,bLast=0,bAmb=null;
+/* TessyNav v2 — buildings.js
+   Detailed buildings around the car (about 1.1 km each way; steps back to 600 m if the screen gets slow), on top of the map's
+   plain buildings further away. A building cut in pieces by the map tiles is styled as the whole building:
+   - houses and small buildings get a pitched (hip) roof; larger buildings a flat roof with a low parapet
+   - colours by type: brick for houses and plexes, concrete/beige for mid-rise, glassy grey-blue for towers
+   - windows drawn by a small graphics program (no images to download), in rows and floors
+   - at night about a third of the windows light up (more in office towers), in a mix of warm yellow, soft white,
+     cool white and dim orange, each at its own brightness (always the same ones per building)
+   Built to stay light: each area is ONE drawing job, built a few hundred buildings per frame, kept while near.
+   ?buildings=0 in the address switches the detailed buildings off. Nothing here touches the car or the roads. */
+var TN=globalThis.TN||{};globalThis.TN=TN;
 
-const PAL={
-  plex:['#9c4a35','#8a4a3a','#b0624a','#7d5a48','#a8876a','#c2b39a','#94503c'],
-  house:['#d8d2c4','#c9b99a','#b9c2c8','#e1dccf','#a8573f','#c8c0b0'],
-  shop:['#cbbfae','#b8a48c','#d6d0c4','#9e8e7e','#c4b6a0'],
-  tower:['#7f8f9c','#8a99a6','#6f7f8c','#9aa6ae'],
-  industry:['#a3a7ab','#8e9499','#b5b1a6']
+TN.Buildings=function(scene,net){
+  this.scene=scene;this.net=net||null;this.on=!(typeof location!=='undefined'&&/[?&]buildings=0/.test(location.search));
+  this.cells=new Map();this.job=null;this.mat=null;this.night=0;this.slowT=0;this.range=2;
 };
-const ROOF={flat:'#a29e96',tower:'#6e7276',house:['#4a4a4f','#5a4a42','#3f4448','#6b4e3d']};
-const KIND={plex:0,shop:1,tower:2,industry:3,house:4};
-
-function makeBuildingMaterial(){
-  const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
-  m.onBeforeCompile=sh=>{
-    sh.uniforms.uNight=bNight;
-    sh.vertexShader='attribute float top;\nattribute float seed;\nattribute float kind;\nvarying vec3 vWPos;\nvarying vec3 vWN;\nvarying float vTop;\nvarying float vSeed;\nvarying float vKind;\n'+
-      sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvWPos=position;\nvWN=normal;\nvTop=top;\nvSeed=seed;\nvKind=kind;');
-    sh.fragmentShader='uniform float uNight;\nvarying vec3 vWPos;\nvarying vec3 vWN;\nvarying float vTop;\nvarying float vSeed;\nvarying float vKind;\n'+
-      sh.fragmentShader
-      .replace('#include <color_fragment>',[
-        '#include <color_fragment>',
-        'float isWall=1.0-step(0.5,abs(vWN.y));',
-        'vec2 tg=vec2(-vWN.z,vWN.x);',
-        'float uu=dot(vWPos.xz,tg);',
-        'float yy=vWPos.y;',
-        'int kk=int(vKind+0.5);',
-        'float colW=2.8,flH=3.0,wx0=0.28,wx1=0.72,wy0=0.3,wy1=0.78,litP=0.45;',
-        'vec3 glass=vec3(0.16,0.2,0.27);',
-        'vec3 litCol=vec3(1.0,0.75,0.42);',
-        'if(kk==2){colW=1.6;flH=3.4;wx0=0.08;wx1=0.92;wy0=0.15;wy1=0.85;glass=vec3(0.30,0.40,0.50);litP=0.5;litCol=vec3(0.95,0.92,0.8);}',
-        'else if(kk==4){colW=3.4;flH=2.8;wx0=0.3;wx1=0.7;wy0=0.35;wy1=0.8;litP=0.4;}',
-        'float wx=fract(uu/colW);',
-        'float wy=fract(yy/flH);',
-        'float win=step(wx0,wx)*step(wx,wx1)*step(wy0,wy)*step(wy,wy1)*isWall*step(1.0,yy)*step(yy,vTop-0.6);',
-        'if(kk==3){win=step(0.1,fract(uu/4.0))*step(fract(uu/4.0),0.9)*step(vTop-2.6,yy)*step(yy,vTop-1.3)*isWall;litP=0.2;}',
-        'if(kk==1&&yy<3.6){float sx=fract(uu/4.0);win=step(0.06,sx)*step(sx,0.94)*step(0.35,yy)*step(yy,3.0)*isWall;glass=vec3(0.22,0.28,0.32);litP=0.85;litCol=vec3(1.0,0.88,0.65);}',
-        'diffuseColor.rgb=mix(diffuseColor.rgb,glass,win*0.88);',
-        'float hh=fract(sin(dot(vec3(floor(uu/colW),floor(yy/flH),vSeed),vec3(12.9898,78.233,37.719)))*43758.5453);',
-        'float lit=win*step(1.0-litP,hh)*uNight;'
-      ].join('\n'))
-      .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=lit*litCol*1.3;');
-  };
-  return m;
-}
-
-/* Neighborhood type (commercial, retail, industrial) around each building */
-function getLanduse(){
-  const out=[];
-  for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'landuse'})){
-    const cl=f.properties&&f.properties.class;
-    if(cl!=='commercial'&&cl!=='retail'&&cl!=='industrial') continue;
-    const g=f.geometry;
-    const polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
-    for(const poly of polys){
-      const rg=poly[0];if(!rg||rg.length<4) continue;
-      let minX=180,minY=90,maxX=-180,maxY=-90;
-      for(const p of rg){minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);minY=Math.min(minY,p[1]);maxY=Math.max(maxY,p[1]);}
-      out.push({cl:cl,rg:rg,minX:minX,minY:minY,maxX:maxX,maxY:maxY});
+TN.Buildings.prototype.material=function(){
+  if(this.mat) return this.mat;
+  this.mat=new THREE.ShaderMaterial({
+    uniforms:Object.assign({night:{value:this.night}},TN.CUTU||{}),
+    vertexColors:true,side:THREE.DoubleSide,
+    vertexShader:[
+      'attribute vec3 wuv;',
+      'varying vec3 vCol;varying vec3 vUv;varying float vShade;varying vec3 vCutW;',
+      'void main(){vCol=color;vUv=wuv;vCutW=(modelMatrix*vec4(position,1.0)).xyz;',
+      '  vec3 n=normalize(normal);vShade=0.80+0.20*abs(n.x)+0.10*max(n.y,0.0);',
+      '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'].join('\n'),
+    fragmentShader:[
+      (TN.CUTGLSL||'varying vec3 vCutW;float tnCutK(){return 0.0;}'),
+      'uniform float night;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
+      'float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
+      'void main(){',
+      '  float tnK=tnCutK();if(tnK>0.97) discard;float al=1.0-tnK;',
+      '  vec3 wall=vCol*vShade*(1.0-0.62*night);',
+      '  if(vUv.z<0.0){gl_FragColor=vec4(wall,al);return;}',
+      '  vec2 cell=vec2(floor(vUv.x/3.2),floor(vUv.y/3.0));vec2 f=vec2(fract(vUv.x/3.2),fract(vUv.y/3.0));',
+      '  float win=step(0.22,f.x)*step(f.x,0.78)*step(0.28,f.y)*step(f.y,0.80)*step(1.0,vUv.y);',
+      /* night windows: homes mostly warm yellow with soft white, some cool white and a few dim orange; offices (tall
+         buildings) more lit windows, whiter and cooler; each window its own brightness. Always the same per window. */
+      '  float off=step(999.5,vUv.z);float sd=mod(vUv.z,1000.0);',
+      '  float lit=step(hh(cell+vec2(sd,sd*1.7)),mix(0.33,0.55,off));',
+      '  float r=hh(cell*1.37+vec2(sd*0.31,sd*2.3));',
+      '  vec3 warm=vec3(1.0,0.77,0.36);vec3 soft=vec3(1.0,0.93,0.78);vec3 cool=vec3(0.84,0.90,1.0);vec3 dimo=vec3(0.89,0.55,0.25);',
+      '  vec3 lc=off>0.5?(r<0.35?soft:(r<0.75?cool:(r<0.92?warm:dimo))):(r<0.55?warm:(r<0.80?soft:(r<0.92?cool:dimo)));',
+      '  lc*=0.7+0.3*hh(cell+vec2(sd*3.1,5.0));',
+      '  vec3 day=vec3(0.30,0.37,0.45);vec3 dark=vec3(0.07,0.08,0.11);',
+      '  vec3 wc=mix(day,mix(dark,lc,lit),night);',
+      '  gl_FragColor=vec4(mix(wall,wc,win),al);}'].join('\n'),transparent:true
+  });
+  return this.mat;
+};
+TN.Buildings.prototype.setNight=function(nt){this.night=nt;if(this.mat) this.mat.uniforms.night.value=nt;};
+/* building shapes of one area, from the map tiles already loaded */
+TN.Buildings.prototype.collect=function(ck){
+  const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function') return [];
+  const [cx,cy]=ck.split(',').map(Number);
+  const out=[],seen=new Set();
+  /* the map scan is the slow part (every building in every loaded map tile): done once and reused for up to 20 s,
+     or until the car has moved 800 m; the pieces are only grouped by building here, their sizes are measured
+     later and only for the buildings actually needed */
+  const nowT=performance.now(),cp=this.lastCenter||[0,0];
+  const moved=this.scan&&this.scan.at?Math.hypot((cp[0]-this.scan.at[0])*78000,(cp[1]-this.scan.at[1])*111000):0;
+  if(this.scan&&nowT-this.scan.t<20000&&moved<800){var fs=this.scan.fs,byId=this.scan.byId,whole=this.scan.whole;}
+  else{
+  var fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});}catch(e){return [];}
+  var byId=new Map(),whole=new Map();
+  for(const f of fs){if(f.id==null||!f.geometry) continue;const a=byId.get(f.id);if(a) a.push(f);else byId.set(f.id,[f]);}
+  this.scan={t:nowT,fs:fs,byId:byId,whole:whole,at:cp.slice()};}
+  /* a building on a tile edge arrives in pieces (same id): its whole size, so each piece is styled as the whole
+     building (not as a small house); measured once per building, when first needed */
+  const wholeOf=id=>{let o=whole.get(id);if(o) return o;o={a:0,n:0};const seenPiece=new Set();
+    for(const f of byId.get(id)||[]){const g=f.geometry,list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+      for(const rings of list){const r=rings[0];if(!r||r.length<4) continue;const pk=r[0][0].toFixed(6)+','+r[0][1].toFixed(6);if(seenPiece.has(pk)) continue;seenPiece.add(pk);
+        let A=0;for(let i=0;i<r.length-1;i++){const p=TN.toLocal(r[i][0],r[i][1]),q=TN.toLocal(r[i+1][0],r[i+1][1]);A+=p[0]*q[1]-q[0]*p[1];}
+        o.a+=Math.abs(A)/2;o.n++;}}
+    whole.set(id,o);return o;};
+  for(const f of fs){
+    const g=f.geometry;if(!g) continue;
+    const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+    const pr=f.properties||{},H=+pr.render_height||8,B=+pr.render_min_height||0;
+    for(const rings of list){
+      const r=rings[0];if(!r||r.length<4) continue;
+      let sx=0,sy=0;for(const p of r){sx+=p[0];sy+=p[1];}sx/=r.length;sy/=r.length;
+      /* each building belongs to the area its middle is in (no doubles) */
+      if(Math.floor(sx/TN.CELL)!==cx||Math.floor(sy/TN.CELL)!==cy) continue;
+      const key=r[0][0].toFixed(6)+','+r[0][1].toFixed(6)+','+H;if(seen.has(key)) continue;seen.add(key);
+      const wh=f.id!=null?wholeOf(f.id):null;
+      out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B,id:f.id,wa:wh?wh.a:0,parts:wh?wh.n:1});
+      this.idSeen=(this.idSeen||0)+1;if(f.id==null) this.idMissing=(this.idMissing||0)+1;
     }
   }
+  /* nothing found in a scan made before this area's map tiles arrived: scan again once */
+  if(!out.length&&!this._rescan&&nowT-this.scan.t>3000){this._rescan=true;this.scan=null;try{return this.collect(ck);}finally{this._rescan=false;}}
   return out;
-}
-function landuseAt(lng,lat,lus){
-  for(const l of lus){
-    if(lng<l.minX||lng>l.maxX||lat<l.minY||lat>l.maxY) continue;
-    if(inside([lng,lat],l.rg)) return l.cl;
+};
+TN.segX=function(a,b,c,d){const cr=(o,p,q)=>(p[0]-o[0])*(q[1]-o[1])-(p[1]-o[1])*(q[0]-o[0]);
+  const d1=cr(c,d,a),d2=cr(c,d,b),d3=cr(a,b,c),d4=cr(a,b,d);return ((d1>0)!==(d2>0))&&((d3>0)!==(d4>0));};
+TN.Buildings.prototype.crossesRoad=function(ring){
+  const net=this.net;if(!net||ring.length<3) return false;
+  let cx=0,cz=0,r=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=ring.length;cz/=ring.length;
+  for(const p of ring) r=Math.max(r,Math.hypot(p[0]-cx,p[1]-cz));if(r>150) return false;
+  let hit=false;
+  const test=(w,i)=>{
+    if(w.tun||w.br||w.pa) return;
+    const a=w.pts[i],b=w.pts[i+1];
+    /* the street's line runs through the footprint: it crosses an edge, or its middle lies inside */
+    const m=[(a[0]+b[0])/2,(a[1]+b[1])/2];let inside=false;
+    for(let k=0,j=ring.length-1;k<ring.length;j=k++){const A=ring[k],B=ring[j];
+      if(((A[1]>m[1])!==(B[1]>m[1]))&&(m[0]<(B[0]-A[0])*(m[1]-A[1])/((B[1]-A[1])||1e-9)+A[0])) inside=!inside;}
+    if(inside){hit=true;return true;}
+    let n=0;for(let k=0;k<ring.length;k++) if(TN.segX(a,b,ring[k],ring[(k+1)%ring.length])) n++;
+    if(n>=2){hit=true;return true;}
+  };
+  const G=net._sg;
+  if(G){let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+    const seen=new Set();
+    for(let gx=Math.floor(x0/10);gx<=Math.floor(x1/10);gx++) for(let gz=Math.floor(z0/10);gz<=Math.floor(z1/10);gz++){
+      const l=G.get(gx*1e6+gz);if(!l) continue;
+      for(const e of l){const k=e[0].id+':'+e[1];if(seen.has(k)) continue;seen.add(k);if(test(e[0],e[1])) return true;}}
+    return false;}
+  net.near(cx,cz,r,test);
+  return hit;
+};
+TN.Buildings.prototype.overRem=function(ring){
+  const net=this.net;if(!net||!net.rem||!net.rem.size) return false;
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+  const inside=(x,z)=>{let c=false;for(let k=0,j=ring.length-1;k<ring.length;j=k++){const A=ring[k],B=ring[j];
+    if(((A[1]>z)!==(B[1]>z))&&(x<(B[0]-A[0])*(z-A[1])/((B[1]-A[1])||1e-9)+A[0])) c=!c;}return c;};
+  for(const w of net.rem.values()){const b=w.bb;if(b[1]<x0||b[0]>x1||b[3]<z0||b[2]>z1) continue;
+    for(let i=0;i<w.pts.length-1;i++){const a=w.pts[i],c=w.pts[i+1];
+      for(const t of [0.25,0.5,0.75]) if(inside(a[0]+(c[0]-a[0])*t,a[1]+(c[1]-a[1])*t)) return true;}}
+  return false;
+};
+TN.Buildings.prototype.palette=function(H,seed,area){
+  const pick=a=>a[seed%a.length];
+  /* low but large (a mall, a warehouse, a school): concrete/beige, not house brick */
+  if(H<=13&&area>900) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
+  if(H<=13) return pick(['#a65a43','#8e4b3a','#b46b54','#9c5f4a','#c8b08f','#b9a185']);
+  if(H<=32) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
+  return pick(['#9fb0bf','#b7c3cd','#8e9eae','#a9b3bb']);
+};
+TN.Buildings.prototype.addBuilding=function(G,b,J){
+  let ring=b.ring;const n=ring.length;if(n<3) return;
+  const map=this.scene.map,fs=b.id!=null?{source:'openmaptiles',sourceLayer:'building',id:b.id}:null;
+  /* a station roof over the REM tracks, mapped as a solid building: left out (the REM station is drawn instead) */
+  if(this.overRem(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
+  /* a building whose footprint crosses a street (a skybridge, a building over a road): room to drive underneath */
+  if(this.crossesRoad(ring)){const Bx=Math.max(b.B,b.H>=8?5.5:b.H*0.55);b={ring:ring,H:Math.max(b.H,Bx+2),B:Bx,id:b.id};
+    if(fs){try{map.setFeatureState(fs,{lift:Bx});}catch(e){}}}
+  /* the map's own plain copy of this building is flattened while the detailed one is shown */
+  if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}
+  /* clockwise rings in local x/z (z points south) give outward walls with this winding */
+  let area=0;for(let i=0;i<n;i++){const a=ring[i],c=ring[(i+1)%n];area+=a[0]*c[1]-c[0]*a[1];}
+  if(area<0) ring=ring.slice().reverse();area=Math.abs(area)/2;
+  if(area<12) return;
+  const seed=b.id!=null?(Math.abs(Math.floor(Number(b.id)))%997)+1:Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;
+  const wholeArea=Math.max(area,b.wa||0),pieces=b.parts||1;
+  const col=TN.hex(this.palette(b.H,seed,wholeArea));
+  const top=b.H,bot=b.B,ex=0.3;   /* slightly outside the map's own building, so it is covered */
+  if(TN.shadows&&G.s) TN.shadows.addBuilding(G.s,ring,top);   /* (its shadow on the ground, stretched later by the sun) */
+  let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
+  const out=ring.map(p=>{const dx=p[0]-cx,dz=p[1]-cz,l=Math.hypot(dx,dz)||1;return [p[0]+dx/l*ex,p[1]+dz/l*ex];});
+  const V=(x,y,z,nx,ny,nz,u,v,s,c)=>{G.p.push(x,y,z);G.n.push(nx,ny,nz);G.c.push(c[0],c[1],c[2]);G.w.push(u,v,s);return G.cnt++;};
+  const quadWall=(a,c,y0,y1,u0,len,s,cc)=>{
+    const nx=(c[1]-a[1])/len,nz=-(c[0]-a[0])/len;
+    const i0=V(a[0],y0,a[1],nx,0,nz,u0,y0-bot,s,cc),i1=V(c[0],y0,c[1],nx,0,nz,u0+len,y0-bot,s,cc);
+    const i2=V(c[0],y1,c[1],nx,0,nz,u0+len,y1-bot,s,cc),i3=V(a[0],y1,a[1],nx,0,nz,u0,y1-bot,s,cc);
+    G.i.push(i0,i2,i1,i0,i3,i2);
+  };
+  let run=0;
+  for(let i=0;i<n;i++){
+    const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
+    quadWall(a,c,bot,top,run,len,seed+(top-bot>=25?1000:0),col);run+=len;   /* (+1000: an office-height building) */
   }
-  return '';
-}
-
-function classify(poly,h,lng,lat,colour,s,getLus){
-  const o=poly[0].map(p=>toLocal(p[0],p[1]));
-  let A=0;for(let i=0;i<o.length-1;i++)A+=o[i][0]*o[i+1][1]-o[i+1][0]*o[i][1];
-  const area=Math.abs(A)/2;
-  const lu=landuseAt(lng,lat,getLus());
-  let type='plex';
-  if(h>=25) type='tower';
-  else if(lu==='industrial') type='industry';
-  else if(lu==='commercial'||lu==='retail') type='shop';
-  else if(h<=9.5&&area<260) type='house';
-  const pick=arr=>arr[Math.floor(s)%arr.length];
-  const wall=(colour&&/^#[0-9a-f]{6}$/i.test(colour))?colour:pick(PAL[type]);
-  const roof=type==='house'?pick(ROOF.house):type==='tower'?ROOF.tower:ROOF.flat;
-  return {kind:KIND[type],type:type,wall:new THREE.Color(wall),roof:new THREE.Color(roof)};
-}
-
-function collectBuildings(cx,cy){
-  const feats=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});
-  let lus=null;const getLus=()=>lus||(lus=getLanduse());
-  for(const f of feats){
-    const pr=f.properties||{};
-    if(pr.hide_3d) continue;
-    const h=Math.max(3,+pr.render_height||8),b0=Math.max(0,+pr.render_min_height||0);
-    if(h<=b0) continue;
-    const g=f.geometry;
-    const polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
-    for(const poly of polys){
-      const o=poly[0]; if(!o||o.length<4) continue;
-      let sx=0,sy=0; for(const p of o){sx+=p[0];sy+=p[1];}
-      const clng=sx/o.length,clat=sy/o.length;
-      const gx=Math.floor(clng/BC),gy=Math.floor(clat/BC);
-      if(Math.abs(gx-cx)>2||Math.abs(gy-cy)>2) continue;
-      const ck=gx+','+gy;
-      const key=o.length+'|'+o[0][0].toFixed(6)+','+o[0][1].toFixed(6)+'|'+o[1][0].toFixed(6)+','+o[1][1].toFixed(6)+'|'+h+'|'+b0;
-      let cell=bCells.get(ck); if(!cell){cell=new Map();bCells.set(ck,cell);}
-      if(cell.has(key)) continue;
-      const s=Math.random()*100;
-      const st=classify(poly,h,clng,clat,pr.colour,s,getLus);
-      cell.set(key,{rings:poly,h:h,b:b0,s:s,kind:st.kind,type:st.type,wall:st.wall,roof:st.roof});
-      bDirty.add(ck);
+  /* pitched roof only for a whole small house in one piece (a piece of a bigger building gets the flat roof) */
+  const pitched=b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1;
+  if(pitched){
+    /* low-poly hip roof up to the middle */
+    const rise=Math.min(3.2,0.32*Math.sqrt(area)),rc=TN.hex(['#4b4542','#5a3f36','#3f4448'][seed%3]);
+    for(let i=0;i<n;i++){
+      const a=out[i],c=out[(i+1)%n];
+      const ux=c[0]-a[0],uz=c[1]-a[1],vx=cx-a[0],vy=rise,vz=cz-a[1];
+      /* face normal = u x v */
+      let nx=-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy;
+      const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;if(ny<0){nx=-nx;ny=-ny;nz=-nz;}
+      const i0=V(a[0],top,a[1],nx,ny,nz,0,0,-1,rc),i1=V(c[0],top,c[1],nx,ny,nz,0,0,-1,rc),i2=V(cx,top+rise,cz,nx,ny,nz,0,0,-1,rc);
+      G.i.push(i0,i2,i1);
     }
+  }else{
+    /* flat roof a little above the walls, with a low parapet */
+    const rc=TN.hex(['#6e6b66','#5f6266','#76736c'][seed%3]);
+    let tri=[];
+    try{tri=THREE.ShapeUtils.triangulateShape(out.map(p=>new THREE.Vector2(p[0],p[1])),[]);}catch(e){tri=[];}
+    const base=G.cnt;for(const p of out) V(p[0],top+0.05,p[1],0,1,0,0,0,-1,rc);
+    for(const t of tri) G.i.push(base+t[0],base+t[2],base+t[1]);
+    let r2=0;
+    for(let i=0;i<n;i++){const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
+      quadWall(a,c,top,top+0.5,r2,len,-1,rc);r2+=len;}
   }
-}
-
-function buildBuildingMesh(cell){
-  const pos=[],nor=[],col=[],top=[],seed=[],kind=[],idx=[];let base=0;
-  function vtx(x,y,z,nx,ny,nz,c,t,s,k){pos.push(x,y,z);nor.push(nx,ny,nz);col.push(c.r,c.g,c.b);top.push(t);seed.push(s);kind.push(k);}
-  function face(vs,c,t,s,k,ref){
-    const a=vs[0],b=vs[1],d=vs[2];
-    let nx=(b[1]-a[1])*(d[2]-a[2])-(b[2]-a[2])*(d[1]-a[1]);
-    let ny=(b[2]-a[2])*(d[0]-a[0])-(b[0]-a[0])*(d[2]-a[2]);
-    let nz=(b[0]-a[0])*(d[1]-a[1])-(b[1]-a[1])*(d[0]-a[0]);
-    const ln=Math.hypot(nx,ny,nz)||1;nx/=ln;ny/=ln;nz/=ln;
-    if(nx*ref[0]+ny*ref[1]+nz*ref[2]<0){nx=-nx;ny=-ny;nz=-nz;}
-    for(const v of vs) vtx(v[0],v[1],v[2],nx,ny,nz,c,t,s,k);
-    idx.push(base,base+1,base+2); if(vs.length===4) idx.push(base,base+2,base+3);
-    base+=vs.length;
-  }
-  function walls(rings,b0,H,c,s,k){
-    rings.forEach((pts,ri)=>{
-      let A=0;for(let i=0;i<pts.length-1;i++)A+=pts[i][0]*pts[i+1][1]-pts[i+1][0]*pts[i][1];
-      const sg=(A>0?1:-1)*(ri===0?1:-1);
-      for(let i=0;i<pts.length-1;i++){
-        const a=pts[i],q=pts[i+1],dx=q[0]-a[0],dz=q[1]-a[1],len=Math.hypot(dx,dz);
-        if(len<0.05) continue;
-        const nx=sg*dz/len,nz=-sg*dx/len;
-        vtx(a[0],b0,a[1],nx,0,nz,c,H,s,k);vtx(q[0],b0,q[1],nx,0,nz,c,H,s,k);
-        vtx(q[0],H,q[1],nx,0,nz,c,H,s,k);vtx(a[0],H,a[1],nx,0,nz,c,H,s,k);
-        idx.push(base,base+1,base+2,base,base+2,base+3);base+=4;
-      }
-    });
-  }
-  function flatRoof(rings,H,c,s,k){
-    try{
-      const toV=r=>r.slice(0,r.length-1).map(p=>new THREE.Vector2(p[0],p[1]));
-      const contour=toV(rings[0]),holes=rings.slice(1).map(toV);
-      const tris=THREE.ShapeUtils.triangulateShape(contour,holes);
-      const all=contour.concat(...holes);
-      for(const p of all) vtx(p.x,H,p.y,0,1,0,c,H,s,k);
-      for(const t of tris) idx.push(base+t[0],base+t[1],base+t[2]);
-      base+=all.length;
-    }catch(e){}
-  }
-  for(const rec of cell.values()){
-    const rings=rec.rings.map(r=>r.map(p=>toLocal(p[0],p[1])));
-    const s=rec.s,k=rec.kind;
-    const canGable=rec.type==='house'&&rings.length===1&&rings[0].length===5;
-    if(canGable){
-      const L=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1]);
-      let p=rings[0].slice(0,4);
-      if(L(p[0],p[1])+L(p[2],p[3])<L(p[1],p[2])+L(p[3],p[0])) p=[p[1],p[2],p[3],p[0]];
-      const short=Math.min(L(p[1],p[2]),L(p[3],p[0]));
-      const roofH=Math.max(1,Math.min(3.5,rec.h*0.35,short*0.45));
-      const eave=rec.h-roofH,ridge=rec.h;
-      walls(rings,rec.b,eave,rec.wall,s,k);
-      const m12=[(p[1][0]+p[2][0])/2,(p[1][1]+p[2][1])/2],m30=[(p[3][0]+p[0][0])/2,(p[3][1]+p[0][1])/2];
-      const cxl=(p[0][0]+p[1][0]+p[2][0]+p[3][0])/4,czl=(p[0][1]+p[1][1]+p[2][1]+p[3][1])/4;
-      face([[p[1][0],eave,p[1][1]],[p[2][0],eave,p[2][1]],[m12[0],ridge,m12[1]]],rec.wall,eave,s,k,[m12[0]-cxl,0,m12[1]-czl]);
-      face([[p[3][0],eave,p[3][1]],[p[0][0],eave,p[0][1]],[m30[0],ridge,m30[1]]],rec.wall,eave,s,k,[m30[0]-cxl,0,m30[1]-czl]);
-      face([[p[0][0],eave,p[0][1]],[p[1][0],eave,p[1][1]],[m12[0],ridge,m12[1]],[m30[0],ridge,m30[1]]],rec.roof,eave,s,k,[0,1,0]);
-      face([[p[2][0],eave,p[2][1]],[p[3][0],eave,p[3][1]],[m30[0],ridge,m30[1]],[m12[0],ridge,m12[1]]],rec.roof,eave,s,k,[0,1,0]);
-    }else{
-      walls(rings,rec.b,rec.h,rec.wall,s,k);
-      flatRoof(rings,rec.h,rec.roof,s,k);
-    }
-  }
-  if(!pos.length) return null;
-  /* Make every triangle face the same way as its normal (fixes black roofs) */
-  for(let i=0;i<idx.length;i+=3){
-    const a=idx[i]*3,b=idx[i+1]*3,c=idx[i+2]*3;
-    const ux=pos[b]-pos[a],uy=pos[b+1]-pos[a+1],uz=pos[b+2]-pos[a+2];
-    const vx=pos[c]-pos[a],vy=pos[c+1]-pos[a+1],vz=pos[c+2]-pos[a+2];
-    const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
-    if(nx*nor[a]+ny*nor[a+1]+nz*nor[a+2]<0){const t=idx[i+1];idx[i+1]=idx[i+2];idx[i+2]=t;}
-  }
+};
+TN.Buildings.prototype.finish=function(G){
+  if(!G.cnt) return null;
   const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
-  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
-  g.setAttribute('top',new THREE.Float32BufferAttribute(top,1));
-  g.setAttribute('seed',new THREE.Float32BufferAttribute(seed,1));
-  g.setAttribute('kind',new THREE.Float32BufferAttribute(kind,1));
-  g.setIndex(idx);
-  const mesh=new THREE.Mesh(g,bMat);
-  mesh.frustumCulled=false;mesh.castShadow=true;mesh.receiveShadow=true;
-  return mesh;
-}
-
-function setThreeMode(on){
-  if(on===bThreeOn) return;
-  bThreeOn=on;
-  for(const m of bMeshes.values()) m.visible=on;
-  for(const id of ['building-3d','roofs']) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',on?'none':'visible');
-  map.triggerRepaint();
-}
-
-function updateBuildings(force){
-  if(bFailed||!treeScene) return;
-  const now=performance.now();
-  if(!force&&now-bLast<800) return;
-  bLast=now;
-  try{
-    if(!bMat) bMat=makeBuildingMaterial();
-    if(!bAmb){bAmb=new THREE.AmbientLight(0x8a9ac0,0);treeScene.add(bAmb);}
-    const c=map.getCenter(),cx=Math.floor(c.lng/BC),cy=Math.floor(c.lat/BC);
-    const s=sunPos(nowForSun(),c.lat,c.lng);
-    bNight.value=Math.min(1,Math.max(0,(6-s.alt/R)/12));
-    bAmb.intensity=0.6*bNight.value;
-    if(map.getZoom()<15.5){setThreeMode(false);return;}
-    collectBuildings(cx,cy);
-    for(const [ck,mesh] of bMeshes){
-      const [x,y]=ck.split(',').map(Number);
-      if(Math.abs(x-cx)>2||Math.abs(y-cy)>2){treeScene.remove(mesh);mesh.geometry.dispose();bMeshes.delete(ck);}
-    }
-    for(const ck of [...bCells.keys()]){
-      const [x,y]=ck.split(',').map(Number);
-      if(Math.abs(x-cx)>3||Math.abs(y-cy)>3){bCells.delete(ck);bDirty.delete(ck);}
-    }
-    let built=false;
-    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
-      const ck=(cx+dx)+','+(cy+dy),cell=bCells.get(ck);
-      if(!cell) continue;
-      if(bMeshes.has(ck)&&!bDirty.has(ck)) continue;
-      const old=bMeshes.get(ck);
-      if(old){treeScene.remove(old);old.geometry.dispose();bMeshes.delete(ck);}
-      const mesh=buildBuildingMesh(cell);
-      if(mesh){mesh.visible=bThreeOn||!bReady;treeScene.add(mesh);bMeshes.set(ck,mesh);built=true;}
-      bDirty.delete(ck);
-    }
-    if(built&&!bReady) bReady=true;
-    if(bReady) setThreeMode(true);
-    map.triggerRepaint();
-  }catch(e){
-    bFailed=true;console.warn('3D buildings failed',e);
-    for(const m of bMeshes.values()) treeScene.remove(m);
-    for(const id of ['building-3d','roofs']) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility','visible');
+  g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(G.n,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
+  g.setAttribute('wuv',new THREE.Float32BufferAttribute(G.w,3));
+  g.setIndex(G.i);
+  const m=new THREE.Mesh(g,this.material());m.frustumCulled=false;
+  if(TN.shadows&&G.s){const sm=TN.shadows.mesh(G.s);if(sm) m.add(sm);}
+  return m;
+};
+TN.Buildings.prototype.free=function(k){
+  const e=this.cells.get(k);if(!e) return;
+  if(e.mesh){this.scene.three.scene.remove(e.mesh);e.mesh.geometry.dispose();
+    for(const ch of e.mesh.children){if(ch.geometry) ch.geometry.dispose();if(TN.shadows) TN.shadows.forget(ch);}}
+  if(e.ids){const map=this.scene.map;for(const id of e.ids){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}}}
+  this.cells.delete(k);
+};
+TN.Buildings.prototype.update=function(lng,lat,fps){
+  if(!this.on||!this.scene.three) return;
+  if(fps){
+    if(fps<45) this.slowT++;else this.slowT=Math.max(0,this.slowT-1);
+    if(this.slowT>300&&this.range>0){this.range--;this.slowT=0;
+      const cx0=Math.floor(lng/TN.CELL),cy0=Math.floor(lat/TN.CELL);
+      for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx0)>this.range||Math.abs(y-cy0)>this.range) this.free(k);}this.job=null;}
+    /* never switched off: at the shortest range they keep the area you are in; after a minute of smooth driving
+       the range grows back (up to the full 1.1 km) */
+    if(fps>=55) this.fastT=(this.fastT||0)+1;else this.fastT=0;
+    if(this.fastT>3600&&this.range<2){this.range++;this.fastT=0;}
   }
-}
-
-map.on('load',()=>{
-  updateBuildings(true);
-  map.on('idle',()=>updateBuildings(false));
-  map.on('moveend',()=>updateBuildings(true));
-  setInterval(()=>updateBuildings(true),30000);
-});
+  this.lastCenter=[lng,lat];
+  const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),R=this.range,now=performance.now();
+  for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>R+1||Math.abs(y-cy)>R+1) this.free(k);}
+  /* keep building the current area: a few hundred buildings per frame */
+  if(this.job){
+    const t0=performance.now(),J=this.job;
+    this.net&&(this.net._sg=J.sg);
+    const bud=Math.min(3,TN.workLeft?TN.workLeft():3);if(bud<0.5) return;
+    while(J.i<J.list.length&&performance.now()-t0<bud){this.addBuilding(J.G,J.list[J.i++],J);}
+    this.net&&(this.net._sg=null);
+    if(J.i>=J.list.length){
+      const mesh=this.finish(J.G);if(mesh) this.scene.three.scene.add(mesh);
+      this.cells.set(J.k,{mesh:mesh,n:J.list.length,t:now,tries:J.tries,ids:J.ids});this.job=null;
+    }
+    TN.prof('buildings',performance.now()-t0);
+    return;
+  }
+  if(now-(this.lastStart||0)<400) return;
+  if(TN.workLeft&&TN.workLeft()<4) return;   /* starting a new area is the heavy part: only with budget left */
+  let best=null;
+  for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
+    const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),d=dx*dx+dy*dy;
+    /* an area that came out empty (often because its detailed map tiles, the ones with buildings, hadn't loaded
+       yet: far away the map only loads simpler tiles) is tried again: every 4, 8, 16, then 30 s, and every 4 s
+       once the car is in it or next to it, so it never stays empty by mistake */
+    if(e){const wait=d<=1?4000:Math.min(30000,4000*Math.pow(2,Math.min(e.tries,3)));
+      if(e.n||now-e.t<wait) continue;this.free(k);if(!best||d<best.d) best={k:k,d:d,tries:e.tries+1};continue;}
+    if(!best||d<best.d) best={k:k,d:d,tries:0};
+  }
+  if(!best) return;
+  this.lastStart=now;const t0=performance.now(),list=this.collect(best.k);
+  if(!this.noIdMode&&(this.idSeen||0)>200&&(this.idMissing||0)>this.idSeen*0.5){
+    this.noIdMode=true;this.range=Math.max(this.range,2);
+    try{this.scene.map.setLayoutProperty('tn-buildings','visibility','none');}catch(e){}
+  }
+  let sg=null;if(this.net&&list.length){const [x,y]=best.k.split(',').map(Number),a=TN.toLocal(x*TN.CELL,(y+1)*TN.CELL),b=TN.toLocal((x+1)*TN.CELL,y*TN.CELL);
+    sg=this.net.segGrid([Math.min(a[0],b[0])-20,Math.max(a[0],b[0])+20,Math.min(a[1],b[1])-20,Math.max(a[1],b[1])+20]);}
+  this.job={k:best.k,list:list,i:0,tries:best.tries,G:{p:[],n:[],c:[],w:[],i:[],cnt:0,s:{p:[],h:[],i:[],cnt:0}},ids:[],sg:sg};
+  TN.prof('buildings',performance.now()-t0);
+};
