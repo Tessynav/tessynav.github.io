@@ -13,7 +13,7 @@ TN.FB={apiKey:'AIzaSyCBRR9gPPRnhNALC2V5uHmbtr7pR0R7EA8',projectId:'tessynav-958f
 
 /* ---------- Rocco ---------- */
 TN.ROCCO_KIND={6:'jam',1:'accident',2:'fog',3:'hazard',4:'rain',5:'ice',7:'lane',8:'closed',9:'works',10:'wind',11:'flood',14:'breakdown'};
-TN.ROCCO_TITLE={jam:'Heavy traffic',pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
+TN.ROCCO_TITLE={stand:'Standstill',jam:'Heavy traffic',pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
   wind:'Strong wind',flood:'Flooding',breakdown:'Stopped vehicle',police:'Police',unknown:'Incident'};
 TN.ROCCO_JOKES={
   accident:['Oops! Someone kissed a bumper.','Fender-bender ahead. Rocco is taking notes.','Bumper cars, but not the fun kind.'],
@@ -33,6 +33,7 @@ TN.ROCCO_JOKES={
   unknown:['Something\u2019s up ahead.']};
 /* Rocco as a drawing: the head with his mask, plus an accessory for each kind of incident */
 TN.ROCCO=function(kind,size,night){
+  if(kind==='stand') kind='jam';
   const z=size||64,fur=night?'#6f7782':'#8f97a2',fur2=night?'#5a616b':'#7d8590',dark='#2b2f36',muz=night?'#cfd3d8':'#eef0f2';
   const head='<ellipse cx="-30" cy="-34" rx="14" ry="16" fill="'+fur2+'"/><ellipse cx="-30" cy="-32" rx="7" ry="9" fill="#3a3f47"/>'+
     '<ellipse cx="30" cy="-34" rx="14" ry="16" fill="'+fur2+'"/><ellipse cx="30" cy="-32" rx="7" ry="9" fill="#3a3f47"/>'+
@@ -83,7 +84,7 @@ TN.Incidents.prototype.build=function(){
     '#tn-alert .v{border:0;border-radius:10px;padding:10px 14px;font:600 15px system-ui,sans-serif;cursor:pointer;margin-left:6px}#tn-alert .up{background:#1fa596;color:#fff}#tn-alert .down{background:#3a4352;color:#e8f1fa}'+
     '.tn-inc.user{border-style:dashed}'+
     '#tn-report{right:16px;bottom:356px;display:flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border:0;font:600 16px system-ui,sans-serif;color:#fcd34d;cursor:pointer}'+
-    '#tn-repgrid{left:50%;top:50%;transform:translate(-50%,-50%);display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px;z-index:10;width:min(92vw,460px)}'+
+    '#tn-repgrid{left:50%;top:50%;transform:translate(-50%,-50%);display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:12px;z-index:10;width:min(94vw,560px)}'+
     '#tn-repgrid button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:0;border-radius:12px;background:rgba(255,255,255,.06);color:#e8f1fa;font:600 14px system-ui,sans-serif;cursor:pointer}'+
     '#tn-repgrid button.x{justify-content:center;color:#9fb3c8}';
   document.head.appendChild(st);
@@ -164,7 +165,7 @@ TN.Incidents.prototype.show=function(it,d,tapped){
   if(this.alertFor!==it.id){this.joke=(TN.ROCCO_JOKES[it.kind]||TN.ROCCO_JOKES.unknown);this.joke=this.joke[Math.floor(Math.random()*this.joke.length)];this.alertFor=it.id;
     /* said once per incident, when it first comes up ahead */
     if(!tapped&&TN.voice&&d!=null&&!(this.spoken||(this.spoken=new Set())).has(it.id)){this.spoken.add(it.id);
-      TN.voice.say((it.user?(TN.ROCCO_TITLE[it.kind])+' reported':(it.title||TN.ROCCO_TITLE[it.kind]))+' ahead, '+(d<950?Math.round(d/50)*50+' metres':(d/1000).toFixed(1)+' kilometres'));}}
+      TN.voice.say((it.user?(it.title||TN.ROCCO_TITLE[it.kind])+' reported':(it.title||TN.ROCCO_TITLE[it.kind]))+' ahead, '+(d<950?Math.round(d/50)*50+' metres':(d/1000).toFixed(1)+' kilometres'));}}
   const dist=d==null?'':' \u00b7 '+(d<950?Math.round(d/50)*50+' m':(d/1000).toFixed(1)+' km');
   const jamInfo=it.kind==='jam'?[(it.delay>=60?'+'+Math.round(it.delay/60)+' min':''),(it.len?(it.len<950?Math.round(it.len/50)*50+' m':(it.len/1000).toFixed(1)+' km')+' long':'')].filter(Boolean).join(' \u00b7 '):'';
   const detail=[jamInfo,it.kind==='jam'?'':it.desc,it.road,it.from&&it.to?it.from+' \u2192 '+it.to:it.from].filter(Boolean).join(' \u00b7 ');
@@ -219,8 +220,8 @@ TN.Incidents.prototype.update=function(car,lng,lat){
 
 /* ---------- driver reports (Firebase over the web: anonymous sign-in + the reports database) ---------- */
 TN.Reports=function(inc){this.inc=inc;this.list=[];this.lastFetch=0;this.voted=new Set();};
-TN.REPORT_KINDS=['police','accident','closed','lane','works','pothole','hazard','ice'];
-TN.REPORT_LIFE={police:60,accident:120};   /* minutes a report stays up (default 4 h) */
+TN.REPORT_KINDS=['police','accident','jam','stand','closed','lane','works','pothole','hazard','ice'];
+TN.REPORT_LIFE={police:60,accident:120,jam:30,stand:30};   /* minutes (traffic changes quickly) */   /* minutes a report stays up (default 4 h) */
 TN.Reports.prototype.token=async function(){
   /* an anonymous identity for this car, kept between drives; its pass is renewed when it expires (1 hour) */
   let a=null;try{a=JSON.parse(localStorage.getItem('tn2_fb')||'null');}catch(e){}
@@ -269,7 +270,10 @@ TN.Reports.prototype.fetch=async function(lng,lat){
       const life=(TN.REPORT_LIFE[kind]||240)*60000;
       if(now-last>life) continue;            /* expired (a "still there" keeps it alive) */
       if(down>=2&&down>up) continue;         /* drivers said it's gone */
-      out.push({id:d.name.split('/').pop(),kind:kind,pts:[TN.toLocal(rn,rl)],ll:[rn,rl],desc:'',from:'',to:'',road:'',user:true,t:t,up:up,down:down,mine:g('uid')===(this.me||'')});}
+      /* driver traffic reports become jams: heavy traffic, or a standstill */
+      const isJam=kind==='jam'||kind==='stand';
+      out.push({id:d.name.split('/').pop(),kind:isJam?'jam':kind,sev:isJam?(kind==='stand'?3:2):0,title:isJam?TN.ROCCO_TITLE[kind]:null,
+        pts:[TN.toLocal(rn,rl)],ll:[rn,rl],desc:'',from:'',to:'',road:'',user:true,t:t,up:up,down:down,mine:g('uid')===(this.me||'')});}
     this.list=out;this.err=null;
   }catch(e){this.err='net';}
 };
