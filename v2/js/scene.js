@@ -77,6 +77,7 @@ TN.Scene.prototype.meshOf=function(L){
     g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
     g.setIndex(G.i);
     const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,mark:3,glow:4}[k];
+    if(k==='glow'){mesh.tnGlow=true;mesh.visible=(this.glowOp||0)>0.01;}
     grp.add(mesh);
   }
   return any?grp:null;
@@ -100,6 +101,12 @@ TN.Scene.prototype.update=function(lng,lat){
       if(ch.some(c=>{const [a,b]=c.split('_').map(Number);return x>=a*P-1&&x<=a*P+P&&y>=b*P-1&&y<=b*P+P;})) e.old=true;}
   }
   for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>3||Math.abs(y-cy)>3) this.freeCell(k);}
+  /* pools of light under the street lamps: only at night, and only in the areas next to the car (farther away they're
+     tiny dots that still cost drawing time; during the day they're invisible but were still drawn) */
+  {const lit=(this.glowOp||0)>0.01,key=(lit?1:0)+'|'+cx+','+cy;
+   if(key!==this.glowKey||this.cells.size!==this.glowN){this.glowKey=key;this.glowN=this.cells.size;
+     for(const [k,e] of this.cells){if(!e.grp) continue;const [x,y]=k.split(',').map(Number),near=Math.abs(x-cx)<=1&&Math.abs(y-cy)<=1;
+       for(const m of e.grp.children) if(m.tnGlow) m.visible=lit&&near;}}}
   const t0=performance.now();
   /* keep building the current area, a few milliseconds per frame (no stutter) */
   if(this.job){
@@ -111,7 +118,7 @@ TN.Scene.prototype.update=function(lng,lat){
       const J=this.job;this.job=null;
       const grp=this.meshOf(r.value);this.freeCell(J.k);
       if(grp) this.three.scene.add(grp);
-      this.cells.set(J.k,{grp:grp,lamps:r.value.lamps||[]});
+      this.cells.set(J.k,{grp:grp,lamps:r.value.lamps||[]});this.glowKey=null;   /* (refresh which light pools are shown) */
     }
     TN.prof('roads',performance.now()-t0);
     return;

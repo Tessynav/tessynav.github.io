@@ -328,7 +328,15 @@ TN.Track.prototype.frame=function(now,dt){
     if(nx){
       const over=dir>0?car.s-w.L:-car.s;
       const ns=nx.dir>0?over:nx.w.L-over;
-      const nc={w:nx.w,dir:nx.dir,s:ns,lat:car.lat,v:car.v,cv:car.cv,x:car.x,z:car.z,hd:car.hd,y:car.y,gl:car.gl,ease:{lat0:car.lat,s0:ns}};
+      /* with "Follow my lane" the car is off-centre: on the new road piece its sideways place is measured from that
+         piece's own centre line (not carried over as a number from the old one, which could land on the edge when
+         the pieces have different widths or centre lines), and kept at least 1 m inside the edge */
+      let lat0=car.lat;
+      if(car.laneK!=null&&car.x!=null){const c0=this.pointOn(nx.w,ns,0,nx.dir),c1=this.pointOn(nx.w,ns,1,nx.dir);
+        const rx=c1.x-c0.x,rz=c1.z-c0.z,Wn=TN.width(nx.w);lat0=(car.x-c0.x)*rx+(car.z-c0.z)*rz;
+        const lim=Math.max(0,Wn/2-1.0);lat0=Math.max(-lim,Math.min(lim,lat0));}
+      const nc={w:nx.w,dir:nx.dir,s:ns,lat:lat0,v:car.v,cv:car.cv,x:car.x,z:car.z,hd:car.hd,y:car.y,gl:car.gl,ease:{lat0:lat0,s0:ns},
+        laneK:car.laneK,laneW:car.laneW,laneN:car.laneN,laneT:car.laneT};
       this.cur=nx;car=nc;this.car=car;
       /* (at most a few road pieces at once, never an endless loop) */
       this.depth=(this.depth||0)+1;
@@ -360,7 +368,7 @@ TN.Track.prototype.frame=function(now,dt){
     if(car.laneK==null||car.laneK>=n||car.laneW!==w.id&&Math.abs((car.laneN||n)-n)>0){car.laneK=cand;car.laneT=0;}
     else if(cand!==car.laneK&&Math.abs(car.gl-cen(cand))<lw*0.4&&(L.acc||5)<10){car.laneT=(car.laneT||0)+dt;if(car.laneT>2){car.laneK=cand;car.laneT=0;}}
     else car.laneT=0;
-    car.laneW=w.id;car.laneN=n;target=cen(car.laneK);
+    car.laneW=w.id;car.laneN=n;target=Math.max(-(W/2-1.0),Math.min(W/2-1.0,cen(car.laneK)));
   }else{car.laneK=null;}
   if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2) car.ease.lat0=Math.sign(car.ease.lat0)*W/2;
   if(car.ease){
