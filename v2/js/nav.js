@@ -396,7 +396,7 @@ TN.Nav.prototype.plan=async function(reroute){
 TN.Nav.prototype.setRoute=function(rt){
   /* a new route starts from scratch: where the car is along it, its lane, the release timers (a leftover position
      from a previous route made the car look for itself in the wrong part of the new one, for the whole trip) */
-  this.pi=0;this.ps=null;this.latS=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;
+  this.pi=0;this.ps=null;this.latS=null;this.laneI=null;this.latF=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;
   /* the route line in local metres, densified to about every 5 m, with distances along it */
   const C=rt.geometry.coordinates,pts=[];
   /* each corner of the route becomes a real arc, about as wide as a car drives (up to 12 m radius, tighter
@@ -492,7 +492,7 @@ TN.Nav.prototype.draw=function(from){
   for(let i=a0;i<=a1;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     const m=R.sm[i]||[0,0,0,0],y=m[3]+0.22;let lo=m[0];
-    if(this.latS!=null&&this.ps!=null){const ah=R.cum[i]-this.ps;if(ah<120){const t=Math.max(0,ah)/120,k=t*t*(3-2*t);lo=this.latS+(m[0]-this.latS)*k;}}
+    if(this.latS!=null&&this.ps!=null){const ah=R.cum[i]-this.ps;if(ah<500){const t=Math.max(0,ah-400)/100,k=t*t*(3-2*t);lo=this.latS+(m[0]-this.latS)*k;}}
     const cx=p[0]+m[1]-uz*lo,cz=p[1]+m[2]+ux*lo;
     pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
     tc.set(TN.TRAFFIC_COL[R.cong?R.cong[i]:'unknown']||'#3b82f6');col.push(tc.r,tc.g,tc.b,tc.r,tc.g,tc.b);
@@ -672,15 +672,23 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   const hd=(Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]))*180/Math.PI+360)%360;
   const m0=(R.sm&&R.sm[j])||[0,0,0,0],m1=(R.sm&&R.sm[j+1])||m0,mi=k=>m0[k]+(m1[k]-m0[k])*t;
   let lo=mi(0);const ux=Math.sin(hd*Math.PI/180),uz=-Math.cos(hd*Math.PI/180);
-  /* which lane: the GPS's sideways position from the road's centre line, smoothed over a few seconds and kept on
-     the road (on a two-way street, in the right half); the default lane until the GPS has settled */
+  /* which lane, held steady (like Google and Tesla): on regular streets the car keeps its standard lane (GPS wobble is
+     ignored); on wide one-way roads (3 lanes or more: highways, big boulevards) the app works out which lane you're
+     in, changes only once the GPS has clearly been in another lane for 1.5 s, and the car and the whole line move
+     to that lane together */
   {const f=R.fit&&R.fit[j];
-   if(f&&!f.miss&&L.v>3&&now-L.t<3000){
+   const wide=f&&!f.miss&&f.ow&&2*f.hw>=9.5;
+   if(wide&&L.v>3&&now-L.t<3000){
      const cx0=px+mi(1),cz0=pz+mi(2),latG=(L.x-cx0)*(-uz)+(L.z-cz0)*ux;
-     const lim=Math.max(0.5,f.hw-2.0),lo0=f.ow?-lim:0.5;   /* (the car's centre stays 2 m inside the road edge: wheels on the road) */
-     const want=Math.max(lo0,Math.min(lim,latG));
-     this.latS=this.latS==null?lo:this.latS+(want-this.latS)*Math.min(1,dt*0.4);}
-   else if(this.latS!=null) this.latS+=(lo-this.latS)*Math.min(1,dt*0.2);
+     this.latF=this.latF==null?latG:this.latF+(latG-this.latF)*Math.min(1,dt*1.0);
+     const n=Math.max(1,Math.round(2*f.hw/3.5)),lw=2*f.hw/n,center=k=>-f.hw+lw*(k+0.5);
+     const cand=Math.max(0,Math.min(n-1,Math.round((this.latF+f.hw)/lw-0.5)));
+     if(this.laneI==null||this.laneI>=n){this.laneI=cand;this.laneT=0;}
+     else if(cand!==this.laneI&&Math.abs(this.latF-center(cand))<lw*0.4){this.laneT=(this.laneT||0)+dt;if(this.laneT>1.5){this.laneI=cand;this.laneT=0;}}
+     else this.laneT=0;
+     const tgt=center(this.laneI);
+     if(this.latS==null) this.latS=tgt;else{const d=tgt-this.latS,st=1.2*dt;this.latS+=Math.abs(d)<st?d:Math.sign(d)*st;}}
+   else if(!wide&&this.latS!=null){const d=lo-this.latS,st=1.2*dt;this.latS+=Math.abs(d)<st?d:Math.sign(d)*st;if(Math.abs(lo-this.latS)<0.05){this.latS=null;this.laneI=null;this.latF=null;}}
    if(this.latS!=null) lo=this.latS;}
   let y=base.y!=null?base.y:mi(3);
   {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
