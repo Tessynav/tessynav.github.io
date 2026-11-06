@@ -55,20 +55,25 @@ TN.Buildings.prototype.collect=function(ck){
   const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function') return [];
   const [cx,cy]=ck.split(',').map(Number);
   const out=[],seen=new Set();
-  /* the map scan is the slow part: done once and reused for a few seconds by every area */
-  const nowT=performance.now();
-  if(this.scan&&nowT-this.scan.t<4000){var fs=this.scan.fs,whole=this.scan.whole;}
+  /* the map scan is the slow part (every building in every loaded map tile): done once and reused for up to 20 s,
+     or until the car has moved 800 m; the pieces are only grouped by building here, their sizes are measured
+     later and only for the buildings actually needed */
+  const nowT=performance.now(),cp=this.lastCenter||[0,0];
+  const moved=this.scan&&this.scan.at?Math.hypot((cp[0]-this.scan.at[0])*78000,(cp[1]-this.scan.at[1])*111000):0;
+  if(this.scan&&nowT-this.scan.t<20000&&moved<800){var fs=this.scan.fs,byId=this.scan.byId,whole=this.scan.whole;}
   else{
   var fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});}catch(e){return [];}
-  /* a building on a tile edge arrives in pieces (same id): add up the size of all its pieces, so each piece is
-     styled as the whole building (not as a small house) */
-  var whole=new Map();const seenPiece=new Set();
-  for(const f of fs){if(f.id==null||!f.geometry) continue;const g=f.geometry;
-    const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
-    for(const rings of list){const r=rings[0];if(!r||r.length<4) continue;const pk=f.id+':'+r[0][0].toFixed(6)+','+r[0][1].toFixed(6);if(seenPiece.has(pk)) continue;seenPiece.add(pk);
-      let A=0;for(let i=0;i<r.length-1;i++){const p=TN.toLocal(r[i][0],r[i][1]),q=TN.toLocal(r[i+1][0],r[i+1][1]);A+=p[0]*q[1]-q[0]*p[1];}
-      const o=whole.get(f.id)||{a:0,n:0};o.a+=Math.abs(A)/2;o.n++;whole.set(f.id,o);}}
-  this.scan={t:nowT,fs:fs,whole:whole};}
+  var byId=new Map(),whole=new Map();
+  for(const f of fs){if(f.id==null||!f.geometry) continue;const a=byId.get(f.id);if(a) a.push(f);else byId.set(f.id,[f]);}
+  this.scan={t:nowT,fs:fs,byId:byId,whole:whole,at:cp.slice()};}
+  /* a building on a tile edge arrives in pieces (same id): its whole size, so each piece is styled as the whole
+     building (not as a small house); measured once per building, when first needed */
+  const wholeOf=id=>{let o=whole.get(id);if(o) return o;o={a:0,n:0};const seenPiece=new Set();
+    for(const f of byId.get(id)||[]){const g=f.geometry,list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+      for(const rings of list){const r=rings[0];if(!r||r.length<4) continue;const pk=r[0][0].toFixed(6)+','+r[0][1].toFixed(6);if(seenPiece.has(pk)) continue;seenPiece.add(pk);
+        let A=0;for(let i=0;i<r.length-1;i++){const p=TN.toLocal(r[i][0],r[i][1]),q=TN.toLocal(r[i+1][0],r[i+1][1]);A+=p[0]*q[1]-q[0]*p[1];}
+        o.a+=Math.abs(A)/2;o.n++;}}
+    whole.set(id,o);return o;};
   for(const f of fs){
     const g=f.geometry;if(!g) continue;
     const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
@@ -79,11 +84,13 @@ TN.Buildings.prototype.collect=function(ck){
       /* each building belongs to the area its middle is in (no doubles) */
       if(Math.floor(sx/TN.CELL)!==cx||Math.floor(sy/TN.CELL)!==cy) continue;
       const key=r[0][0].toFixed(6)+','+r[0][1].toFixed(6)+','+H;if(seen.has(key)) continue;seen.add(key);
-      const wh=f.id!=null?whole.get(f.id):null;
+      const wh=f.id!=null?wholeOf(f.id):null;
       out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B,id:f.id,wa:wh?wh.a:0,parts:wh?wh.n:1});
       this.idSeen=(this.idSeen||0)+1;if(f.id==null) this.idMissing=(this.idMissing||0)+1;
     }
   }
+  /* nothing found in a scan made before this area's map tiles arrived: scan again once */
+  if(!out.length&&!this._rescan&&nowT-this.scan.t>3000){this._rescan=true;this.scan=null;try{return this.collect(ck);}finally{this._rescan=false;}}
   return out;
 };
 TN.segX=function(a,b,c,d){const cr=(o,p,q)=>(p[0]-o[0])*(q[1]-o[1])-(p[1]-o[1])*(q[0]-o[0]);
@@ -219,6 +226,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     if(fps>=55) this.fastT=(this.fastT||0)+1;else this.fastT=0;
     if(this.fastT>3600&&this.range<2){this.range++;this.fastT=0;}
   }
+  this.lastCenter=[lng,lat];
   const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),R=this.range,now=performance.now();
   for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>R+1||Math.abs(y-cy)>R+1) this.free(k);}
   /* keep building the current area: a few hundred buildings per frame */

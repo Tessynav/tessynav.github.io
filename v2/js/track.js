@@ -174,6 +174,12 @@ TN.Track.prototype.match=function(){
   for(const h of this.hyps){
     if(this.advance(h,next)) next.push(h);
   }
+  /* U-turns: at low speed, always keep a candidate for the same street in the other direction, so the car can turn
+     around with you (otherwise only the current direction survives and the car slides backwards) */
+  if(this.cur&&L.v<7){const c=this.cur;
+    if(!next.some(h=>h.w===c.w&&h.dir===-c.dir)){
+      const r=Object.assign({},c,{dir:-c.dir,cost:c.cost+6,parent:c,lastKey:null,born:L.t});r.hd=(c.hd+180)%360;
+      r.r=TN.seg(c.w,c.i,L.x,L.z);next.push(r);}}
   for(const h of next){h.cost=h.cost*0.88+this.emit(h);}
   /* one hypothesis per road and direction (the cheaper one) */
   const by=new Map();
@@ -354,7 +360,7 @@ TN.Track.prototype.frame=function(now,dt){
     if(u>=1) car.ease=null;
   }else car.lat+=(target-car.lat)*(1-Math.exp(-dt/0.9));
   const p=this.pointOn(w,car.s,car.lat,dir);
-  car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*8)+360)%360;
+  car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*8)*(1-(car.mw||0))+360)%360;   /* (no pull from the street during a manoeuvre) */
   /* corners of the road drawing (and turns from one road piece onto another) are rounded: the shown car follows
      the road point fully along its direction, and smoothly (about 0.2 s) sideways */
   if(car.x==null||dt===0){car.x=p.x;car.z=p.z;}
@@ -364,6 +370,15 @@ TN.Track.prototype.frame=function(now,dt){
     if(Math.hypot(ex,ez)>15){car.x=p.x;car.z=p.z;}
     else{car.x+=fx*al+(-fz)*sd*k;car.z+=fz*al+fx*sd*k;}
   }
+  /* slow manoeuvres (a U-turn, a three-point turn, turning into a driveway): when the GPS direction clearly leaves the
+     street's direction at walking-to-city speed, the car turns with you and follows your real position, blended in
+     smoothly; it goes back to the street once you drive along it again */
+  {const L2=this.last,gh=this.hd;let mw=0;
+   if(L2&&gh!=null&&L2.v>0.8&&L2.v<5&&now-L2.t<2500){const a=TN.angDiff(gh,p.hd);mw=Math.max(0,Math.min(1,(a-30)/30));}
+   else if(L2&&L2.v<=0.8) mw=car.mw||0;   /* (stopped halfway through: stay as it is) */
+   car.mw=(car.mw||0)+(mw-(car.mw||0))*Math.min(1,dt*(mw>(car.mw||0)?3:1.5));
+   if(car.mw>0.01){const m=car.mw;car.hd=(car.hd+TN.angDiff2(gh!=null?gh:car.hd,car.hd)*Math.min(1,dt*4)*m+360)%360;
+     car.x+=(L2.x-car.x)*Math.min(1,dt*3)*m;car.z+=(L2.z-car.z)*Math.min(1,dt*3)*m;}}
   const yT=TN.heightAt(w,car.s);
   car.y+=(yT-car.y)*Math.min(1,dt*8);
   car.snapped=true;car.offT=0;car.cls=w.cls;car.br=w.br;car.wid=w.id;

@@ -13,7 +13,7 @@ TN.FB={apiKey:'AIzaSyCBRR9gPPRnhNALC2V5uHmbtr7pR0R7EA8',projectId:'tessynav-958f
 
 /* ---------- Rocco ---------- */
 TN.ROCCO_KIND={6:'jam',1:'accident',2:'fog',3:'hazard',4:'rain',5:'ice',7:'lane',8:'closed',9:'works',10:'wind',11:'flood',14:'breakdown'};
-TN.ROCCO_TITLE={stand:'Standstill',jam:'Heavy traffic',pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
+TN.ROCCO_TITLE={camera:'Speed camera',speedred:'Speed and red-light camera',redlight:'Red-light camera',mobile:'Mobile radar zone',stand:'Standstill',jam:'Heavy traffic',pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
   wind:'Strong wind',flood:'Flooding',breakdown:'Stopped vehicle',police:'Police',unknown:'Incident'};
 TN.ROCCO_JOKES={
   accident:['Oops! Someone kissed a bumper.','Fender-bender ahead. Rocco is taking notes.','Bumper cars, but not the fun kind.'],
@@ -28,6 +28,10 @@ TN.ROCCO_JOKES={
   wind:['Hold on to your tuque!','Windy! Rocco\u2019s tail is everywhere.'],
   hazard:['Something on the road. Eyes open!','Rocco spotted trouble ahead.'],
   police:['Smile, you\u2019re on camera!','Rocco says: speed limit, my friend.'],
+  camera:['Smile! Rocco checked your speed.','Say cheese at the speed limit.','Flash photography ahead.'],
+  speedred:['Speed and red lights: Rocco sees both.','Green means go, red means photo.'],
+  redlight:['Red means stop. Rocco means it.','Yellow is not a dare.','Camera loves a full stop.'],
+  mobile:['Rocco spotted a radar hideout.','Mobile radar zone. Easy on the pedal.','The radar might be home today.'],
   stand:['Rocco fell asleep. Nobody\u2019s moving.','Parking lot mode: on.','Time to learn some French verbs.'],
   jam:['Rocco brought snacks.','Perfect time for a podcast.','Bumper to bumper. Breathe.','Rocco is counting cars. He\u2019s at 300.'],
   pothole:['Hi! Mind my house.','Rocco\u2019s swimming pool. Go around.','Montreal\u2019s famous craters.'],
@@ -63,6 +67,11 @@ TN.ROCCO=function(kind,size,night){
     case 'jam':face='<path d="M-24 -5 q7 -5 14 0 M10 -5 q7 -5 14 0" stroke="#111" stroke-width="4" fill="none" stroke-linecap="round"/>'+frown;
       extra='<path d="M36 -30 q6 10 0 16 q-6 -6 0 -16z" fill="#7fb2e5"/><rect x="-74" y="34" width="34" height="14" rx="4" fill="#e5352b"/><rect x="-68" y="27" width="20" height="10" rx="3" fill="#e5352b"/><circle cx="-66" cy="49" r="4" fill="#111"/><circle cx="-48" cy="49" r="4" fill="#111"/>'+
         '<rect x="40" y="34" width="34" height="14" rx="4" fill="#f2c21c"/><rect x="46" y="27" width="20" height="10" rx="3" fill="#f2c21c"/><circle cx="48" cy="49" r="4" fill="#111"/><circle cx="66" cy="49" r="4" fill="#111"/>';break;
+    case 'camera':case 'speedred':extra='<rect x="40" y="-6" width="34" height="24" rx="4" fill="#3a3f47"/><circle cx="57" cy="6" r="8" fill="#9fb3c8" stroke="#1d2024" stroke-width="3"/><rect x="62" y="-12" width="10" height="6" rx="2" fill="#3a3f47"/>'+
+      '<path d="M66 -24 l6 -8 M74 -18 l9 -4 M58 -26 l1 -9" stroke="#fcd34d" stroke-width="3" stroke-linecap="round"/>'+(kind==='speedred'?'<circle cx="-58" cy="20" r="9" fill="#e5352b"/><rect x="-68" y="8" width="20" height="40" rx="5" fill="none" stroke="#3a3f47" stroke-width="4"/>':'');break;
+    case 'redlight':face=wide+smile;extra='<rect x="44" y="-30" width="24" height="62" rx="7" fill="#3a3f47"/><circle cx="56" cy="-17" r="7" fill="#e5352b"/><circle cx="56" cy="1" r="7" fill="#5f5a2a"/><circle cx="56" cy="19" r="7" fill="#2a4a2f"/><path d="M56 32 v18" stroke="#3a3f47" stroke-width="5"/>';break;
+    case 'mobile':face='<circle cx="-16" cy="-4" r="3.5" fill="#111"/><circle cx="18" cy="-4" r="3.5" fill="#111"/><path d="M-24 -14 l12 3 M24 -14 l-12 3" stroke="#111" stroke-width="4" stroke-linecap="round"/>'+smile;
+      extra='<rect x="42" y="-8" width="30" height="20" rx="4" fill="#3a3f47"/><circle cx="57" cy="2" r="6" fill="#9fb3c8"/><path d="M57 12 l-12 38 M57 12 v38 M57 12 l12 38" stroke="#6b7280" stroke-width="3"/>';break;
     case 'stand':face='<path d="M-24 -4 q7 4 14 0 M10 -4 q7 4 14 0" stroke="#111" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cx="0" cy="25" rx="5" ry="4" fill="#5a1f1f"/>';
       extra='<text x="40" y="-38" font-size="22" font-weight="700" fill="#7fb2e5" font-family="system-ui,sans-serif">Z</text><text x="58" y="-54" font-size="15" font-weight="700" fill="#7fb2e5" font-family="system-ui,sans-serif">z</text>'+
         '<rect x="-60" y="34" width="34" height="14" rx="4" fill="#e5352b"/><rect x="-54" y="27" width="20" height="10" rx="3" fill="#e5352b"/><circle cx="-52" cy="49" r="4" fill="#111"/><circle cx="-34" cy="49" r="4" fill="#111"/>'+
@@ -82,7 +91,7 @@ TN.Incidents=function(api){
 TN.Incidents.prototype.build=function(){
   const st=document.createElement('style');
   st.textContent='.tn-inc{width:34px;height:34px;border-radius:50%;background:#fff;border:3px solid #e5352b;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}'+
-    '.tn-inc.jam{border-color:#f28c1c}.tn-inc.jam.stand{border-color:#b91c1c}.tn-inc.works,.tn-inc.lane{border-color:#f28c1c}.tn-inc.ice,.tn-inc.fog,.tn-inc.flood,.tn-inc.rain,.tn-inc.wind{border-color:#3b82f6}'+
+    '.tn-inc.camera,.tn-inc.speedred,.tn-inc.redlight,.tn-inc.mobile{border-color:#1f3a66}.tn-inc.jam{border-color:#f28c1c}.tn-inc.jam.stand{border-color:#b91c1c}.tn-inc.works,.tn-inc.lane{border-color:#f28c1c}.tn-inc.ice,.tn-inc.fog,.tn-inc.flood,.tn-inc.rain,.tn-inc.wind{border-color:#3b82f6}'+
     '#tn-alert{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:10px;padding:6px 14px 6px 8px;max-width:min(80vw,520px);z-index:8}'+
     '#tn-alert b{font-size:19px;display:block}#tn-alert small{color:#9fb3c8;font-size:13px;display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-alert .joke{color:#fcd34d}'+
     'body.tn-routing #tn-alert{bottom:96px}'+
@@ -123,7 +132,22 @@ TN.Incidents.prototype.fetch=async function(lng,lat){
     if(this.api.note) this.api.note('incidents',{n:out.length});
   }catch(e){this.err='net';}
 };
-TN.Incidents.prototype.merge=function(){this.list=this.tt.concat(this.reports.list);this.drawMarkers();};
+TN.Incidents.prototype.merge=function(){this.list=this.tt.concat(this.reports.list,(TN.settings&&TN.settings.cameras===false)?[]:(this.cams||[]));this.drawMarkers();};
+/* speed and red-light cameras (Transports Quebec's open data, refreshed weekly with the road tiles) */
+TN.Incidents.prototype.loadCams=async function(){
+  if(this.camsLoading||this.cams) return;this.camsLoading=true;
+  try{let j=null;try{const c=JSON.parse(localStorage.getItem('tn2_cams')||'null');if(c&&Date.now()-c.t<86400000) j=c.j;}catch(e){}
+    if(!j){const r=await fetch((this.api.roadsBase||'https://tessynav.github.io/tessynav-roads/')+'radars.json?d='+new Date().toISOString().slice(0,10));if(!r.ok) throw 0;j=await r.json();
+      try{localStorage.setItem('tn2_cams',JSON.stringify({t:Date.now(),j:j}));}catch(e){}}
+    const K={f:'camera',r:'redlight',fr:'speedred',m:'mobile'};
+    this.cams=(j.r||[]).map(e=>{const lng=e[0],lat=e[1];let dir=e[3];
+      /* on the island of Montreal and in Laval, "north" follows the street grid, about 35 degrees west of true north */
+      if(dir>=0&&lat>45.40&&lat<45.72&&lng>-73.98&&lng<-73.47) dir=(dir-35+360)%360;
+      return {id:'cam'+(e[4]||lng+','+lat),kind:K[e[2]]||'camera',pts:[TN.toLocal(lng,lat)],ll:[lng,lat],dir:dir,desc:e[5]||'',from:'',to:'',road:'',cam:true};});
+    this.merge();
+  }catch(e){this.camsTried=Date.now();}
+  this.camsLoading=false;
+};
 TN.Incidents.prototype.nearest=function(max){
   const c=this.api.getCar&&this.api.getCar();if(!c||c.x==null||this.list.length<=max) return this.list;
   return this.list.slice().sort((a,b)=>Math.hypot(a.pts[0][0]-c.x,a.pts[0][1]-c.z)-Math.hypot(b.pts[0][0]-c.x,b.pts[0][1]-c.z)).slice(0,max);};
@@ -149,6 +173,7 @@ TN.Incidents.prototype.ahead=function(car,moderate){
   const nav=this.api.nav,R=nav&&nav.active?nav.route:null;let best=null;
   for(const it of this.list){
     if(it.mine) continue;   /* (your own reports: on the map, but no alert) */
+    if(it.cam&&it.dir>=0&&Math.abs((((car.hd||0)-it.dir)+540)%360-180)>75) continue;   /* (camera facing the other way) */
     if((it.kind==='jam'&&it.sev<2)!==!!moderate) continue;   /* (moderate traffic is checked on its own: said, not shown) */
     if(it.kind==='jam'&&it.pts.some(p=>Math.hypot(p[0]-car.x,p[1]-car.z)<40)) continue;   /* (already in that jam) */
     let d=null;
@@ -202,6 +227,7 @@ TN.Incidents.prototype.update=function(car,lng,lat){
   const now=Date.now();
   const moved=this.lastPos?TN.distLL(this.lastPos,[lng,lat]):1e9;
   if(now-this.lastFetch>120000||moved>3000){this.lastFetch=now;this.lastPos=[lng,lat];this.fetch(lng,lat);}
+  if(!this.cams&&!this.camsLoading&&now-(this.camsTried||0)>300000) this.loadCams();
   if(now-this.repFetch>60000){this.repFetch=now;this.reports.fetch(lng,lat).then(()=>this.merge());}
   if(!car||car.x==null) return;
   /* a tapped badge shows its card for 8 s; otherwise the next incident ahead within reach */

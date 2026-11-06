@@ -4,7 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.SETDEF={voice:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={voice:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -53,7 +53,7 @@ TN.Settings.prototype.build=function(){
   const p=document.createElement('div');p.id='tn-set';document.body.appendChild(p);this.panel=p;
   const tog=(k,label,sub)=>'<div class="r"><div>'+label+(sub?'<div class="sub">'+sub+'</div>':'')+'</div><div class="t'+(this.s[k]?'':' off')+'" data-k="'+k+'"></div></div>';
   p.innerHTML='<div class="h">NAVIGATION</div>'+tog('voice','Voice instructions','Spoken turns, arrival and alerts')+tog('birdseye','Bird\u2019s-eye view at exits','The camera rises before exits (instead of the drawing in the bar)')+'<div class="h">LOOK</div>'+tog('trees','Trees')+tog('leaves','Falling leaves / snow')+tog('weather','Real weather','Sky, rain, snow and fog from today\u2019s weather')+tog('water','Animated water')+tog('buildings','Detailed buildings')+
-    tog('lights','Street light glow','At night')+tog('rem','REM trains and labels')+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('limits','Speed limit sign','Turns red when you are over')+tog('incidents','Road incidents','Accidents, closures, road works and more')+tog('fun','Fun mode','Rocco and his jokes on the alerts')+tog('cut','See-through around Tessy','Fade what hides the car')+
+    tog('lights','Street light glow','At night')+tog('rem','REM trains and labels')+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('limits','Speed limit sign','Turns red when you are over')+tog('incidents','Road incidents','Accidents, closures, road works and more')+tog('cameras','Speed cameras','Photo radars and red-light cameras (Transports Qu\u00e9bec data)')+tog('fun','Fun mode','Rocco and his jokes on the alerts')+tog('cut','See-through around Tessy','Fade what hides the car')+
     '<div class="h">TIME OF DAY</div><div class="r"><div>Light</div><div class="seg" data-k="time"><span data-v="auto">Auto</span><span data-v="day">Day</span><span data-v="night">Night</span></div></div>'+
     '<div class="r" style="display:block"><div>Night brightness</div><input type="range" min="0" max="100" step="1" data-k="nightLevel" value="'+Math.round(this.s.nightLevel*100)+'"><div class="lbls"><span>Softer</span><span>Darker</span></div></div>'+
     '<div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+tog('zoombtns','Zoom buttons','Pinching the map works too')+
