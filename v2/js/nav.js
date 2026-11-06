@@ -20,7 +20,7 @@ TN.Nav=function(api){
 TN.Nav.prototype.build=function(){
   const st=document.createElement('style');
   st.textContent=
-   '#tn-search{right:82px;top:16px;width:min(40vw,520px);padding:0;display:flex;align-items:center}'+
+   '#tn-search{right:82px;top:16px;width:min(40vw,520px);padding:0;display:flex;align-items:center;background:rgba(10,18,32,.97)}'+
    '#status{max-width:calc(100vw - min(40vw,520px) - 130px)!important}'+
    '#tn-search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#e8f1fa;font:18px system-ui,sans-serif;padding:14px 16px 14px 6px}'+
    '#tn-search .i{padding-left:16px;flex-shrink:0}#tn-search .x{padding:0 14px;cursor:pointer;display:none;flex-shrink:0;align-items:center}'+
@@ -296,7 +296,8 @@ TN.Nav.prototype.traffic=function(show){
         this.note('traffic error',{status:st||null,msg:e.error&&String(e.error.message||'')},false);
         /* only a refused key is worth telling (once); a tile cancelled while the map moves, or one that didn't load,
            is normal and only goes into the recording */
-        if((st===401||st===403)&&!this.tKeyTold){this.tKeyTold=true;this.toast(st===401?'Live traffic: the map key was refused (401)':'Live traffic: the map key was refused (403: not allowed from this site)');}}});
+        /* (some tiles being refused is common while others load fine: warn only if none load at all, below) */
+        if(st===401||st===403) this.tRefused=st;}});
     }
     map.setLayoutProperty('tn-traffic','visibility',show?'visible':'none');
     /* a check that says what happened, about 6 s after the traffic is first shown */
@@ -307,7 +308,8 @@ TN.Nav.prototype.traffic=function(show){
       setTimeout(()=>{let n=0;try{n=map.querySourceFeatures('tn-traffic',{sourceLayer:'traffic'}).length;}catch(e){n=-1;}
         let vis='?';try{vis=map.getLayoutProperty('tn-traffic','visibility');}catch(e){}
         const st=this.tStat;this.note('traffic check',{roads:n,tiles:st.ok,failed:st.bad,status:st.status,vis:vis},false);
-        },6000);}
+        if(st.ok===0&&n<=0&&this.tRefused&&!this.tKeyTold){this.tKeyTold=true;this.toast('Live traffic: the map key was refused ('+this.tRefused+')');}
+        },8000);}
   }catch(e){this.note('traffic error',{msg:String(e&&e.message||e)},false);}
 };
 /* ---------- route ---------- */
@@ -556,7 +558,7 @@ TN.Nav.prototype.go=function(){
 };
 TN.Nav.prototype.end=function(why){
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
-  this.active=false;this.route=null;this.bird=0;this.jvStep=null;if(this.bar) this.bar.classList.remove('jvon');document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
+  this.active=false;this.route=null;this.bird=0;this.jvStep=null;if(this.input) this.input.placeholder='Search a place or address';if(this.bar) this.bar.classList.remove('jvon');document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);

@@ -299,6 +299,7 @@ TN.Scene.prototype.styleMap=function(){
         this.dayPaint.push([l.id,'line-color','#2f9fd6','#0e2a44']);}
     }catch(e){}
   }
+  this.lastNt=null;if(this.wxNt!=null) this.applyGround(this.wxNt);
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,
       paint:{'fill-extrusion-color':TN.farBuildingColor(0),'fill-extrusion-height':['case',['boolean',['feature-state','hide'],false],0,['max',['coalesce',['get','render_height'],8],['+',['coalesce',['feature-state','lift'],0],2]]],
@@ -330,6 +331,7 @@ TN.Scene.prototype.applyNight=function(nt){
     const sky=TN.mix(TN.mix('#5d8fd1','#9aa4ae',cl),TN.mix('#0d1830','#141920',cl),nt);
     const hor=TN.mix(TN.mix('#cfe0f2','#c3c9cf',cl),TN.mix('#2a3a5c','#232a33',cl),nt);
     const fogc=TN.mix(TN.mix('#dfe8ef','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);
+    try{this.map.getContainer().style.background=fogc;}catch(e){}   /* (shows near the horizon, beyond what the map draws) */
     if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':sky,'horizon-color':hor,
       'fog-color':fogc,'sky-horizon-blend':0.6,'horizon-fog-blend':0.5+0.4*fg,'fog-ground-blend':0.85-0.6*fg,'atmosphere-blend':0});
   }catch(e){}

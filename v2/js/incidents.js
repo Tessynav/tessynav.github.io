@@ -124,9 +124,11 @@ TN.Incidents.prototype.drawMarkers=function(){
   if(typeof maplibregl==='undefined') return;
   const c=this.api.getCar&&this.api.getCar(),follow=this.api.following?this.api.following():true;
   const vis=i=>{if(i.kind==='jam'&&i.sev<2) return false;if(!c||c.x==null) return true;
-    const dx=i.pts[0][0]-c.x,dz=i.pts[0][1]-c.z,d=Math.hypot(dx,dz);if(d>4000) return false;
+    const dx=i.pts[0][0]-c.x,dz=i.pts[0][1]-c.z,d=Math.hypot(dx,dz);if(d>3000) return false;
     if(follow&&d>150){const h=(c.hd||0)*Math.PI/180;if((dx*Math.sin(h)-dz*Math.cos(h))/d<0.2) return false;}return true;};
-  const shown=this.nearest(40).filter(vis),keep=new Set(shown.map(i=>i.id));
+  const shown=[];for(const i of this.nearest(40).filter(vis)){
+    if(shown.some(o=>o.kind===i.kind&&Math.hypot(o.pts[0][0]-i.pts[0][0],o.pts[0][1]-i.pts[0][1])<40)) continue;shown.push(i);}
+  const keep=new Set(shown.map(i=>i.id));
   for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
   for(const it of shown){if(this.markers.has(it.id)) continue;
