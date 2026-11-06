@@ -28,12 +28,12 @@ TN.ROCCO_JOKES={
   wind:['Hold on to your tuque!','Windy! Rocco\u2019s tail is everywhere.'],
   hazard:['Something on the road. Eyes open!','Rocco spotted trouble ahead.'],
   police:['Smile, you\u2019re on camera!','Rocco says: speed limit, my friend.'],
+  stand:['Rocco fell asleep. Nobody\u2019s moving.','Parking lot mode: on.','Time to learn some French verbs.'],
   jam:['Rocco brought snacks.','Perfect time for a podcast.','Bumper to bumper. Breathe.','Rocco is counting cars. He\u2019s at 300.'],
   pothole:['Hi! Mind my house.','Rocco\u2019s swimming pool. Go around.','Montreal\u2019s famous craters.'],
   unknown:['Something\u2019s up ahead.']};
 /* Rocco as a drawing: the head with his mask, plus an accessory for each kind of incident */
 TN.ROCCO=function(kind,size,night){
-  if(kind==='stand') kind='jam';
   const z=size||64,fur=night?'#6f7782':'#8f97a2',fur2=night?'#5a616b':'#7d8590',dark='#2b2f36',muz=night?'#cfd3d8':'#eef0f2';
   const head='<ellipse cx="-30" cy="-34" rx="14" ry="16" fill="'+fur2+'"/><ellipse cx="-30" cy="-32" rx="7" ry="9" fill="#3a3f47"/>'+
     '<ellipse cx="30" cy="-34" rx="14" ry="16" fill="'+fur2+'"/><ellipse cx="30" cy="-32" rx="7" ry="9" fill="#3a3f47"/>'+
@@ -63,6 +63,11 @@ TN.ROCCO=function(kind,size,night){
     case 'jam':face='<path d="M-24 -5 q7 -5 14 0 M10 -5 q7 -5 14 0" stroke="#111" stroke-width="4" fill="none" stroke-linecap="round"/>'+frown;
       extra='<path d="M36 -30 q6 10 0 16 q-6 -6 0 -16z" fill="#7fb2e5"/><rect x="-74" y="34" width="34" height="14" rx="4" fill="#e5352b"/><rect x="-68" y="27" width="20" height="10" rx="3" fill="#e5352b"/><circle cx="-66" cy="49" r="4" fill="#111"/><circle cx="-48" cy="49" r="4" fill="#111"/>'+
         '<rect x="40" y="34" width="34" height="14" rx="4" fill="#f2c21c"/><rect x="46" y="27" width="20" height="10" rx="3" fill="#f2c21c"/><circle cx="48" cy="49" r="4" fill="#111"/><circle cx="66" cy="49" r="4" fill="#111"/>';break;
+    case 'stand':face='<path d="M-24 -4 q7 4 14 0 M10 -4 q7 4 14 0" stroke="#111" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cx="0" cy="25" rx="5" ry="4" fill="#5a1f1f"/>';
+      extra='<text x="40" y="-38" font-size="22" font-weight="700" fill="#7fb2e5" font-family="system-ui,sans-serif">Z</text><text x="58" y="-54" font-size="15" font-weight="700" fill="#7fb2e5" font-family="system-ui,sans-serif">z</text>'+
+        '<rect x="-60" y="34" width="34" height="14" rx="4" fill="#e5352b"/><rect x="-54" y="27" width="20" height="10" rx="3" fill="#e5352b"/><circle cx="-52" cy="49" r="4" fill="#111"/><circle cx="-34" cy="49" r="4" fill="#111"/>'+
+        '<rect x="-24" y="34" width="34" height="14" rx="4" fill="#f2c21c"/><rect x="-18" y="27" width="20" height="10" rx="3" fill="#f2c21c"/><circle cx="-16" cy="49" r="4" fill="#111"/><circle cx="2" cy="49" r="4" fill="#111"/>'+
+        '<rect x="12" y="34" width="34" height="14" rx="4" fill="#3b82f6"/><rect x="18" y="27" width="20" height="10" rx="3" fill="#3b82f6"/><circle cx="20" cy="49" r="4" fill="#111"/><circle cx="38" cy="49" r="4" fill="#111"/>';break;
     case 'pothole':return '<svg width="'+z+'" height="'+z+'" viewBox="-80 -80 160 160" aria-hidden="true"><ellipse cx="0" cy="40" rx="74" ry="24" fill="#45494f"/><ellipse cx="0" cy="40" rx="60" ry="16" fill="#17191c"/>'+
       '<g transform="translate(0,6) scale(.8)">'+head+eyes+smile+'</g><path d="M-74 40 Q0 74 74 40 L74 80 L-74 80Z" fill="#45494f"/></svg>';
     case 'hazard':face=wide+oh;extra='<path d="M50 34 L62 6 L74 34Z" fill="#f2c21c" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M62 15 v9 M62 28 v1" stroke="#111" stroke-width="3" stroke-linecap="round"/>';break;
@@ -85,6 +90,7 @@ TN.Incidents.prototype.build=function(){
     '.tn-inc.user{border-style:dashed}'+
     '#tn-report{right:16px;bottom:356px;display:flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border:0;font:600 16px system-ui,sans-serif;color:#fcd34d;cursor:pointer}'+
     '#tn-repgrid{left:50%;top:50%;transform:translate(-50%,-50%);display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:12px;z-index:10;width:min(94vw,560px)}'+
+    '#tn-repgrid{background:rgba(10,18,32,.98)!important}body.tn-reporting #tn-report{display:none!important}'+
     '#tn-repgrid button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:0;border-radius:12px;background:rgba(255,255,255,.06);color:#e8f1fa;font:600 14px system-ui,sans-serif;cursor:pointer}'+
     '#tn-repgrid button.x{justify-content:center;color:#9fb3c8}';
   document.head.appendChild(st);
@@ -133,7 +139,7 @@ TN.Incidents.prototype.drawMarkers=function(){
   for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
   for(const it of shown){if(this.markers.has(it.id)) continue;
-    const el=document.createElement('div');el.className='tn-inc '+it.kind+(it.user?' user':'')+(it.sev===3?' stand':'');el.innerHTML=TN.ROCCO(it.kind,40,night);
+    const el=document.createElement('div');el.className='tn-inc '+it.kind+(it.user?' user':'')+(it.sev===3?' stand':'');el.innerHTML=TN.ROCCO(it.sev===3?'stand':it.kind,40,night);
     el.title=it.title||TN.ROCCO_TITLE[it.kind];el.onclick=e=>{e.stopPropagation();this.show(it,null,true);};
     this.markers.set(it.id,new maplibregl.Marker({element:el}).setLngLat(it.ll).addTo(this.api.map));}
 };
@@ -162,7 +168,7 @@ TN.Incidents.prototype.fun=function(){return !(TN.settings&&TN.settings.fun===fa
 TN.Incidents.prototype.show=function(it,d,tapped){
   const key=it.id+':'+(d==null?'':Math.round(d/50))+':'+this.fun();if(this.cardKey===key&&this.card.style.display==='flex') return;this.cardKey=key;
   const night=(this.api.scene&&this.api.scene.night||0)>0.45;
-  if(this.alertFor!==it.id){this.joke=(TN.ROCCO_JOKES[it.kind]||TN.ROCCO_JOKES.unknown);this.joke=this.joke[Math.floor(Math.random()*this.joke.length)];this.alertFor=it.id;
+  if(this.alertFor!==it.id){this.joke=(TN.ROCCO_JOKES[it.sev===3?'stand':it.kind]||TN.ROCCO_JOKES.unknown);this.joke=this.joke[Math.floor(Math.random()*this.joke.length)];this.alertFor=it.id;
     /* said once per incident, when it first comes up ahead */
     if(!tapped&&TN.voice&&d!=null&&!(this.spoken||(this.spoken=new Set())).has(it.id)){this.spoken.add(it.id);
       TN.voice.say((it.user?(it.title||TN.ROCCO_TITLE[it.kind])+' reported':(it.title||TN.ROCCO_TITLE[it.kind]))+' ahead, '+(d<950?Math.round(d/50)*50+' metres':(d/1000).toFixed(1)+' kilometres'));}}
@@ -171,7 +177,7 @@ TN.Incidents.prototype.show=function(it,d,tapped){
   const detail=[jamInfo,it.kind==='jam'?'':it.desc,it.road,it.from&&it.to?it.from+' \u2192 '+it.to:it.from].filter(Boolean).join(' \u00b7 ');
   const who=it.user?'Reported by a driver \u00b7 '+Math.max(1,Math.round((Date.now()-it.t)/60000))+' min ago'+(it.up?' \u00b7 '+it.up+' confirmed':''):'';
   const canVote=it.user&&!it.mine&&!this.reports.voted.has(it.id)&&(d==null||d<500);
-  this.card.innerHTML=(this.fun()?TN.ROCCO(it.kind,50,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc((it.title||TN.ROCCO_TITLE[it.kind])+dist)+'</b>'+
+  this.card.innerHTML=(this.fun()?TN.ROCCO(it.sev===3?'stand':it.kind,50,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc((it.title||TN.ROCCO_TITLE[it.kind])+dist)+'</b>'+
     (detail?'<small>'+TN.esc(detail)+'</small>':'')+(who?'<small>'+TN.esc(who)+'</small>':'')+(this.fun()?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>'+
     (canVote?'<button class="v up">Still there</button><button class="v down">Gone</button>':'');
   if(canVote){this.card.querySelector('.up').onclick=()=>{this.reports.vote(it.id,true);this.toast('Thanks! Rocco updated it.');this.hide();};
@@ -183,9 +189,9 @@ TN.Incidents.prototype.toast=function(msg){const t=document.createElement('div')
   t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{try{t.parentNode&&t.parentNode.removeChild(t);}catch(e){}},3500);};
 /* the Report button and its grid of Rocco buttons */
 TN.Incidents.prototype.openReport=function(){
-  const g=this.grid;g.style.display='grid';
+  const g=this.grid;g.style.display='grid';document.body.classList.add('tn-reporting');
   g.innerHTML=TN.REPORT_KINDS.map(k=>'<button data-k="'+k+'">'+TN.ROCCO(k,52)+'<span>'+TN.ROCCO_TITLE[k]+'</span></button>').join('')+'<button class="x" data-k="">Cancel</button>';
-  g.querySelectorAll('button').forEach(b=>b.onclick=async()=>{g.style.display='none';const k=b.dataset.k;if(!k) return;
+  g.querySelectorAll('button').forEach(b=>b.onclick=async()=>{g.style.display='none';document.body.classList.remove('tn-reporting');const k=b.dataset.k;if(!k) return;
     const c=this.api.getCar&&this.api.getCar(),ll=c&&c.x!=null?TN.fromLocal(c.x,c.z):null;if(!ll){this.toast('Waiting for GPS\u2026');return;}
     try{await this.reports.send(k,ll[0],ll[1],c.hd||0);this.toast('Thanks! Rocco will warn other drivers.');this.repFetch=0;
       if(this.api.note) this.api.note('report sent',{kind:k});}
@@ -220,8 +226,8 @@ TN.Incidents.prototype.update=function(car,lng,lat){
 
 /* ---------- driver reports (Firebase over the web: anonymous sign-in + the reports database) ---------- */
 TN.Reports=function(inc){this.inc=inc;this.list=[];this.lastFetch=0;this.voted=new Set();};
-TN.REPORT_KINDS=['police','accident','jam','stand','closed','lane','works','pothole','hazard','ice'];
-TN.REPORT_LIFE={police:60,accident:120,jam:30,stand:30};   /* minutes (traffic changes quickly) */   /* minutes a report stays up (default 4 h) */
+TN.REPORT_KINDS=['police','accident','jam','stand','closed','lane','works','breakdown','pothole','hazard','ice','fog','flood','rain','wind'];
+TN.REPORT_LIFE={police:60,accident:120,jam:30,stand:30,breakdown:60,fog:120,rain:120,wind:120,flood:180};   /* minutes (traffic changes quickly) */   /* minutes a report stays up (default 4 h) */
 TN.Reports.prototype.token=async function(){
   /* an anonymous identity for this car, kept between drives; its pass is renewed when it expires (1 hour) */
   let a=null;try{a=JSON.parse(localStorage.getItem('tn2_fb')||'null');}catch(e){}
