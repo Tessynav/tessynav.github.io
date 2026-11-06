@@ -1,7 +1,7 @@
 /* TessyNav v2 — intro.js
    Opening animation (about 3.5 s), played while the map, roads and buildings load:
    the real city around you appears as glowing blue lines on a dark screen, the TessyNav name is traced in
-   glowing outlines and then filled, with "Navigation for Tessy" under it and a scan line sweeping down;
+   glowing outlines and then filled, with "Navigation for Tesla" under it and a scan line sweeping down;
    then everything fills in with its real colours.
    Not played after an update reload. One tap skips it. ?intro=0 in the address switches it off.
    Nothing here touches the car position, the roads data or the recording. */
@@ -81,7 +81,7 @@ TN.Intro.prototype.draw=function(t,a){
   if(u>0){
     g.fillStyle='rgba(120,220,255,'+u+')';g.fillRect(W/2-full/2*u,y+fs*0.22,full*u,2);
     g.font='400 '+Math.round(fs*0.28)+'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';g.textAlign='center';
-    g.fillStyle='rgba(159,215,240,'+u+')';g.fillText('Navigation for Tessy',W/2,y+fs*0.62);
+    g.fillStyle='rgba(159,215,240,'+u+')';g.fillText('Navigation for Tesla',W/2,y+fs*0.62);
   }
 };
 TN.Intro.prototype.restoreColors=function(){
