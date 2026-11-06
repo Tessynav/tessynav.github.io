@@ -59,9 +59,16 @@ TN.Net.prototype.makeWay=function(r,isBridge){
 /* add one road pack (returns true if something new was added) */
 TN.Net.prototype.addPack=function(key,P,later){
   if(this.packs.has(key)) return false;
-  const rec={ids:new Set()};
-  for(const r of P.w||[]){rec.ids.add(r[0]);if(!this.ways.has(r[0])){const w=this.makeWay(r,false);if(w) this.ways.set(w.id,w);}}
-  for(const r of P.b||[]){
+  const g=this.addPackJob(key,P);while(!g.next().done);
+  if(!later) this.rebuildIndex();
+  return true;
+};
+/* adding a tile in small slices (a few milliseconds each), so it never stalls a frame */
+TN.Net.prototype.addPackJob=function*(key,P){
+  if(this.packs.has(key)) return;
+  const rec={ids:new Set()};let n=0;
+  for(const r of P.w||[]){rec.ids.add(r[0]);if(!this.ways.has(r[0])){const w=this.makeWay(r,false);if(w) this.ways.set(w.id,w);}if(++n%12===0) yield;}
+  for(const r of P.b||[]){if(++n%12===0) yield;
     if(r[1]==='transit'&&/REM/.test(r[4]||'')){
       /* the REM's elevated guideway (kept separately: trains, not cars, use it) */
       rec.rm=rec.rm||new Set();rec.rm.add(r[0]);this.rem=this.rem||new Map();
@@ -73,7 +80,7 @@ TN.Net.prototype.addPack=function(key,P,later){
   }
   /* parking lots (outlines), from road tiles v3 */
   rec.pk=new Set();this.parkings=this.parkings||new Map();
-  for(const r of P.pk||[]){
+  for(const r of P.pk||[]){if(++n%40===0) yield;
     rec.pk.add(r[0]);if(this.parkings.has(r[0])) continue;
     const f=r[1],pts=[];for(let i=0;i<f.length;i+=2) pts.push(TN.toLocal(f[i],f[i+1]));
     if(pts.length<3) continue;
@@ -93,11 +100,13 @@ TN.Net.prototype.addPack=function(key,P,later){
   }
   /* stop signs, yield signs and crosswalks: [lng, lat, kind s/y/c, direction f/b/''] */
   rec.mk=new Set();this.marks=this.marks||new Map();
-  for(const m of P.n||[]){const k=m[0]+','+m[1]+','+m[2];rec.mk.add(k);if(this.marks.has(k)) continue;
+  for(const m of P.n||[]){if(++n%200===0) yield;const k=m[0]+','+m[1]+','+m[2];rec.mk.add(k);if(this.marks.has(k)) continue;
     const q=TN.toLocal(m[0],m[1]);this.marks.set(k,{x:q[0],z:q[1],kind:m[2],dir:m[3]||'',key:TN.vkey(m[0],m[1])});}
   this.packs.set(key,rec);(this.changed=this.changed||[]).push(key);
-  if(!later) this.rebuildIndex();
-  return true;
+};
+/* new tiles and the network rebuild after them, as one sliced job */
+TN.Net.prototype.startAdd=function(list){
+  const self=this;this.job=(function*(){for(const [k,P] of list) yield* self.addPackJob(k,P);yield* self.rebuildJob();})();
 };
 TN.Net.prototype.dropPack=function(key,later){
   const rec=this.packs.get(key);if(!rec) return;
@@ -122,11 +131,12 @@ TN.Net.prototype.rebuildJob=function*(){
       for(let gz=Math.floor(w.bb[2]/100);gz<=Math.floor(w.bb[3]/100);gz++){
         const k=gx*1e6+gz;let l=idx.get(k);if(!l){l=[];idx.set(k,l);}l.push(w);
       }
-    if(++n%60===0) yield;
+    if(++n%15===0) yield;
   }
   this.keys=keys;this.idx=idx;
   yield* this.heights();
-  for(const w of this.ways.values()){w.br=w._br;w.H=w._H||0;w.W=w._W;w.hs=w._hs?w._hs.slice():w._hs;w.cb=null;}
+  {let n=0;for(const w of this.ways.values()){w.br=w._br;w.H=w._H||0;w.W=w._W;w.hs=w._hs?w._hs.slice():w._hs;w.cb=null;if(++n%800===0) yield;}}
+  yield;
   yield* this.clearanceJob();
   this.ver++;
 };
@@ -382,7 +392,7 @@ TN.Net.prototype.clearanceJob=function*(){
     const heap=[];const push=(w,i,h)=>{heap.push([h,w,i]);let c=heap.length-1;while(c>0){const p=(c-1)>>1;if(heap[p][0]>=heap[c][0]) break;[heap[p],heap[c]]=[heap[c],heap[p]];c=p;}};
     const pop=()=>{const top=heap[0],last=heap.pop();if(heap.length){heap[0]=last;let c=0;for(;;){const l=2*c+1,r=l+1;let m=c;if(l<heap.length&&heap[l][0]>heap[m][0]) m=l;if(r<heap.length&&heap[r][0]>heap[m][0]) m=r;if(m===c) break;[heap[m],heap[c]]=[heap[c],heap[m]];c=m;}}return top;};
     const own=w=>{if(!w.hs) w.hs=w.pts.map(()=>w.br?w.H:0);return w.hs;};const raisedW=new Set();
-    for(const [w,m] of need) for(const [i,lb] of m){const hs=own(w);if(lb>hs[i]+0.01){hs[i]=lb;push(w,i,lb);fixed++;}}
+    {let yn=0;for(const [w,m] of need){for(const [i,lb] of m){const hs=own(w);if(lb>hs[i]+0.01){hs[i]=lb;push(w,i,lb);fixed++;}}if(++yn%200===0) yield;}}
     let steps=0;
     while(heap.length){
       if(++steps%3000===0) yield;
@@ -404,17 +414,17 @@ TN.Net.prototype.clearanceJob=function*(){
   this.clearFixed=fixed;
 };
 TN.Net.prototype.heightsOld=function*(){
-  const ways=[...this.ways.values()];
-  for(const w of ways){if(w.brSrc===undefined) w.brSrc=w.br;w._br=w.brSrc;w._hs=null;w._H=0;w._W=w.w;}
-  const brs=ways.filter(w=>w._br);
+  const ways=[...this.ways.values()];yield;
+  {let n=0;for(const w of ways){if(w.brSrc===undefined) w.brSrc=w.br;w._br=w.brSrc;w._hs=null;w._H=0;w._W=w.w;if(++n%1500===0) yield;}}
+  const brs=ways.filter(w=>w._br);yield;
   /* 1. whole bridges (pieces sharing end points), one height each */
   const parent=new Map();for(const b of brs) parent.set(b,b);
   const find=a=>{while(parent.get(a)!==a){parent.set(a,parent.get(parent.get(a)));a=parent.get(a);}return a;};
   const ends=new Map();
-  for(const b of brs) for(const k of [b.keys[0],b.keys[b.keys.length-1]]){
+  {let n=0;for(const b of brs){for(const k of [b.keys[0],b.keys[b.keys.length-1]]){
     const l=ends.get(k);if(l) for(const o of l) parent.set(find(o),find(b));
     if(l) l.push(b);else ends.set(k,[b]);
-  }
+  }if(++n%200===0) yield;}}
   const groups=new Map();
   let nb=0;
   for(const b of brs){
@@ -447,16 +457,16 @@ TN.Net.prototype.heightsOld=function*(){
      intersection where a bridge ends: those stay at street level */
   const unit=(ax,az)=>{const l=Math.hypot(ax,az)||1;return [ax/l,az/l];};
   const srcDir=new Map();
-  for(const b of brs){
+  {let yb=0;for(const b of brs){if(++yb%20===0) yield;
     if(!(b._H>0)) continue;const n=b.pts.length;
     srcDir.set(b.keys[0],unit(b.pts[0][0]-b.pts[1][0],b.pts[0][1]-b.pts[1][1]));
     srcDir.set(b.keys[n-1],unit(b.pts[n-1][0]-b.pts[n-2][0],b.pts[n-1][1]-b.pts[n-2][1]));
-  }
+  }}
   let ns=0;
   for(const [k0,H] of keyH){
-    if(++ns%15===0) yield;
+    if(++ns%4===0) yield;
     const R=TN.rampLen(H),dist=new Map([[k0,0]]),q=[[k0,0,srcDir.get(k0)||null]];
-    while(q.length){
+    let yq=0;while(q.length){if(++yq%300===0) yield;
       let bi=0;for(let j=1;j<q.length;j++) if(q[j][1]<q[bi][1]) bi=j;
       const [k,d,dv]=q.splice(bi,1)[0];
       if(d>dist.get(k)) continue;
@@ -478,7 +488,7 @@ TN.Net.prototype.heightsOld=function*(){
       }
     }
   }
-  for(const [w,a] of best){if(a.some(h=>h>0.05)) w._hs=Array.from(a);}
+  {let yb=0;for(const [w,a] of best){if(a.some(h=>h>0.05)) w._hs=Array.from(a);if(++yb%500===0) yield;}}
   /* 2b. an exit/entrance ramp only starts climbing once it has separated from the road it splits from: while it still
      lies on top of that road it stays at that road's height, then rises at most 6% */
   /* (also any narrower road that splits from / merges into a wider one: the main road wins) */
@@ -507,19 +517,19 @@ TN.Net.prototype.heightsOld=function*(){
   /* a bridge piece that sits on the climb toward a higher bridge (its ends are higher than its own height) becomes
      part of that climb: it slopes like the road around it instead of making a step */
   const keyRamp=k=>{let m=0;for(const [w,i] of (this.keys.get(k)||[])){if(w._br) continue;const a=best.get(w);if(a&&a[i]>m) m=a[i];}return m;};
-  for(const b of brs){
+  {let yb=0;for(const b of brs){if(++yb%20===0) yield;
     if(!(b._H>0)) continue;
     const hA=keyRamp(b.keys[0]),hB=keyRamp(b.keys[b.keys.length-1]);
     if(Math.max(hA,hB)<=b._H+0.5) continue;
     const A=Math.max(b._H,hA),B=Math.max(b._H,hB);
     b._br=false;b._hs=b.cum.map(c=>A+(B-A)*(c/(b.L||1)));
-  }
+  }}
   gnd=ways.filter(w=>!w._br);
   /* 3. roads side by side rise together (lane joining/leaving, carriageway split in pieces), then slopes are smoothed */
   for(let pass=0;pass<3;pass++){
     const RG=new Map();
     /* (bridge decks count too: a ramp joining a bridge deck rises to the deck where it lies on it) */
-    for(const v of ways){
+    {let yv=0;for(const v of ways){if(++yv%120===0) yield;
       if(v.tun||!(v._br?v._H>0:v._hs)) continue;
       const Q=v.pts,pad=TN.width(v)/2+2;
       for(let k=0;k<Q.length-1;k++){
@@ -530,7 +540,7 @@ TN.Net.prototype.heightsOld=function*(){
             const key=gx*1e6+gz;let l=RG.get(key);if(!l){l=[];RG.set(key,l);}l.push(v,k);
           }
       }
-    }
+    }}
     let changed=false,nw=0;
     for(const w of gnd){
       if(++nw%150===0) yield;
@@ -587,13 +597,13 @@ TN.Net.prototype.heightsOld=function*(){
   /* a bridge whose ends meet roads that ended up higher than the bridge (it sits on a climb): it slopes with them */
   let conv=false;
   const endGround=k=>{let m=0;for(const [w,i] of (this.keys.get(k)||[])){if(w._br||w.tun) continue;if(w._hs&&w._hs[i]>m) m=w._hs[i];}return m;};
-  for(const b of ways){
+  {let yb=0;for(const b of ways){if(++yb%300===0) yield;
     if(!b._br||!(b._H>0)) continue;
     const gA=endGround(b.keys[0]),gB=endGround(b.keys[b.keys.length-1]);
     if(Math.max(gA,gB)<=b._H+0.3) continue;
     const A=Math.max(b._H,gA),B=Math.max(b._H,gB);
     b._br=false;b._hs=b.cum.map(c=>A+(B-A)*(c/(b.L||1)));conv=true;
-  }
+  }}
   if(!conv) break;
   gnd=ways.filter(w=>!w._br);
   yield;
@@ -686,8 +696,11 @@ TN.Net.prototype.buildCellJob=function*(tx,ty){
   const net=this;let nn=0,SG=null;
   /* pause point: the fast road lookup belongs to this job only, so it is switched off while paused */
   const pause=function*(){net._sg=null;yield;net._sg=SG;};
-  const inCell=(x,z)=>{const ll=TN.fromLocal(x,z);return Math.floor(ll[0]/TN.CELL)===tx&&Math.floor(ll[1]/TN.CELL)===ty;};
   const x0=TN.toLocal(tx*TN.CELL,(ty+1)*TN.CELL),x1=TN.toLocal((tx+1)*TN.CELL,ty*TN.CELL);
+  /* inside this area: the same test as converting back to longitude/latitude, done directly in map coordinates
+     (Mercator: x follows longitude, z follows latitude, so the area is exactly a box) */
+  const bx0=x0[0],bx1=x1[0],bzN=x0[1],bzS=x1[1];
+  const inCell=(x,z)=>x>=bx0&&x<bx1&&z>bzN&&z<=bzS;
   const cb=[Math.min(x0[0],x1[0]),Math.max(x0[0],x1[0]),Math.min(x0[1],x1[1]),Math.max(x0[1],x1[1])];
   SG=this.segGrid(cb);this._sg=SG;
   /* parking lots: their own layer, drawn first and never hiding anything (no flicker with the aisles) */
@@ -699,7 +712,9 @@ TN.Net.prototype.buildCellJob=function*(tx,ty){
       L.lot.i.push(base,base+1,base+2);L.lot.n+=3;}
     yield* pause();
   }
+  let nsc=0;
   for(const w of this.ways.values()){
+    if(++nsc%400===0) yield* pause();   /* (scanning the roads: a pause now and then) */
     if(w.tun) continue;
     if(w.bb[1]<cb[0]||w.bb[0]>cb[1]||w.bb[3]<cb[2]||w.bb[2]>cb[3]) continue;
     const P=w.pts,runs=[];let a=-1;
@@ -708,7 +723,11 @@ TN.Net.prototype.buildCellJob=function*(tx,ty){
       if(ins&&a<0) a=i;if(!ins&&a>=0){runs.push([a,i]);a=-1;}
     }
     if(a>=0) runs.push([a,P.length-1]);
-    if(runs.length){this.drawWay(L,w,runs);this.drawWalks(L,w,runs);if(w.pa) this.drawStalls(L,w,runs);this.drawLights(L,w,runs);yield* pause();}
+    /* each piece of the road, and each drawing step, in its own slice (a long road no longer stalls a frame) */
+    for(const r of runs){const one=[r];
+      this.drawWay(L,w,one);yield* pause();
+      this.drawWalks(L,w,one);if(w.pa) this.drawStalls(L,w,one);yield* pause();
+      this.drawLights(L,w,one);yield* pause();}
   }
   {const T=TN.toLocal(TN.CHAMPLAIN.lng,TN.CHAMPLAIN.lat);if(inCell(T[0],T[1])) this.champlainTower(L);}
   if(this.rem) for(const w of this.rem.values()){
@@ -719,11 +738,12 @@ TN.Net.prototype.buildCellJob=function*(tx,ty){
     if(a>=0) this.drawRem(L,w,a,P.length-1);
     yield* pause();
   }
-  const sigDone=new Set();
+  const sigDone=new Set();let nmk=0;
   if(this.marks) for(const m of this.marks.values()){
+    if(++nmk%2000===0) yield* pause();
     if(!inCell(m.x,m.z)) continue;
     if(m.kind==='c') this.drawCrosswalk(L,m);else if(m.kind==='s'||m.kind==='y') this.drawSign(L,m);else if(m.kind==='t') this.drawSignal(L,m,sigDone);
-    yield* pause();
+    if(++nmk%3===0) yield* pause();   /* (a few signs per slice) */
   }
   this._sg=null;
   return L;

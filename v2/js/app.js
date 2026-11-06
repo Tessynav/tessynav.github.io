@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=65;
+TN.APPBUILD=66;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -80,8 +80,8 @@ TN.APPBUILD=65;
     /* add the packs that arrived, then rebuild the network in small steps (see the main loop) */
     if(net.job||(!pending.length&&!net._dirty)) return;
     const t0=performance.now();
-    for(const [k,P] of pending.splice(0)) net.addPack(k,P,true);
-    net._dirty=false;net.startRebuild();
+    /* (the new tiles are added in small slices by the main loop, together with the network rebuild) */
+    net._dirty=false;net.startAdd(pending.splice(0));
     TN.prof('network',performance.now()-t0);
   },600);
 
