@@ -49,11 +49,11 @@ TN.Settings.prototype.build=function(){
   '#tn-set .sub{font-size:12px;color:#9fb3c8}#tn-set .t{width:46px;height:28px;border-radius:14px;background:#1fa596;position:relative;flex-shrink:0;cursor:pointer}'+
   '#tn-set .t:after{content:"";position:absolute;top:4px;left:22px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}#tn-set .t.off{background:#4a5260}#tn-set .t.off:after{left:4px}'+
   '#tn-set .seg{display:flex;border-radius:8px;overflow:hidden;border:1px solid #4a5260}#tn-set .seg span{padding:6px 11px;font-size:13px;cursor:pointer}#tn-set .seg span.on{background:#1fa596}'+
-  '#tn-set .ttl{font-size:18px;font-weight:600;margin:6px 0 4px}#tn-set .cat{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer}#tn-set .cat:active{background:rgba(255,255,255,.06)}'+
+  '#tn-set .ttlrow{display:flex;align-items:center;gap:10px;margin:6px 0 6px}#tn-set .ttl{font-size:18px;font-weight:600}#tn-set .tip{font-size:12px;color:#9fd7f0;margin-top:2px;line-height:1.35}#tn-gear .tn-rocco{display:block}#tn-set .cat{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer}#tn-set .cat:active{background:rgba(255,255,255,.06)}'+
   '#tn-set .ct{flex:1;font-size:16px}#tn-set .chev{color:#9fb3c8;font-size:22px}#tn-set .back{font-size:17px;font-weight:600;padding:8px 0 4px;cursor:pointer;color:#7fd3c8}#tn-set .back span{color:#e8f1fa}'+
   '#tn-set input[type=range]{width:100%;accent-color:#1fa596}#tn-set .lbls{display:flex;justify-content:space-between;font-size:11px;color:#9fb3c8}#tn-set .lnk{cursor:pointer;color:#7fd3c8}';
   document.head.appendChild(st);
-  const g=document.createElement('button');g.id='tn-gear';g.className='hud';g.setAttribute('aria-label','Settings');g.textContent='\u2699';document.body.appendChild(g);
+  const g=document.createElement('button');g.id='tn-gear';g.className='hud';g.setAttribute('aria-label','Settings');if(TN.roccoSVG) g.innerHTML=TN.roccoSVG(38);else g.textContent='\u2699';   /* (Rocco is the settings button) */document.body.appendChild(g);
   const p=document.createElement('div');p.id='tn-set';document.body.appendChild(p);this.panel=p;
   const tog=(k,label,sub)=>'<div class="r"><div>'+label+(sub?'<div class="sub">'+sub+'</div>':'')+'</div><div class="t'+(this.s[k]?'':' off')+'" data-k="'+k+'"></div></div>';
   /* organised like phone settings: a short main page of categories (each with a one-line summary of what's on);
@@ -84,7 +84,8 @@ TN.Settings.prototype.build=function(){
     {id:'app',t:'App',sum:()=>'Version, recording, intro',
      html:()=>tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+'<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>'}];
   const show=id=>{
-    if(!id){p.innerHTML='<div class="ttl">Settings</div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
+    if(!id){const fun=!(TN.settings&&TN.settings.fun===false);
+      p.innerHTML='<div class="ttlrow">'+(TN.roccoSVG?TN.roccoSVG(44):'')+'<div><div class="ttl">Settings</div>'+(fun&&TN.roccoTip?'<div class="tip">Tip: '+TN.roccoTip()+'</div>':'')+'</div></div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
       p.querySelectorAll('.cat').forEach(e=>e.onclick=()=>show(e.dataset.c));p.scrollTop=0;return;}
     const c=CATS.find(x=>x.id===id);
     p.innerHTML='<div class="back">\u2039 <span>'+c.t+'</span></div>'+c.html();p.scrollTop=0;

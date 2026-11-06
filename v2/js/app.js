@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=69;
+TN.APPBUILD=70;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -191,7 +191,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     const mine=new Set(L.map(x=>x.n));
     const render=(more)=>{
       const rows=L.map(x=>({n:x.n,sub:tripLabel(x.n)+(x.d?' \u00b7 '+x.d+' min':'')+' \u00b7 this car'})).concat((more||[]).filter(n=>!mine.has(n)).map(n=>({n:n,sub:tripLabel(n)})));
-      if(!rows.length){panel('No recordings yet.<br><small>Use Record on a drive, then they show up here.</small>',[['Close',hide]]);return;}
+      if(!rows.length){panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:6px">'+TN.roccoSVG(64)+'</div>':'')+'No recordings yet.<br><small>Use Record on a drive, then they show up here. Rocco is waiting for your first one.</small>',[['Close',hide]]);return;}
       panel('<b>Recordings</b><div id="tn-trips" style="max-height:50vh;overflow:auto;margin-top:10px;text-align:left">'+
         rows.slice(0,30).map((r,i)=>'<div data-i="'+i+'" style="padding:12px 10px;border-radius:10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.08)">'+r.n+'<br><small style="color:#9fb3c8">'+r.sub+'</small></div>').join('')+'</div>',[['Close',hide]]);
       document.querySelectorAll('#tn-trips [data-i]').forEach(el=>el.onclick=()=>showTrip(rows[+el.dataset.i].n));
@@ -261,7 +261,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(now.join('|')!==mine.join('|')){
         const changed=now.filter(x=>mine.indexOf(x)<0).map(label).join(', ');
         panel('Update available: <b>'+changed+'</b><br><br>Running now: '+mine.map(label).join(', '),[['Update now',()=>update(now)],['Later',hide]]);
-      }else panel('TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><small>(app.js file inside: build '+TN.APPBUILD+')</small><br><br>You have the latest version.',[['Close',hide]]);
+      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(64)+'</div>':'')+'TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><small>(app.js file inside: build '+TN.APPBUILD+')</small><br><br>You have the latest version.',[['Close',hide]]);
     }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
   /* the app checks for updates by itself (20 s after opening, then every 10 minutes); a found update shows a dot on

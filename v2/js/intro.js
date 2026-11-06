@@ -66,7 +66,9 @@ TN.Intro.prototype.draw=function(t,a){
   /* the name: glowing outlines letter by letter, then filled */
   const txt='TessyNav',fs=Math.round(Math.min(72,W/8)),y=H*0.26;
   g.font='500 '+fs+'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';g.textAlign='left';g.textBaseline='alphabetic';
-  const full=g.measureText(txt).width;let x=W/2-full/2;
+  const full=g.measureText(txt).width,rs=Math.round(fs*1.25),gap=Math.round(fs*0.3),shift=(rs+gap)/2;let x=W/2-full/2+shift;
+  /* Rocco, next to the name (fades in with it) */
+  {const im=TN.roccoImage&&TN.roccoImage(),k=E((t-0.25)/0.5)*a;if(im&&im.complete&&im.naturalWidth&&k>0){g.save();g.globalAlpha=k;g.drawImage(im,W/2-(full+rs+gap)/2,y-fs*0.8-rs*0.2,rs,rs);g.restore();}}
   g.shadowColor='rgba(120,220,255,0.9)';
   for(let i=0;i<txt.length;i++){
     const ch=txt[i],w=g.measureText(ch).width,k=E((t-0.15-i*0.07)/0.25)*a;
@@ -79,9 +81,9 @@ TN.Intro.prototype.draw=function(t,a){
   g.shadowBlur=0;
   const u=E((t-0.7)/0.4)*a;
   if(u>0){
-    g.fillStyle='rgba(120,220,255,'+u+')';g.fillRect(W/2-full/2*u,y+fs*0.22,full*u,2);
+    g.fillStyle='rgba(120,220,255,'+u+')';g.fillRect(W/2+shift-full/2*u,y+fs*0.22,full*u,2);
     g.font='400 '+Math.round(fs*0.28)+'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';g.textAlign='center';
-    g.fillStyle='rgba(159,215,240,'+u+')';g.fillText('Navigation for Tesla',W/2,y+fs*0.62);
+    g.fillStyle='rgba(159,215,240,'+u+')';g.fillText('Navigation for Tesla',W/2+shift,y+fs*0.62);
   }
 };
 TN.Intro.prototype.restoreColors=function(){
