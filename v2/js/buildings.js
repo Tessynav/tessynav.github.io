@@ -157,6 +157,7 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   const wholeArea=Math.max(area,b.wa||0),pieces=b.parts||1;
   const col=TN.hex(this.palette(b.H,seed,wholeArea));
   const top=b.H,bot=b.B,ex=0.3;   /* slightly outside the map's own building, so it is covered */
+  if(TN.shadows&&G.s) TN.shadows.addBuilding(G.s,ring,top);   /* (its shadow on the ground, stretched later by the sun) */
   let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
   const out=ring.map(p=>{const dx=p[0]-cx,dz=p[1]-cz,l=Math.hypot(dx,dz)||1;return [p[0]+dx/l*ex,p[1]+dz/l*ex];});
   const V=(x,y,z,nx,ny,nz,u,v,s,c)=>{G.p.push(x,y,z);G.n.push(nx,ny,nz);G.c.push(c[0],c[1],c[2]);G.w.push(u,v,s);return G.cnt++;};
@@ -206,11 +207,13 @@ TN.Buildings.prototype.finish=function(G){
   g.setAttribute('wuv',new THREE.Float32BufferAttribute(G.w,3));
   g.setIndex(G.i);
   const m=new THREE.Mesh(g,this.material());m.frustumCulled=false;
+  if(TN.shadows&&G.s){const sm=TN.shadows.mesh(G.s);if(sm) m.add(sm);}
   return m;
 };
 TN.Buildings.prototype.free=function(k){
   const e=this.cells.get(k);if(!e) return;
-  if(e.mesh){this.scene.three.scene.remove(e.mesh);e.mesh.geometry.dispose();}
+  if(e.mesh){this.scene.three.scene.remove(e.mesh);e.mesh.geometry.dispose();
+    for(const ch of e.mesh.children){if(ch.geometry) ch.geometry.dispose();if(TN.shadows) TN.shadows.forget(ch);}}
   if(e.ids){const map=this.scene.map;for(const id of e.ids){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}}}
   this.cells.delete(k);
 };
@@ -263,6 +266,6 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   }
   let sg=null;if(this.net&&list.length){const [x,y]=best.k.split(',').map(Number),a=TN.toLocal(x*TN.CELL,(y+1)*TN.CELL),b=TN.toLocal((x+1)*TN.CELL,y*TN.CELL);
     sg=this.net.segGrid([Math.min(a[0],b[0])-20,Math.max(a[0],b[0])+20,Math.min(a[1],b[1])-20,Math.max(a[1],b[1])+20]);}
-  this.job={k:best.k,list:list,i:0,tries:best.tries,G:{p:[],n:[],c:[],w:[],i:[],cnt:0},ids:[],sg:sg};
+  this.job={k:best.k,list:list,i:0,tries:best.tries,G:{p:[],n:[],c:[],w:[],i:[],cnt:0,s:{p:[],h:[],i:[],cnt:0}},ids:[],sg:sg};
   TN.prof('buildings',performance.now()-t0);
 };
