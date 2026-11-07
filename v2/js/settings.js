@@ -4,7 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.SETDEF={theme:'rocco',voice:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -80,7 +80,7 @@ TN.Settings.prototype.build=function(){
   const S=this.s,on=k=>!!S[k],list=a=>a.filter(Boolean).join(' \u00b7 ')||'Standard';
   const CATS=[
     {id:'nav',t:'Navigation',sum:()=>list([on('voice')?'Voice on':'Voice off',on('avoidToll')&&'no tolls',on('avoidHwy')&&'no highways',on('avoidFerry')&&'no ferries',on('avoidUnpaved')&&'no unpaved']),
-     html:()=>'<div class="h">GUIDANCE</div>'+tog('voice','Voice instructions','Spoken turns, arrival and alerts')+tog('birdseye','Bird\u2019s-eye view at exits','The camera rises before exits (instead of the drawing in the bar)')+
+     html:()=>'<div class="h">GUIDANCE</div>'+tog('voice','Voice instructions','Spoken turns, arrival and alerts')+tog('arrows','Turn arrows on the road','White arrows on the route line before your next turn')+tog('birdseye','Bird\u2019s-eye view at exits','The camera rises before exits (instead of the drawing in the bar)')+
        '<div class="h">ROUTE PREFERENCES</div><div class="sub" style="margin-bottom:2px">For your next route</div>'+tog('avoidToll','Avoid toll roads')+tog('avoidHwy','Avoid highways')+tog('avoidFerry','Avoid ferries')+tog('avoidUnpaved','Avoid unpaved roads')},
     {id:'car',t:'Car on the route',sum:()=>on('glueRoute')?'Glued everywhere':list([on('glueTurns')?'Glued in turns':'Normal tracking',on('wideLanes')&&'follows my lane']),
      html:()=>'<div class="sub" style="margin:8px 0 2px">How the car is drawn while you follow a route</div>'+tog('glueTurns','Glue the car in turns','Follows the route\u2019s curve through turns; steady on straight roads (recommended)')+

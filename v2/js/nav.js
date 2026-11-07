@@ -537,7 +537,7 @@ TN.Nav.prototype.draw=function(from){
   /* (lifted 0.22 m above the road with only a light "on top" setting: a strong one made it draw over the car's
      lower body on bridges, so the car looked sunk) */
   if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});}
-  const pos=[],idx=[],col=[],rd=[],hw=1.3;let n=0;const tc=new THREE.Color();
+  const pos=[],idx=[],col=[],rd=[],hw=1.3,CL=[];let n=0;const tc=new THREE.Color();
   const a0=Math.max(0,from|0);
   let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
   this.fitRange(Math.max(0,a0-40),a1);this.drawVer=this.api.net.ver;
@@ -546,6 +546,7 @@ TN.Nav.prototype.draw=function(from){
     const m=R.sm[i]||[0,0,0,0],y=m[3]+0.22;let lo=m[0];
     if(this.latS!=null&&this.ps!=null){const ah=R.cum[i]-this.ps;if(ah<500){const t=Math.max(0,ah-400)/100,k=t*t*(3-2*t);lo=this.latS+(m[0]-this.latS)*k;}}
     const cx=p[0]+m[1]-uz*lo,cz=p[1]+m[2]+ux*lo;
+    CL.push([cx,y,cz,R.cum[i]]);
     pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
     tc.set(TN.TRAFFIC_COL[R.cong?R.cong[i]:'unknown']||'#3b82f6');col.push(tc.r,tc.g,tc.b,tc.r,tc.g,tc.b);
     rd.push(R.cum[i],R.cum[i]);
@@ -555,6 +556,45 @@ TN.Nav.prototype.draw=function(from){
   if(this.mesh){S.three.scene.remove(this.mesh);this.mesh.geometry.dispose();}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setAttribute('rd',new THREE.Float32BufferAttribute(rd,1));g.setIndex(idx);
   this.mesh=new THREE.Mesh(g,TN.settings&&TN.settings.rainbow?this.rainbowMat():this.mat);this.mesh.frustumCulled=false;this.mesh.renderOrder=4;S.three.scene.add(this.mesh);this.drawn=a0;
+  this.drawArrows(CL);
+};
+/* turn arrows painted on the route line: three chevrons before your next turn, and a bent arrow at the turn whose stem
+   follows the route's own curve through the intersection (so it bends the way you'll go) */
+TN.Nav.prototype.drawArrows=function(CL){
+  const S=this.api.scene,R=this.route;
+  if(this.arrows){S.three.scene.remove(this.arrows);this.arrows.geometry.dispose();this.arrows=null;}
+  if(!R||!R.steps||CL.length<3||(TN.settings&&TN.settings.arrows===false)) return;
+  const s0=CL[0][3],s1=CL[CL.length-1][3];
+  /* a point on the line at distance s along the route, with its direction */
+  const at=s=>{let lo=0,hi=CL.length-1;if(s<=CL[0][3]||s>=CL[hi][3]) return null;while(hi-lo>1){const m=(lo+hi)>>1;if(CL[m][3]<=s) lo=m;else hi=m;}
+    const a=CL[lo],b=CL[hi],t=(s-a[3])/((b[3]-a[3])||1);let ux=b[0]-a[0],uz=b[2]-a[2];const l=Math.hypot(ux,uz)||1;
+    return {x:a[0]+(b[0]-a[0])*t,y:a[1]+(b[1]-a[1])*t+0.03,z:a[2]+(b[2]-a[2])*t,ux:ux/l,uz:uz/l};};
+  /* the next turn (and the one after it, when it comes within 150 m) */
+  const turns=R.steps.filter(st=>st.at>s0+8&&st.at<s1&&st.type!=='depart'&&st.type!=='arrive'&&st.type!=='new name'&&st.type!=='continue'&&!/straight/.test(st.mod||'')&&st.mod);
+  const use=turns.slice(0,1);if(turns[1]&&turns[1].at-turns[0].at<150) use.push(turns[1]);
+  if(!use.length) return;
+  const pos=[],idx=[];let n=0;
+  const quad=(a,b,c,d)=>{pos.push(a[0],a[1],a[2],b[0],b[1],b[2],c[0],c[1],c[2],d[0],d[1],d[2]);idx.push(n,n+1,n+2,n,n+2,n+3);n+=4;};
+  const tri=(a,b,c)=>{pos.push(a[0],a[1],a[2],b[0],b[1],b[2],c[0],c[1],c[2]);idx.push(n,n+1,n+2);n+=3;};
+  for(const st of use){
+    /* chevrons: a "V" pointing forward, 1.8 m wide */
+    for(const back of [60,40,20]){const P=at(st.at-back);if(!P) continue;
+      const fx=P.ux,fz=P.uz,rx=-fz,rz=fx,w=0.95,L=1.5,t=0.45,tip=[P.x+fx*L*0.5,P.y,P.z+fz*L*0.5];
+      for(const sd of [-1,1]){const out=[P.x-fx*L*0.5+rx*w*sd,P.y,P.z-fz*L*0.5+rz*w*sd];
+        const ox=fx*t,oz=fz*t;quad(out,tip,[tip[0]-ox,tip[1],tip[2]-oz],[out[0]-ox,out[1],out[2]-oz]);}}
+    /* the bent arrow: a stem along the line from 10 m before the turn to 9 m after, then an arrowhead */
+    const pts=[];for(let d=-10;d<=9;d+=1){const P=at(st.at+d);if(P) pts.push(P);}
+    if(pts.length>=4){const sw=0.32;
+      for(let k=0;k<pts.length-1;k++){const a=pts[k],b=pts[k+1];
+        const ra=[-a.uz*sw,a.ux*sw],rb=[-b.uz*sw,b.ux*sw];
+        quad([a.x-ra[0],a.y,a.z-ra[1]],[a.x+ra[0],a.y,a.z+ra[1]],[b.x+rb[0],b.y,b.z+rb[1]],[b.x-rb[0],b.y,b.z-rb[1]]);}
+      const E=pts[pts.length-1],hw2=0.95,hl=1.9;
+      tri([E.x-E.uz*hw2,E.y,E.z+E.ux*hw2],[E.x+E.uz*hw2,E.y,E.z-E.ux*hw2],[E.x+E.ux*hl,E.y,E.z+E.uz*hl]);}
+  }
+  if(!n) return;
+  if(!this.arrowMat) this.arrowMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.95,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4});
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);
+  this.arrows=new THREE.Mesh(g,this.arrowMat);this.arrows.frustumCulled=false;this.arrows.renderOrder=5;S.three.scene.add(this.arrows);
 };
 /* the rainbow road material: the colour comes from the distance along the route, shifted a little every frame (the
    graphics card does the colours; the app only moves one number) */
@@ -700,6 +740,7 @@ TN.Nav.prototype.end=function(why){
   this.active=false;this.route=null;this.bird=0;this.jvStep=null;this.pi=0;this.ps=null;this.latS=null;this.relT=0;if(this.input) this.input.placeholder='Search a place or address';if(this.bar) this.bar.classList.remove('jvon');document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
+  if(this.arrows){this.api.scene.three.scene.remove(this.arrows);this.arrows.geometry.dispose();this.arrows=null;}
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);
 };
 /* ---------- the car on the route (like Google Maps, Waze, Codriver) ----------
