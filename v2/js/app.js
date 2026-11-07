@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=81;
+TN.APPBUILD=82;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -31,6 +31,8 @@ TN.APPBUILD=81;
   const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,net:net,getCar:()=>track.car,following:()=>follow,roadsBase:'https://tessynav.github.io/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
   /* Superchargers on the map (and other fast chargers, if chosen) */
   const chargers=TN.Chargers?new TN.Chargers({map:map,nav:nav,getCar:()=>track.car,following:()=>follow}):null;TN.chargers=chargers;
+  TN.incidentsObj=incidents;   /* (Transports Québec events, also used by the bridges card) */
+  TN.bridges=TN.Bridges?new TN.Bridges({getCar:()=>track.car,nav:nav}):null;
   if(chargers&&map.on) map.on('moveend',()=>{try{chargers.draw(true);}catch(e){}});
   if(incidents){try{incidents.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */

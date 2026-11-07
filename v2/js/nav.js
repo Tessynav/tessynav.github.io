@@ -159,6 +159,8 @@ TN.Nav.prototype.showStart=function(){
       else t+='<div class="tile unset" data-set="'+k+'">'+TN.ICON(k,22,col)+'<b>'+lab+'</b><small>Tap to set</small></div>';}
     P.favs.forEach((f,fi)=>{items.push(f);
       t+='<div class="tile" data-i="'+(items.length-1)+'">'+TN.ICON('star',22,'#fcd34d')+'<b>'+TN.esc(f.name)+'</b><small>'+fmtDist(TN.distLL(h,[f.lng,f.lat]))+'</small>'+(ed?'<i class="tx" data-fav="'+fi+'" title="Remove">'+TN.ICON('x',14,'#ffffff')+'</i>':'')+'</div>';});
+    /* Montreal's bridges and tunnels (when you're within about 70 km of them) */
+    if(TN.bridges&&!ed&&TN.bridges.near()) t+='<div class="tile tbr"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5dcaa5" stroke-width="2" stroke-linecap="round"><path d="M2 16h20M4 16V9M20 16V9M4 9c3 3 13 3 16 0M8 16v-4.6M12 16v-4M16 16v-4.6"/></svg><b>Bridges</b><small>Live status</small></div>';
     if(P.home||P.work||P.favs.length) t+='<div class="tile tedit">'+TN.ICON(ed?'check':'edit',20,'#9fb3c8')+'<b>'+(ed?'Done':'Edit')+'</b></div>';
     html+='<div class="tiles">'+t+'</div>';}
   if(this.recent.length){html+='<div class="hd">RECENT</div>';
@@ -169,6 +171,7 @@ TN.Nav.prototype.showStart=function(){
   R.querySelectorAll('.tile[data-set]').forEach(r=>r.onclick=()=>this.startSetting(r.dataset.set));
   R.querySelectorAll('[data-del]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();this.tileEdit=false;this.startSetting(b.dataset.del);});
   R.querySelectorAll('[data-fav]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();const f=P.favs[+b.dataset.fav];P.favs.splice(+b.dataset.fav,1);this.savePlaces();this.toast((f?f.name:'Favorite')+' removed');this.showStart();});
+  const tb=R.querySelector('.tile.tbr');if(tb) tb.onclick=ev=>{ev.stopPropagation();this.closeSearch&&this.closeSearch();TN.bridges.open();};
   const te=R.querySelector('.tedit');if(te) te.onclick=ev=>{ev.stopPropagation();this.tileEdit=!this.tileEdit;this.showStart();};
   const cs=R.querySelector('.cancelstop');if(cs) cs.onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};
   const ct=R.querySelector('.cancelset');if(ct) ct.onclick=ev=>{ev.stopPropagation();this.setting=null;this.input.placeholder='Search a place or address';this.showStart();};
@@ -675,6 +678,7 @@ TN.Nav.prototype.overview=function(){
   {const ts=this.ov.querySelector('.tsend');if(ts) ts.onclick=async ev=>{ev.stopPropagation();ts.disabled=true;const r=await TN.tesla.send(this.dest,this);ts.disabled=false;
     this.note('tesla send',{ok:!!(r&&r.ok),why:r&&r.why,detail:r&&r.detail?String(r.detail).slice(0,120):undefined},true);};}
   {const bt=this.ov.querySelector('.btns'),rl=this.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
+  if(TN.bridges) TN.bridges.checkRoute(this).catch(()=>{});   /* (a slow or partly closed bridge on the route: Rocco says so) */
   this.tripButtons(this.ov);
 };
 /* trip details, for any route: summary (time, distance, arrival, traffic), what Tessy said (when synced), your stops,
