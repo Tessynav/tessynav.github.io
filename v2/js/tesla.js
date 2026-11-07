@@ -7,6 +7,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.TESLA_SERVER='https://tessynav.mznwattar.workers.dev';
 TN.Tesla=function(){};
+TN.TESLA_T=sz=>'<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 24 24"><path d="M12 6.2c2.6 0 5.6.5 7.6 1.6l.6-1.5C17.9 5 15 4.4 12 4.4S6.1 5 3.8 6.3l.6 1.5C6.4 6.7 9.4 6.2 12 6.2zm0 2c-1.6 0-3.4.2-4.6.7l.4 1.1c.9-.3 2.1-.5 3.1-.5v10.3h2.2V9.5c1 0 2.2.2 3.1.5l.4-1.1c-1.2-.5-3-.7-4.6-.7z" fill="#e31937"/></svg>';
 TN.Tesla.prototype.load=function(){try{return JSON.parse(localStorage.getItem('tn2_tesla')||'null');}catch(e){return null;}};
 TN.Tesla.prototype.save=function(a){try{localStorage.setItem('tn2_tesla',JSON.stringify(a));}catch(e){}};
 TN.Tesla.prototype.connected=function(){const a=this.load();return !!(a&&a.refresh);};
