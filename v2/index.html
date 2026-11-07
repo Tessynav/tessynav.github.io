@@ -4,9 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TessyNav</title>
-<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+<!-- the map (MapLibre) and 3D (three.js) libraries: from jsDelivr, with unpkg as a backup if jsDelivr doesn't answer
+     (an outage of a single library site used to leave the app without its map) -->
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" onerror="this.onerror=null;this.href='https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script>window.THREE||document.write('<script src="https://unpkg.com/three@0.158.0/build/three.min.js"><\/script>')</script>
 <style>
 html,body,#map{margin:0;height:100%;background:#e9ece6}
 :root{--tn-panel-rgb:43 45 49;--tn-text:#f3f1ec;--tn-sub:#b9b6ae;--tn-tip:#f2b55a;--tn-link:#f2b55a;--tn-accent:#e8913a;--tn-on-accent:#2b1a08;--tn-btn:#45474d;--tn-off:#55575d;--tn-line:rgba(255,255,255,.09);--tn-joke:#f2b55a;--tn-danger:#ff8a80}
@@ -81,7 +85,7 @@ window.TN_PROGRESS=function(){};
 <!-- the app's files (read by the loader below; also what the Version button compares) -->
 <template id="tn-files">
 <script src="js/roads.js?v=39"></script>
-<script src="js/i18n.js?v=6"></script>
+<script src="js/i18n.js?v=7"></script>
 <script src="js/rocco.js?v=1"></script>
 <script src="js/track.js?v=17"></script>
 <script src="js/scene.js?v=36"></script>
@@ -96,12 +100,12 @@ window.TN_PROGRESS=function(){};
 <script src="js/weather.js?v=2"></script>
 <script src="js/settings.js?v=26"></script>
 <script src="js/voice.js?v=2"></script>
-<script src="js/nav.js?v=52"></script>
+<script src="js/nav.js?v=53"></script>
 <script src="js/incidents.js?v=17"></script>
 <script src="js/chargers.js?v=2"></script>
 <script src="js/tesla.js?v=3"></script>
 <script src="js/rec.js?v=4"></script>
-<script src="js/app.js?v=79"></script>
+<script src="js/app.js?v=80"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
