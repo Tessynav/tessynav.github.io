@@ -37,8 +37,12 @@ TN.Bridges.prototype.status=async function(b,dir){
 };
 /* where you are: the car on its road, or else the GPS position (at home or in a lot the car isn't placed yet) */
 TN.Bridges.prototype.pos=function(){
-  const c=this.api.getCar&&this.api.getCar();if(c&&c.x!=null) return c;
-  const g=this.api.gps&&this.api.gps();return g&&g.x!=null?g:null;
+  const ok=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.z);   /* (a car not placed yet can hold "not a number" positions) */
+  const c=this.api.getCar&&this.api.getCar();if(ok(c)) return c;
+  const g=this.api.gps&&this.api.gps();if(ok(g)) return g;
+  /* last resort: the map's centre */
+  try{const m=this.api.map&&this.api.map.getCenter();if(m&&TN.toLocal){const q=TN.toLocal(m.lng,m.lat);return {x:q[0],z:q[1]};}}catch(e){}
+  return null;
 };
 TN.Bridges.prototype.near=function(){
   const c=this.pos();if(!c||!TN.toLocal) return null;let best=null,bd=1e12;
