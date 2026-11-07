@@ -49,7 +49,8 @@ TN.Bridges.prototype.near=function(){
   for(const b of TN.BRIDGES){const m=TN.toLocal(b.mid[1],b.mid[0]),d=Math.hypot(m[0]-c.x,m[1]-c.z);if(d<bd){bd=d;best=b;}}
   return bd<70000?{b:best,d:bd}:null;
 };
-const esc=t=>(TN.esc?TN.esc(t):String(t==null?'':t));
+/* (named brEsc: a top-level "esc" already exists in chargers.js, and browsers share one space for all scripts) */
+var brEsc=t=>(TN.esc?TN.esc(t):String(t==null?'':t));
 TN.Bridges.prototype.css=function(){
   if(document.getElementById('tn-br-css')) return;const st=document.createElement('style');st.id='tn-br-css';
   st.textContent='#tn-br{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;width:min(92vw,560px);max-height:80vh;display:none;flex-direction:column;background:rgb(var(--tn-panel-rgb,43 45 49)/.98);color:var(--tn-text,#f3f1ec);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif;overflow:hidden}'+
@@ -73,7 +74,7 @@ TN.Bridges.prototype.open=async function(){
   P.querySelectorAll('.dir button').forEach(b=>b.onclick=()=>{this.dir=b.dataset.d;this.open();});
   const sts=await Promise.all(TN.BRIDGES.map(b=>this.status(b,dir)));
   if(P.style.display==='none') return;
-  const row=s=>'<div class="it '+s.tone+(near&&near.b===s.b?' close':'')+'" data-id="'+s.b.id+'"><span class="d"></span><div><b>'+esc(s.b.name)+(near&&near.b===s.b?' <small>· closest</small>':'')+'</b><small>'+esc(s.b.ref)+' · '+esc(s.txt)+'</small></div>'+
+  const row=s=>'<div class="it '+s.tone+(near&&near.b===s.b?' close':'')+'" data-id="'+s.b.id+'"><span class="d"></span><div><b>'+brEsc(s.b.name)+(near&&near.b===s.b?' <small>· closest</small>':'')+'</b><small>'+brEsc(s.b.ref)+' · '+brEsc(s.txt)+'</small></div>'+
     '<div class="t"><b>'+(s.mins!=null?s.mins+' min':'—')+'</b><br><small>'+(s.mins==null?'':s.delay>=2?'+'+s.delay+' min':'normal')+'</small></div></div>';
   const G=[['south','SOUTH SHORE'],['north','LAVAL AND NORTH SHORE']];
   P.querySelector('.list').innerHTML=G.map(g=>'<div class="g">'+g[1]+'</div>'+sts.filter(s=>s.b.g===g[0]).map(row).join('')).join('');
