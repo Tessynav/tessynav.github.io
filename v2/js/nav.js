@@ -791,7 +791,7 @@ TN.Nav.prototype.junctionSvg=function(nx){
 TN.Nav.prototype.go=function(){
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
-  this.ov.style.display='none';this.active=true;this.saidArrive=false;document.body.classList.add('tn-routing');
+  this.ov.style.display='none';this.active=true;this.saidArrive=false;this.parkT=0;document.body.classList.add('tn-routing');
   if(TN.voice&&this.route){TN.voice.say('Starting route to '+(this.dest?this.dest.name:'your destination'),true);}
   if(this.route) this.note('go',{dest:this.dest&&this.dest.name,km:+(this.route.L/1000).toFixed(2),pts:this.route.pts.length},true);
   this.bar.style.display='flex';this.endBtn.style.display='block';this.roadName.style.display='block';
@@ -1047,8 +1047,11 @@ TN.Nav.prototype.update=function(dt){
    const txt=n?'Next: '+this.stops[0].name+' \u00b7 '+(n+1)+' places':(this.dest?this.dest.name:'Trip');
    if(db.dataset.t!==txt){db.dataset.t=txt;db.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:6px"><path d="M4 20l1-5L16 4l4 4L9 19z M14 6l4 4" stroke="#fcd34d" stroke-width="2.4" fill="none" stroke-linejoin="round"/></svg>'+TN.esc(txt);}}
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
-  /* arrived */
-  if(left<30||(nx.type==='arrive'&&dNext<25)){this.arriveT+=dt;if(this.arriveT>3&&!this.saidArrive){this.saidArrive=true;try{this.roccoArrive();}catch(e){}if(TN.voice) TN.voice.say('You have arrived at '+(this.dest?this.dest.name:'your destination'),true);}
+  /* arrived: at the destination, or parked near it (stopped 15 s within 250 m, in the second half of the route:
+     a mall's or a building's parking lot is often away from the address point on the map) */
+  {const G=this.api.gps&&this.api.gps(),v=G&&G.v!=null?G.v:9;
+    if(left<250&&left<R.L*0.5&&v<0.8) this.parkT=(this.parkT||0)+dt;else this.parkT=0;}
+  if(left<30||(nx.type==='arrive'&&dNext<25)||this.parkT>15){this.arriveT+=dt;if(this.arriveT>3&&!this.saidArrive){this.saidArrive=true;try{this.roccoArrive();}catch(e){}if(TN.voice) TN.voice.say('You have arrived at '+(this.dest?this.dest.name:'your destination'),true);}
     if(this.arriveT>3){this.bar.querySelector('.dist').textContent='You have arrived';this.bar.querySelector('.ins').textContent=TN.esc(this.dest.name);}
     if(this.arriveT>12) this.end('arrived');return;}
   /* left the route: find a new one (at most every 15 s) */
