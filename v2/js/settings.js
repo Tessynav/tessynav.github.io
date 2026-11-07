@@ -100,7 +100,7 @@ TN.Settings.prototype.build=function(){
        '<div class="h">FOR FUN</div>'+tog('rainbow','Rainbow road','The route line flows through the colours (hides traffic colours on it)')},
     {id:'app',t:'App',sum:()=>({rocco:'Rocco theme',tesla:'Tesla theme',futuristic:'Futuristic theme'})[S.theme||'rocco']+(TN.LANG==='fr'?' \u00b7 Français':' \u00b7 English')+' \u00b7 version, recording',
      html:()=>'<div class="h">LOOK</div><div class="r"><div>Theme</div><div class="seg" data-k="theme"><span data-v="rocco">Rocco</span><span data-v="tesla">Tesla</span><span data-v="futuristic">Futuristic</span></div></div>'+
-       '<div class="sub" style="margin:2px 0 6px">Tesla: light by day, dark at night</div><div class="r"><div>Language</div><div class="seg notr" data-k="lang"><span data-v="en">English</span><span data-v="fr">Français</span></div></div><div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+'<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>'}];
+       '<div class="sub" style="margin:2px 0 6px">Tesla: light by day, dark at night</div><div class="r"><div>Language</div><div class="seg notr" data-k="lang"><span data-v="en">English</span><span data-v="fr">Français</span></div></div><div class="h">TESLA</div><div class="r"><div>Tesla account<div class="sub">'+(TN.tesla&&TN.tesla.connected()?'Connected'+((TN.tesla.load()||{}).name?' \u00b7 '+TN.esc((TN.tesla.load()||{}).name):''):'Not connected')+'</div></div><div class="lnk" id="tn-tesla">'+(TN.tesla&&TN.tesla.connected()?'Disconnect':'Connect ›')+'</div></div><div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+'<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>'}];
   const show=id=>{
     if(!id){const fun=!(TN.settings&&TN.settings.fun===false);
       p.innerHTML='<div class="ttlrow">'+(TN.roccoSVG?TN.roccoSVG(44):'')+'<div><div class="ttl">Settings</div>'+(fun&&TN.roccoTip?'<div class="tip">Tip: '+TN.roccoTip()+'</div>':'')+'</div></div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
@@ -111,6 +111,7 @@ TN.Settings.prototype.build=function(){
     p.querySelectorAll('.t').forEach(t=>t.onclick=()=>{const k=t.dataset.k,v=!this.s[k];t.classList.toggle('off',!v);this.set(k,v);});
     p.querySelectorAll('.seg').forEach(sg=>{const key=sg.dataset.k;const mark=()=>sg.querySelectorAll('span').forEach(x=>x.classList.toggle('on',x.dataset.v===this.s[key]));mark();sg.querySelectorAll('span').forEach(x=>x.onclick=()=>{this.set(key,x.dataset.v);mark();});});
     const rg=p.querySelector('input[type=range]');if(rg) rg.oninput=()=>this.set('nightLevel',rg.value/100);
+    const tb=p.querySelector('#tn-tesla');if(tb) tb.onclick=()=>{if(!TN.tesla) return;if(TN.tesla.connected()){TN.tesla.signOut();show(id);}else TN.tesla.signIn();};
     const vb=p.querySelector('#tn-setver');if(vb) vb.onclick=()=>{p.style.display='none';const v=document.getElementById('ver');if(v) v.click();};
   };
   this.showPage=show;show(null);

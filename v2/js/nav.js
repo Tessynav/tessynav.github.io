@@ -98,7 +98,8 @@ TN.Nav.prototype.list=function(items,msg){
   const q=(this.input&&this.input.value||'').trim();
   const allRow=q.length>=3&&!(items[0]&&items[0].recent)?'<div class="r all" style="color:var(--tn-link)">'+TN.ICON('pin',24)+'<div>Show all nearby on map<small>Every \u201c'+TN.esc(q)+'\u201d around you</small></div></div>':'';
   if(!items.length){R.innerHTML=(this.addingStop?'<div class="r cancelstop" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>':'')+allRow+'<div class="msg">'+(msg||'No results')+'</div>';
-    const cs=R.querySelector('.cancelstop');if(cs) cs.onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};
+    const tz=R.querySelector('.r.tesla');if(tz) tz.onclick=ev=>{ev.stopPropagation();this.closeSearch();if(TN.tesla.connected()) TN.tesla.getTrip(this);else TN.tesla.signIn();};
+  const cs=R.querySelector('.cancelstop');if(cs) cs.onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};
     const ar=R.querySelector('.all');if(ar) ar.onclick=()=>this.showAll(q);return;}
   const h=this.here();
   R.innerHTML=items.map((it,i)=>{const d=it.lng!=null?TN.distLL(h,[it.lng,it.lat]):(it.dist||0);
@@ -138,6 +139,9 @@ TN.Nav.prototype.showStart=function(){
   const R=this.res,P=this.places,h=this.here(),items=[];let html='';
   const row=(cls,icon,name,sub,right,extra)=>'<div class="r '+cls+'"'+(extra||'')+'><span>'+icon+'</span><div>'+TN.esc(name)+'<small>'+TN.esc(sub||'')+'</small></div>'+right+'</div>';
   if(this.addingStop) html+='<div class="r cancelstop" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>';
+  /* the Tesla connection: "Get trip from Tessy" once signed in, otherwise "Connect your Tesla" */
+  if(TN.tesla&&!this.setting&&!this.addingStop){const on=TN.tesla.connected();
+    html+='<div class="r tesla"><span><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 6.2c2.6 0 5.6.5 7.6 1.6l.6-1.5C17.9 5 15 4.4 12 4.4S6.1 5 3.8 6.3l.6 1.5C6.4 6.7 9.4 6.2 12 6.2zm0 2c-1.6 0-3.4.2-4.6.7l.4 1.1c.9-.3 2.1-.5 3.1-.5v10.3h2.2V9.5c1 0 2.2.2 3.1.5l.4-1.1c-1.2-.5-3-.7-4.6-.7z" fill="#e31937"/></svg></span><div>'+(on?'Get trip from Tessy':'Connect your Tesla')+'<small>'+(on?'The destination in Tessy’s navigation':'Sign in once to sync trips with Tessy')+'</small></div></div>';}
   if(this.setting) html+='<div class="r cancelset" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel<small>Keep '+(this.setting==='home'?'Home':'Work')+' as it is</small></div></div>';
   else for(const k of ['home','work']){const pl=P[k],lab=k==='home'?'Home':'Work',col=k==='home'?'#60a5fa':'#f59e0b';
     if(pl){const t=this.etaFor(k);items.push(pl);
@@ -153,6 +157,7 @@ TN.Nav.prototype.showStart=function(){
   R.querySelectorAll('[data-set]').forEach(r=>r.onclick=()=>this.startSetting(r.dataset.set));
   R.querySelectorAll('[data-del]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();this.startSetting(b.dataset.del);});
   R.querySelectorAll('[data-fav]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();const f=P.favs[+b.dataset.fav];P.favs.splice(+b.dataset.fav,1);this.savePlaces();this.toast((f?f.name:'Favorite')+' removed');this.showStart();});
+  const tz=R.querySelector('.r.tesla');if(tz) tz.onclick=ev=>{ev.stopPropagation();this.closeSearch();if(TN.tesla.connected()) TN.tesla.getTrip(this);else TN.tesla.signIn();};
   const cs=R.querySelector('.cancelstop');if(cs) cs.onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};
   const ct=R.querySelector('.cancelset');if(ct) ct.onclick=ev=>{ev.stopPropagation();this.setting=null;this.input.placeholder='Search a place or address';this.showStart();};
 };
