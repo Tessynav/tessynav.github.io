@@ -158,7 +158,10 @@ TN.Incidents.prototype.loadMtq=function(car){
       out.push({id:'mtq'+e.id,kind:e.k,pts:pts,ll:[f[0],f[1]],desc:e.d||'',from:'',to:'',road:'Transports Qu\u00e9bec',mtq:true,dirH:H[e.dir]!=null?H[e.dir]:null});}
     this.mtqAll=out;this.merge();}).catch(()=>{this.mtqLoading=false;});
 };
-TN.schoolTime=function(d){d=d||new Date();const m=d.getMonth(),wd=d.getDay(),h=d.getHours()+d.getMinutes()/60;return m!==6&&m!==7&&wd>=1&&wd<=5&&h>=7&&h<17;};
+TN.schoolTime=function(d){
+  /* (test switch: ?schooltest=1 in the address treats any moment as school hours) */
+  if(typeof location!=='undefined'&&/[?&]schooltest=1/.test(location.search)) return true;
+  d=d||new Date();const m=d.getMonth(),wd=d.getDay(),h=d.getHours()+d.getMinutes()/60;return m!==6&&m!==7&&wd>=1&&wd<=5&&h>=7&&h<17;};
 /* schools within about 1.5 km (school hours only): their grounds' outline, as points every ~15 m */
 TN.Incidents.prototype.findSchools=function(car){
   const net=this.api.net,out=[];
