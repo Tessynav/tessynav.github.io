@@ -19,7 +19,8 @@ TN.Intro.prototype.start=function(){
 TN.Intro.prototype.reveal=function(skip){
   if(this.done) return;this.done=true;
   const b=document.getElementById('tn-boot');
-  const finish=()=>{if(b&&b.parentNode) b.parentNode.removeChild(b);const r=document.getElementById('tn-ring');if(r) r.remove();document.body.classList.remove('tn-intro');};
+  const finish=()=>{if(b&&b.parentNode) b.parentNode.removeChild(b);const u=document.getElementById('tn-upd');if(u) u.remove();   /* (the map is ready: no update screen after the intro) */
+    const r=document.getElementById('tn-ring');if(r) r.remove();document.body.classList.remove('tn-intro');};
   if(!b){finish();return;}
   if(skip){b.style.transition='opacity .25s';b.style.opacity='0';setTimeout(finish,260);return;}
   /* the light wave from the headlights */
