@@ -809,6 +809,8 @@ TN.Nav.prototype.go=function(){
   try{this.roccoGo();}catch(e){}
 };
 TN.Nav.prototype.end=function(why){
+  /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
+  if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
   this.active=false;this.route=null;this.bird=0;this.jvStep=null;this.pi=0;this.ps=null;this.latS=null;this.relT=0;if(this.input) this.input.placeholder='Search a place or address';if(this.bar) this.bar.classList.remove('jvon');document.body.classList.remove('tn-routing','tn-addstop');this.addingStop=false;this.stops=[];this.stopPins();
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
@@ -1213,4 +1215,3 @@ TN.Nav.prototype.roccoArriveShow=function(text,charging){
   document.body.appendChild(el);
   clearTimeout(this.rarrT);this.rarrT=setTimeout(()=>{try{el.remove();}catch(e){}},9400);
 };
-
