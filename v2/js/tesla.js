@@ -68,4 +68,31 @@ TN.Tesla.prototype.getTrip=async function(nav){
     say('Could not reach Tessy right now');
   }
 };
+/* Send to Tessy: the destination (exact coordinates) into Tessy's own navigation, so Tessy plans Superchargers and
+   preconditions the battery. One command (about $0.001). If the car requires signed commands, it says so clearly. */
+TN.Tesla.prototype.post=async function(path,body){
+  const t=await this.token();
+  const r=await fetch(TN.TESLA_SERVER+path,{method:'POST',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  let j={};try{j=await r.json();}catch(e){}
+  return {status:r.status,j:j};
+};
+TN.Tesla.prototype.send=async function(dest,nav){
+  const say=m=>{if(nav&&nav.toast) nav.toast(m);};
+  if(!dest||dest.lat==null) return;
+  if(!this.connected()){this.signIn();return;}
+  say('Sending to Tessy…');
+  try{
+    const vin=await this.vehicle();
+    let r=await this.post('/api/1/vehicles/'+vin+'/command/navigation_gps_request',{lat:+dest.lat,lon:+dest.lng,order:0});
+    const res=r.j&&r.j.response,err=String((r.j&&(r.j.error||r.j.error_description))||(res&&res.reason)||'');
+    if(r.status===200&&res&&res.result!==false){say('Sent to Tessy ✓');return {ok:true};}
+    if(r.status===408||/offline|asleep|unavailable/i.test(err)){say('Tessy is asleep. Try again from the car.');return {ok:false,why:'asleep'};}
+    if(r.status===401){this.signOut();say('Connect your Tesla first');return {ok:false,why:'signin'};}
+    if(r.status===403||/protocol|unsigned|hardlocked/i.test(err)){say('Tessy needs signed commands: next update');return {ok:false,why:'signed',detail:err};}
+    say('Tessy didn’t accept it ('+(err||r.status)+')');return {ok:false,why:'other',detail:err||r.status};
+  }catch(e){
+    if(e.message==='signin'){say('Connect your Tesla first');return {ok:false,why:'signin'};}
+    say('Could not reach Tessy right now');return {ok:false,why:'net'};
+  }
+};
 TN.tesla=new TN.Tesla();
