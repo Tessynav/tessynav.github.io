@@ -24,6 +24,11 @@ TN.Nav.prototype.build=function(){
    '#tn-search{right:82px;top:16px;width:min(40vw,520px);padding:0;display:flex;align-items:center;background:rgb(var(--tn-panel-rgb) / .97)}'+
    '#status{max-width:calc(100vw - min(40vw,520px) - 130px)!important}'+
    '#tn-search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--tn-text);font:18px system-ui,sans-serif;padding:14px 16px 14px 6px}'+
+   '#tn-res .tiles{display:flex;gap:8px;overflow-x:auto;padding:12px 12px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}#tn-res .tiles::-webkit-scrollbar{display:none}'+
+   '#tn-res .tile{position:relative;flex:0 0 auto;width:132px;min-height:76px;box-sizing:border-box;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.07);cursor:pointer;display:flex;flex-direction:column;gap:3px}'+
+   '#tn-res .tile b{font:600 15px system-ui,sans-serif;color:var(--tn-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-res .tile small{font-size:13px;color:var(--tn-sub,#9fb3c8)}#tn-res .tile small.eta{color:#5dcaa5}'+
+   '#tn-res .tile.unset{background:transparent;border:1px dashed rgba(255,255,255,.18)}#tn-res .tile.tedit{width:auto;min-width:76px;align-items:center;justify-content:center;background:transparent}#tn-res .tile:active{opacity:.7}'+
+   '#tn-res .tile .tx{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:#ef4444;display:flex;align-items:center;justify-content:center}'+
    '#tn-search .tz{display:flex;align-items:center;gap:6px;flex-shrink:0;align-self:stretch;padding:0 14px;border-left:1px solid var(--tn-line,rgba(255,255,255,.1));cursor:pointer}#tn-search .tz b{font:600 14px system-ui,sans-serif;color:var(--tn-sub,#b9b6ae)}#tn-search .tz:active{opacity:.6}'+
    '#tn-search .i{padding-left:16px;flex-shrink:0}#tn-search .x{padding:0 14px;cursor:pointer;display:none;flex-shrink:0;align-items:center}'+
    '#tn-res{right:82px;top:76px;width:min(40vw,520px);padding:6px;display:none;max-height:56vh;overflow:auto}'+
@@ -120,6 +125,8 @@ TN.ICON=(name,size,color)=>{const c=color||'currentColor',z=size||22,P={
   pin:'<path d="M12 22s7-7.2 7-12.2A7 7 0 0 0 5 9.8C5 14.8 12 22 12 22z" fill="#ff5a4f"/><circle cx="12" cy="9.8" r="2.6" fill="#fff"/>',
   home:'<path d="M3 11.5L12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" fill="'+c+'"/>',
   work:'<rect x="3" y="8" width="18" height="12" rx="2" fill="'+c+'"/><path d="M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8" fill="none" stroke="'+c+'" stroke-width="2"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" stroke="'+c+'" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5" stroke="'+c+'" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   star:'<path d="M12 2.8l2.8 6 6.5.7-4.9 4.4 1.4 6.4L12 17l-5.8 3.3 1.4-6.4L2.7 9.5l6.5-.7z" fill="'+c+'"/>',
   staro:'<path d="M12 2.8l2.8 6 6.5.7-4.9 4.4 1.4 6.4L12 17l-5.8 3.3 1.4-6.4L2.7 9.5l6.5-.7z" fill="none" stroke="'+c+'" stroke-width="2" stroke-linejoin="round"/>',
   recent:'<circle cx="12" cy="12" r="8.5" fill="none" stroke="'+c+'" stroke-width="2.2"/><path d="M12 7.5V12l3 2" stroke="'+c+'" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
@@ -142,25 +149,27 @@ TN.Nav.prototype.showStart=function(){
   const R=this.res,P=this.places,h=this.here(),items=[];let html='';
   const row=(cls,icon,name,sub,right,extra)=>'<div class="r '+cls+'"'+(extra||'')+'><span>'+icon+'</span><div>'+TN.esc(name)+'<small>'+TN.esc(sub||'')+'</small></div>'+right+'</div>';
   if(this.addingStop) html+='<div class="r cancelstop" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>';
-  /* the Tesla connection: "Get trip from Tessy" once signed in, otherwise "Connect your Tesla" */
-  if(TN.tesla&&!this.setting&&!this.addingStop){const on=TN.tesla.connected();
-    html+='<div class="r tesla"><span>'+TN.TESLA_T(22)+'</span><div>'+(on?'Get trip from Tessy':'Connect your Tesla')+'<small>'+(on?'The destination in Tessy’s navigation':'Sign in once to sync trips with Tessy')+'</small></div></div>';}
   if(this.setting) html+='<div class="r cancelset" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel<small>Keep '+(this.setting==='home'?'Home':'Work')+' as it is</small></div></div>';
-  else for(const k of ['home','work']){const pl=P[k],lab=k==='home'?'Home':'Work',col=k==='home'?'#60a5fa':'#f59e0b';
-    if(pl){const t=this.etaFor(k);items.push(pl);
-      html+=row('slot','',lab,pl.name+(pl.sub?' \u00b7 '+pl.sub:''),'<span class="d" style="color:#5dcaa5">'+(t?t+' min':fmtDist(TN.distLL(h,[pl.lng,pl.lat])))+'</span><span class="del" data-del="'+k+'" title="Change">'+TN.ICON('x',16,'#5d6b80')+'</span>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON(k,22,col)+'</span>');}
-    else html+=row('setslot','',lab,'Tap to set','<span class="d">Set</span>',' data-set="'+k+'"').replace('<span></span>','<span>'+TN.ICON(k,22,col)+'</span>');}
-  if(!this.setting&&P.favs.length){html+='<div class="hd">FAVORITES</div>';
-    P.favs.forEach((f,fi)=>{items.push(f);html+=row('fav','',f.name,f.sub,'<span class="d">'+fmtDist(TN.distLL(h,[f.lng,f.lat]))+'</span><span class="del" data-fav="'+fi+'" title="Remove">'+TN.ICON('x',16,'#5d6b80')+'</span>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON('star',20,'#fcd34d')+'</span>');});}
+  else{
+    /* Home, Work and favorites as a row of tiles (one tap to go); Edit shows a remove/change button on each */
+    const ed=!!this.tileEdit;let t='';
+    for(const k of ['home','work']){const pl=P[k],lab=k==='home'?'Home':'Work',col=k==='home'?'#60a5fa':'#f59e0b';
+      if(pl){const tm=this.etaFor(k);items.push(pl);
+        t+='<div class="tile" data-i="'+(items.length-1)+'">'+TN.ICON(k,22,col)+'<b>'+lab+'</b><small class="'+(tm?'eta':'')+'">'+(tm?tm+' min':fmtDist(TN.distLL(h,[pl.lng,pl.lat])))+'</small>'+(ed?'<i class="tx" data-del="'+k+'" title="Change">'+TN.ICON('x',14,'#ffffff')+'</i>':'')+'</div>';}
+      else t+='<div class="tile unset" data-set="'+k+'">'+TN.ICON(k,22,col)+'<b>'+lab+'</b><small>Tap to set</small></div>';}
+    P.favs.forEach((f,fi)=>{items.push(f);
+      t+='<div class="tile" data-i="'+(items.length-1)+'">'+TN.ICON('star',22,'#fcd34d')+'<b>'+TN.esc(f.name)+'</b><small>'+fmtDist(TN.distLL(h,[f.lng,f.lat]))+'</small>'+(ed?'<i class="tx" data-fav="'+fi+'" title="Remove">'+TN.ICON('x',14,'#ffffff')+'</i>':'')+'</div>';});
+    if(P.home||P.work||P.favs.length) t+='<div class="tile tedit">'+TN.ICON(ed?'check':'edit',20,'#9fb3c8')+'<b>'+(ed?'Done':'Edit')+'</b></div>';
+    html+='<div class="tiles">'+t+'</div>';}
   if(this.recent.length){html+='<div class="hd">RECENT</div>';
     this.recent.forEach(r=>{items.push(r);html+=row('rec','',r.name,r.sub,'<span class="d">'+fmtDist(TN.distLL(h,[r.lng,r.lat]))+'</span>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON('recent',22,'#9fb3c8')+'</span>');});}
   if(!html){R.style.display='none';return;}
   this.results=items;R.innerHTML=html;R.style.display='block';
-  R.querySelectorAll('.r[data-i]').forEach(r=>r.onclick=ev=>{if(ev.target.closest('.del')) return;this.pick(items[+r.dataset.i]);});
-  R.querySelectorAll('[data-set]').forEach(r=>r.onclick=()=>this.startSetting(r.dataset.set));
-  R.querySelectorAll('[data-del]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();this.startSetting(b.dataset.del);});
+  R.querySelectorAll('[data-i]').forEach(r=>r.onclick=ev=>{if(ev.target.closest('.tx')) return;this.pick(items[+r.dataset.i]);});
+  R.querySelectorAll('.tile[data-set]').forEach(r=>r.onclick=()=>this.startSetting(r.dataset.set));
+  R.querySelectorAll('[data-del]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();this.tileEdit=false;this.startSetting(b.dataset.del);});
   R.querySelectorAll('[data-fav]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();const f=P.favs[+b.dataset.fav];P.favs.splice(+b.dataset.fav,1);this.savePlaces();this.toast((f?f.name:'Favorite')+' removed');this.showStart();});
-  const tz=R.querySelector('.r.tesla');if(tz) tz.onclick=ev=>{ev.stopPropagation();this.closeSearch();if(TN.tesla.connected()) TN.tesla.getTrip(this);else TN.tesla.signIn();};
+  const te=R.querySelector('.tedit');if(te) te.onclick=ev=>{ev.stopPropagation();this.tileEdit=!this.tileEdit;this.showStart();};
   const cs=R.querySelector('.cancelstop');if(cs) cs.onclick=ev=>{ev.stopPropagation();this.cancelAddStop();};
   const ct=R.querySelector('.cancelset');if(ct) ct.onclick=ev=>{ev.stopPropagation();this.setting=null;this.input.placeholder='Search a place or address';this.showStart();};
 };
