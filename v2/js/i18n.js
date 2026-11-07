@@ -99,6 +99,10 @@ const D={
   'SOUTH SHORE':'RIVE-SUD','LAVAL AND NORTH SHORE':'LAVAL ET RIVE-NORD','Updated now':'Mis à jour','Loading…':'Chargement…','fluid':'fluide','slow':'ralenti',
   'closed':'fermé','closed (Transports Québec)':'fermé (Transports Québec)','lane closed (Transports Québec)':'voie fermée (Transports Québec)',
   'works nearby':'travaux à proximité','no traffic data':'pas de données de circulation','· closest':'· le plus proche',
+  'Send feedback':'Envoyer un commentaire','Tell us what happened. A tap on Send is enough: the details are added for you.':'Dites-nous ce qui s’est passé. Toucher Envoyer suffit : les détails sont ajoutés pour vous.',
+  'Something went wrong':'Un problème est survenu','Wrong route':'Mauvais trajet','Map error':'Erreur de carte','An idea':'Une idée','What happened? (optional)':'Que s’est-il passé? (facultatif)',
+  'Include a screenshot':'Inclure une capture d’écran','Include my location':'Inclure ma position','Send':'Envoyer','Sending…':'Envoi…',
+  'Thanks! Rocco passed it on.':'Merci! Rocco l’a transmis.','Could not send right now':'Envoi impossible pour le moment',
   'Language':'Langue','this car':'cette voiture','rainbow road':'route arc-en-ciel','Fun mode off':'Mode amusant désactivé',
   /* alerts */
   'School zone':'Zone scolaire','Railway crossing':'Passage à niveau','Speed camera':'Radar photo','Speed and red-light camera':'Radar photo et feu rouge',

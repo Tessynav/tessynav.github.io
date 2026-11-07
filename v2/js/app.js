@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=90;
+TN.APPBUILD=91;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -22,7 +22,7 @@ TN.APPBUILD=90;
   if(settings){try{settings.build();}catch(e){}}
   /* navigation: search, route, directions */
   const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
-    gps:()=>track.last?{x:track.last.x,z:track.last.z,v:track.last.v,hd:track.hd,t:track.last.t,raw:track.last.hd}:null,gpsHd:()=>track.hd,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);},
+    gps:()=>track.last?{x:track.last.x,z:track.last.z,v:track.last.v,hd:track.hd,t:track.last.t,raw:track.last.hd}:null,gpsHd:()=>track.hd,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);if(TN.fb) TN.fb.note(k,d);},
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').textContent='Recenter';}}}):null;
   if(nav){try{nav.build();}catch(e){}}
   /* road incidents with Rocco (TomTom) */
@@ -32,6 +32,8 @@ TN.APPBUILD=90;
   /* Superchargers on the map (and other fast chargers, if chosen) */
   const chargers=TN.Chargers?new TN.Chargers({map:map,nav:nav,getCar:()=>track.car,following:()=>follow}):null;TN.chargers=chargers;
   TN.incidentsObj=incidents;
+  TN.fb=TN.Feedback?new TN.Feedback({map:map,nav:nav,getCar:()=>track.car,gps:()=>track.last}):null;   /* (Send feedback, on the main screen) */
+  if(TN.tesla&&TN.tesla.connected()) setTimeout(()=>{TN.tesla.config();},8000);   /* (the car's model and colour) */
   TN.tunnel=TN.Tunnel?new TN.Tunnel(scene,net,()=>track.cur&&track.cur.w):null;   /* (Transports Québec events, also used by the bridges card) */
   TN.bridges=TN.Bridges?new TN.Bridges({getCar:()=>track.car,gps:()=>track.last,map:map,nav:nav}):null;
   if(chargers&&map.on) map.on('moveend',()=>{try{chargers.draw(true);}catch(e){}});
@@ -361,7 +363,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   }
   function frameBody(){
     const pnow=performance.now(),dt=Math.min(0.25,(pnow-last)/1000);worst=Math.max(worst,pnow-last);last=pnow;
-    fpsN++;if(pnow-fpsT>=1000){rec.second(fpsN,worst);lastFps=fpsN;fpsN=0;worst=0;fpsT=pnow;}
+    fpsN++;if(pnow-fpsT>=1000){rec.second(fpsN,worst);if(TN.fb) TN.fb.second(fpsN,worst);lastFps=fpsN;fpsN=0;worst=0;fpsT=pnow;}
     if(!ready) return;
     /* one shared budget for background work each frame (about 7 ms): the road network first, then roads,
        buildings and trees with what is left; whatever doesn't fit waits for the next frame (no stutter) */

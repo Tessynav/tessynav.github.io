@@ -95,4 +95,21 @@ TN.Tesla.prototype.send=async function(dest,nav){
     say('Could not reach Tessy right now');return {ok:false,why:'net'};
   }
 };
+/* the car's configuration (model, colour, trim, wheels), read once after sign-in: the 3D car takes its real colour */
+TN.CAR_PAINT={PearlWhite:0xe6e6e2,White:0xe6e6e2,SolidBlack:0x141518,Black:0x141518,ObsidianBlack:0x111215,MidnightSilver:0x4a4e54,
+  StealthGrey:0x5b6067,StealthGray:0x5b6067,DeepBlue:0x1d3b70,DeepBlueMetallic:0x1d3b70,RedMulticoat:0x8c171d,UltraRed:0xa3161f,
+  QuicksilverGray:0x9da2a7,Quicksilver:0x9da2a7,Silver:0x9a9ea3,MidnightCherryRed:0x5a1219,Glacier:0xc9d3d8};
+TN.CAR_NAMES={model3:'Model 3',modely:'Model Y',models:'Model S',modelx:'Model X',cybertruck:'Cybertruck'};
+TN.applyCar=function(){
+  const a=TN.tesla&&TN.tesla.load(),c=a&&a.cfg;if(!c) return;
+  TN.carInfo={model:TN.CAR_NAMES[c.car_type]||c.car_type||'',color:String(c.exterior_color||'').replace(/([a-z])([A-Z])/g,'$1 $2'),trim:c.trim_badging||''};
+  const hex=TN.CAR_PAINT[c.exterior_color];if(hex!=null&&TN.paintMat) TN.paintMat.color.setHex(hex);
+};
+TN.Tesla.prototype.config=async function(){
+  const a=this.load();if(!a||!a.refresh) return;if(a.cfg&&Date.now()-(a.cfgT||0)<7*864e5){TN.applyCar();return;}   /* (once a week at most) */
+  try{const vin=await this.vehicle();const r=await this.api('/api/1/vehicles/'+vin+'/vehicle_data?endpoints=vehicle_config');
+    if(r.status!==200) return;const v=r.j&&r.j.response&&r.j.response.vehicle_config;if(!v) return;
+    const b=this.load()||{};b.cfg={car_type:v.car_type,exterior_color:v.exterior_color,trim_badging:v.trim_badging,wheel_type:v.wheel_type};b.cfgT=Date.now();this.save(b);
+    TN.applyCar();}catch(e){}
+};
 TN.tesla=new TN.Tesla();

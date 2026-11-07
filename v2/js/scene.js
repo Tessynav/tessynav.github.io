@@ -188,7 +188,8 @@ TN.Scene.prototype.loadCar=async function(){
 TN.Scene.prototype.carMat=function(md){
   const pbr=md.pbrMetallicRoughness||{},c=pbr.baseColorFactor||[0.5,0.5,0.5,1],name=md.name||'';
   /* Tessy's real colour: Stealth Grey, a medium blue-grey with a soft metallic shine */
-  if(name==='paint') return new THREE.MeshStandardMaterial({color:0x60656c,metalness:0.5,roughness:0.34,side:THREE.DoubleSide});
+  if(name==='paint'){const m=new THREE.MeshStandardMaterial({color:0x60656c,metalness:0.5,roughness:0.34,side:THREE.DoubleSide});
+    TN.paintMat=m;setTimeout(()=>{try{TN.applyCar&&TN.applyCar();}catch(e){}},0);return m;}   /* (the connected Tesla's real colour, when known) */
   if(name==='glass') return new THREE.MeshStandardMaterial({color:0x0b0d10,metalness:0.2,roughness:0.08,side:THREE.DoubleSide});
   if(name==='tail'){const m=new THREE.MeshStandardMaterial({color:0x7a0d10,emissive:0x5a0000,roughness:0.3});(this.tails=this.tails||[]).push(m);return m;}
   return new THREE.MeshStandardMaterial({color:new THREE.Color(c[0],c[1],c[2]),metalness:pbr.metallicFactor!=null?pbr.metallicFactor:0.2,
