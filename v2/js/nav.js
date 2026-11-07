@@ -24,6 +24,7 @@ TN.Nav.prototype.build=function(){
    '#tn-search{right:82px;top:16px;width:min(40vw,520px);padding:0;display:flex;align-items:center;background:rgb(var(--tn-panel-rgb) / .97)}'+
    '#status{max-width:calc(100vw - min(40vw,520px) - 130px)!important}'+
    '#tn-search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--tn-text);font:18px system-ui,sans-serif;padding:14px 16px 14px 6px}'+
+   '#tn-search .tz{display:flex;align-items:center;gap:6px;flex-shrink:0;align-self:stretch;padding:0 14px;border-left:1px solid var(--tn-line,rgba(255,255,255,.1));cursor:pointer}#tn-search .tz b{font:600 14px system-ui,sans-serif;color:var(--tn-sub,#b9b6ae)}#tn-search .tz:active{opacity:.6}'+
    '#tn-search .i{padding-left:16px;flex-shrink:0}#tn-search .x{padding:0 14px;cursor:pointer;display:none;flex-shrink:0;align-items:center}'+
    '#tn-res{right:82px;top:76px;width:min(40vw,520px);padding:6px;display:none;max-height:56vh;overflow:auto}'+
    '#tn-res .r{display:flex;align-items:center;gap:12px;padding:14px 12px;border-radius:12px;cursor:pointer;font-size:17px}'+
@@ -65,7 +66,8 @@ TN.Nav.prototype.build=function(){
    'body.tn-routing #status,body.tn-routing #tn-search{display:none}body.tn-routing #rec{top:auto;bottom:228px;left:16px}body.tn-routing #trips{top:auto;bottom:228px;left:132px}';
   document.head.appendChild(st);
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
-  this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>');
+  this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>'+(TN.tesla?'<span class="tz" title="Sync with Tessy">'+TN.TESLA_T(20)+'<b>Sync</b></span>':''));
+  {const tz=this.box.querySelector('.tz');if(tz) tz.onclick=ev=>{ev.stopPropagation();this.closeSearch&&this.closeSearch();if(TN.tesla.connected()) TN.tesla.getTrip(this);else TN.tesla.signIn();};}
   this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dline"><div class="dist"></div><div class="lanes"></div></div><div class="ins"></div><div class="then"></div></div><div class="etabox"><div class="eta"></div><button class="dst"></button></div><div class="pb"><div class="car"></div></div>');
   this.endBtn=el('tn-end','','End route','button');
   this.stopBtn=el('tn-stopbtn','','+ Stop','button');this.stopBtn.onclick=()=>this.addStop();
@@ -141,7 +143,7 @@ TN.Nav.prototype.showStart=function(){
   if(this.addingStop) html+='<div class="r cancelstop" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel adding a stop<small>Back to your route</small></div></div>';
   /* the Tesla connection: "Get trip from Tessy" once signed in, otherwise "Connect your Tesla" */
   if(TN.tesla&&!this.setting&&!this.addingStop){const on=TN.tesla.connected();
-    html+='<div class="r tesla"><span><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 6.2c2.6 0 5.6.5 7.6 1.6l.6-1.5C17.9 5 15 4.4 12 4.4S6.1 5 3.8 6.3l.6 1.5C6.4 6.7 9.4 6.2 12 6.2zm0 2c-1.6 0-3.4.2-4.6.7l.4 1.1c.9-.3 2.1-.5 3.1-.5v10.3h2.2V9.5c1 0 2.2.2 3.1.5l.4-1.1c-1.2-.5-3-.7-4.6-.7z" fill="#e31937"/></svg></span><div>'+(on?'Get trip from Tessy':'Connect your Tesla')+'<small>'+(on?'The destination in Tessy’s navigation':'Sign in once to sync trips with Tessy')+'</small></div></div>';}
+    html+='<div class="r tesla"><span>'+TN.TESLA_T(22)+'</span><div>'+(on?'Get trip from Tessy':'Connect your Tesla')+'<small>'+(on?'The destination in Tessy’s navigation':'Sign in once to sync trips with Tessy')+'</small></div></div>';}
   if(this.setting) html+='<div class="r cancelset" style="color:var(--tn-danger)">'+TN.ICON('x',22,'#ff8a80')+'<div>Cancel<small>Keep '+(this.setting==='home'?'Home':'Work')+' as it is</small></div></div>';
   else for(const k of ['home','work']){const pl=P[k],lab=k==='home'?'Home':'Work',col=k==='home'?'#60a5fa':'#f59e0b';
     if(pl){const t=this.etaFor(k);items.push(pl);
