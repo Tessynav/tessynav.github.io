@@ -92,6 +92,7 @@ const D={
   'TURNS':'VIRAGES','NEXT TURNS':'PROCHAINS VIRAGES','Details':'Détails','Time':'Durée','Distance':'Distance','Arrival':'Arrivée','Traffic':'Circulation','normal':'normale',
   'Battery on arrival (Tesla)':'Batterie à l’arrivée (Tesla)','Charging stop':'Arrêt de recharge','After charging, tap Sync for the next leg':'Après la recharge, touchez Synchro pour la suite',
   'Synced from Tessy’s navigation':'Synchronisé depuis la navigation de Tessy','YOUR STOPS':'VOS ARRÊTS',
+  'RECENT':'RÉCENTS','FAVORITES':'FAVORIS','Edit':'Modifier','Done':'Terminé','Change':'Changer','Remove':'Retirer',
   'Language':'Langue','this car':'cette voiture','rainbow road':'route arc-en-ciel','Fun mode off':'Mode amusant désactivé',
   /* alerts */
   'School zone':'Zone scolaire','Railway crossing':'Passage à niveau','Speed camera':'Radar photo','Speed and red-light camera':'Radar photo et feu rouge',
