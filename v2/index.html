@@ -124,7 +124,9 @@ window.addEventListener('error',function(e){
 },true);
 (function(){
   const parse=h=>[...h.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
-  const bust=/[?&]bust=\d/.test(location.search)?String(Date.now()):'';
+  /* fresh copies, skipping the browser's saved files: after a safeguard reload (bust=), and whenever the page is
+     opened with ?r= (after an update, or by hand to refresh), so an old file saved under a new version name can't stay */
+  const bust=/[?&](bust|r)=\d/.test(location.search)?String(Date.now()):'';
   const localList=parse(document.getElementById('tn-files').innerHTML);
   const load=(base,list)=>{
     window.TN_FILES=list;window.TN_BASE=base;let i=0;
