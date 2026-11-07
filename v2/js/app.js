@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=91;
+TN.APPBUILD=92;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -428,7 +428,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       /* live traffic lines when browsing the map or looking at a route overview (not while following the car) */
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
       if(chargers) try{chargers.update();}catch(e){}
-      if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}   /* (tunnel mode: the tunnel you're in, and the view dims) */
+      if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}
+      {const cc=track.car,lv=track.last;TN.carOffRoad=!!(cc&&cc.x!=null&&!cc.snapped&&(!lv||(lv.v||0)<2.5));}   /* (not on a road, and slow: the x-ray bubble) */   /* (tunnel mode: the tunnel you're in, and the view dims) */
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
       if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);

@@ -36,7 +36,8 @@ TN.Scene.prototype.layer=function(){
         TN.CUTU.cutCam.value.set(0,0,-1).applyMatrix4(inv);
         S.updateSky(TN.CUTU.cutCam.value);
         const c=S.car3d;
-        if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=4.5;}
+        if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=4.5;
+          TN.CUTU.cutBub.value+=((TN.carOffRoad?24:0)-TN.CUTU.cutBub.value)*0.06;}   /* (the bubble grows and shrinks smoothly) */
         else TN.CUTU.cutR.value=0;
       }catch(e){}
       T.renderer.resetState();
@@ -201,12 +202,16 @@ TN.Scene.prototype.addSilhouette=function(body){ /* replaced by the see-through 
 /* ---------- see-through circle around the car (like Codriver) ----------
    Buildings and trees between the camera and the car fade out (fine dither) inside a cone from the camera to the car,
    so Tessy always stays solid and clear; outside the circle everything looks normal. */
-TN.CUTU={cutCam:{value:new THREE.Vector3()},cutCar:{value:new THREE.Vector3(0,-1e6,0)},cutR:{value:0}};
+TN.CUTU={cutCam:{value:new THREE.Vector3()},cutCar:{value:new THREE.Vector3(0,-1e6,0)},cutR:{value:0},cutBub:{value:0}};
 TN.CUTGLSL=[
-  'uniform vec3 cutCam;uniform vec3 cutCar;uniform float cutR;varying vec3 vCutW;',
+  'uniform vec3 cutCam;uniform vec3 cutCar;uniform float cutR;uniform float cutBub;varying vec3 vCutW;',
   /* how much of this point to fade (0 = keep, 1 = gone): a soft cone from the camera to the car */
   'float tnCutK(){',
   '  if(cutR<=0.0) return 0.0;',
+  '#ifndef TN_HIGH',
+  /* the x-ray bubble: the car isn't on a road (at home, in a garage): buildings around it fade away */
+  '  if(cutBub>0.5){float hb=length(vCutW.xz-cutCar.xz);if(hb<cutBub) return 1.0-smoothstep(cutBub*0.7,cutBub,hb);}',
+  '#endif',
   '#ifdef TN_HIGH',
   /* roads and bridges: only what is above the car (a bridge or overpass it drives under) */
   '  if(vCutW.y<cutCar.y+2.5) return 0.0;',
