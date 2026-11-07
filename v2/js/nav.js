@@ -31,7 +31,7 @@ TN.Nav.prototype.build=function(){
    '#tn-res .tile .tx{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:#ef4444;display:flex;align-items:center;justify-content:center}'+
    '#tn-search .tz{display:flex;align-items:center;gap:6px;flex-shrink:0;align-self:stretch;padding:0 14px;border-left:1px solid var(--tn-line,rgba(255,255,255,.1));cursor:pointer}#tn-search .tz b{font:600 14px system-ui,sans-serif;color:var(--tn-sub,#b9b6ae)}#tn-search .tz:active{opacity:.6}'+
    '#tn-search .i{padding-left:16px;flex-shrink:0}#tn-search .x{padding:0 14px;cursor:pointer;display:none;flex-shrink:0;align-items:center}'+
-   '#tn-res{right:82px;top:76px;width:min(40vw,520px);padding:6px;display:none;max-height:56vh;overflow:auto}'+
+   '#tn-res{right:82px;top:76px;width:min(40vw,520px);padding:6px;display:none;max-height:56vh;overflow:auto;z-index:9}#tn-search{z-index:9}'+   /* (above the Record / Trips buttons) */
    '#tn-res .r{display:flex;align-items:center;gap:12px;padding:14px 12px;border-radius:12px;cursor:pointer;font-size:17px}'+
    '#tn-res .r:active,#tn-res .r:hover{background:var(--tn-line)}#tn-res .r small{display:block;color:var(--tn-sub);font-size:13px;margin-top:2px}'+
    '#tn-res .d{margin-left:auto;color:var(--tn-sub);font-size:14px;white-space:nowrap}#tn-res .msg{padding:12px;color:var(--tn-sub)}'+

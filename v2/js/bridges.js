@@ -35,8 +35,13 @@ TN.Bridges.prototype.status=async function(b,dir){
   else s.tone='plain',s.txt='no traffic data';
   return s;
 };
+/* where you are: the car on its road, or else the GPS position (at home or in a lot the car isn't placed yet) */
+TN.Bridges.prototype.pos=function(){
+  const c=this.api.getCar&&this.api.getCar();if(c&&c.x!=null) return c;
+  const g=this.api.gps&&this.api.gps();return g&&g.x!=null?g:null;
+};
 TN.Bridges.prototype.near=function(){
-  const c=this.api.getCar&&this.api.getCar();if(!c||c.x==null||!TN.toLocal) return null;let best=null,bd=1e12;
+  const c=this.pos();if(!c||!TN.toLocal) return null;let best=null,bd=1e12;
   for(const b of TN.BRIDGES){const m=TN.toLocal(b.mid[1],b.mid[0]),d=Math.hypot(m[0]-c.x,m[1]-c.z);if(d<bd){bd=d;best=b;}}
   return bd<70000?{b:best,d:bd}:null;
 };
@@ -71,7 +76,7 @@ TN.Bridges.prototype.open=async function(){
   P.querySelector('.hd small').textContent='Updated now';
   /* Rocco: the best crossing toward the side of the closest bridge */
   /* (the closest crossing that is clear: comparing crossing times alone would favour short bridges far away) */
-  const dist=b=>{const c=this.api.getCar&&this.api.getCar();if(!c||c.x==null) return 0;const m=TN.toLocal(b.mid[1],b.mid[0]);return Math.hypot(m[0]-c.x,m[1]-c.z);};
+  const dist=b=>{const c=this.pos();if(!c) return 0;const m=TN.toLocal(b.mid[1],b.mid[0]);return Math.hypot(m[0]-c.x,m[1]-c.z);};
   const grp=near?near.b.g:'south',ok=sts.filter(s=>s.b.g===grp&&s.mins!=null&&s.tone==='green'&&s.delay<2).sort((a,b)=>dist(a.b)-dist(b.b))[0];
   if(ok&&!(TN.settings&&TN.settings.fun===false)&&TN.roccoSVG){
     const side=grp==='south'?(fr?(dir==='out'?'la Rive-Sud':'Montréal'):(dir==='out'?'the South Shore':'Montreal')):(fr?(dir==='out'?'Laval':'Montréal'):(dir==='out'?'Laval':'Montreal'));
