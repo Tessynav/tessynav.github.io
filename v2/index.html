@@ -85,7 +85,7 @@ window.TN_PROGRESS=function(){};
 <!-- the app's files (read by the loader below; also what the Version button compares) -->
 <template id="tn-files">
 <script src="js/roads.js?v=39"></script>
-<script src="js/i18n.js?v=7"></script>
+<script src="js/i18n.js?v=8"></script>
 <script src="js/rocco.js?v=1"></script>
 <script src="js/track.js?v=17"></script>
 <script src="js/scene.js?v=36"></script>
@@ -100,24 +100,35 @@ window.TN_PROGRESS=function(){};
 <script src="js/weather.js?v=2"></script>
 <script src="js/settings.js?v=26"></script>
 <script src="js/voice.js?v=2"></script>
-<script src="js/nav.js?v=53"></script>
+<script src="js/nav.js?v=54"></script>
 <script src="js/incidents.js?v=17"></script>
 <script src="js/chargers.js?v=2"></script>
-<script src="js/tesla.js?v=3"></script>
+<script src="js/tesla.js?v=4"></script>
 <script src="js/rec.js?v=4"></script>
-<script src="js/app.js?v=80"></script>
+<script src="js/app.js?v=81"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
    newest commit), so an upload is live within seconds instead of waiting for the website copy (up to 10 min).
    If that is slow (over 3.5 s) or fails, the website's own copy is used, exactly as before.
    ?local=1 in the address always uses the website copy. */
+/* safeguard: if one of the app's files comes back as a web page instead of code (a broken saved copy, or a file
+   caught while GitHub was still publishing it), reload once with fresh copies that skip the browser's saved files */
+window.addEventListener('error',function(e){
+  try{const m=String(e&&e.message||''),f=String(e&&e.filename||'');
+    if(!/Unexpected token '<'|expected expression, got '<'|Unexpected token <|Syntax error/i.test(m)) return;
+    if(/^https?:/.test(f)&&!/\/js\/[a-z0-9]+\.js/.test(f)) return;   /* (another site's file: not ours to fix) */
+    if(sessionStorage.getItem('tn2_bust')) return;sessionStorage.setItem('tn2_bust','1');
+    location.replace(location.pathname+'?local=1&bust='+Date.now());}catch(x){}
+},true);
 (function(){
   const parse=h=>[...h.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
+  const bust=/[?&]bust=\d/.test(location.search)?String(Date.now()):'';
   const localList=parse(document.getElementById('tn-files').innerHTML);
   const load=(base,list)=>{
     window.TN_FILES=list;window.TN_BASE=base;let i=0;
-    const next=()=>{if(i>=list.length) return;const s=document.createElement('script');s.src=base+list[i++];s.async=false;
+    const next=()=>{if(i>=list.length){setTimeout(()=>{try{sessionStorage.removeItem('tn2_bust');}catch(e){}},8000);return;}
+      const s=document.createElement('script');const f=list[i++];s.src=base+f+(bust?(f.indexOf('?')>=0?'&':'?')+'b='+bust:'');s.async=false;
       s.onload=()=>{try{window.TN_PROGRESS(10+60*i/list.length,'Loading the new version…');}catch(e){}next();};
       s.onerror=()=>{if(base){location.replace(location.pathname+'?local=1&r='+Date.now());}else next();};
       document.body.appendChild(s);};
