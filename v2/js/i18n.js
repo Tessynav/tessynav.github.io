@@ -82,6 +82,7 @@ const D={
   'Superchargers on the map':'Superchargeurs sur la carte','Tap one for its stalls and to go there':'Touchez-en un pour ses bornes et pour y aller',
   'Other fast chargers':'Autres bornes rapides','FLO, Circuit électrique, Electrify Canada… (adapter needed)':'FLO, Circuit électrique, Electrify Canada… (adaptateur requis)',
   'Tesla Supercharger':'Superchargeur Tesla','Fast charger':'Borne rapide','Add as a stop':'Ajouter comme arrêt',
+  'Uploaded! Trip name:':'Envoyé! Nom du trajet :','Trip name:':'Nom du trajet :','Upload failed:':'Échec de l’envoi :','Copied:':'Copié :',
   'Language':'Langue','this car':'cette voiture','rainbow road':'route arc-en-ciel','Fun mode off':'Mode amusant désactivé',
   /* alerts */
   'School zone':'Zone scolaire','Railway crossing':'Passage à niveau','Speed camera':'Radar photo','Speed and red-light camera':'Radar photo et feu rouge',

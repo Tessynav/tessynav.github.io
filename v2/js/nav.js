@@ -879,7 +879,22 @@ TN.Nav.prototype.turnWeight=function(){
     const d=st.at-s;if(d>70||d<-50) continue;
     const k=d>=0?(d<=30?1:(70-d)/40):(d>=-25?1:(50+d)/25);const sm=k*k*(3-2*k);
     if(sm>w) w=sm;}
+  /* also wherever the route line itself curves, with or without an instruction: loop ramps, long highway curves,
+     curved bridge approaches (an instruction marks only where they start) */
+  if(w<1){const c=this.curveAt(s);if(c>w) w=c;}
   return w;
+};
+/* how curved the route is around distance s: the change of direction between 25 m before and 25 m after
+   (0 below 12°, 1 from 25°, smooth in between) */
+TN.Nav.prototype.curveAt=function(s){
+  const R=this.route;if(!R||!R.cum||R.pts.length<3) return 0;
+  const at=d=>{d=Math.max(0,Math.min(R.L||R.cum[R.cum.length-1],d));let lo=0,hi=R.cum.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(R.cum[m]<=d) lo=m;else hi=m;}
+    const a=R.pts[lo],b=R.pts[hi],t=(d-R.cum[lo])/((R.cum[hi]-R.cum[lo])||1);return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];};
+  const p0=at(s-25),p1=at(s),p2=at(s+25);
+  const h1=Math.atan2(p1[0]-p0[0],-(p1[1]-p0[1])),h2=Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]));
+  let dh=Math.abs(h2-h1)*180/Math.PI;if(dh>180) dh=360-dh;
+  if(Math.hypot(p1[0]-p0[0],p1[1]-p0[1])<5||Math.hypot(p2[0]-p1[0],p2[1]-p1[1])<5) return 0;
+  const k=Math.max(0,Math.min(1,(dh-12)/13));return k*k*(3-2*k);
 };
 TN.Nav.prototype.update=function(dt){
   if(this.mesh){const rb=!!(TN.settings&&TN.settings.rainbow);

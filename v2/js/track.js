@@ -35,7 +35,9 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
     /* the car's own estimate while the GPS signal is weak (under overpasses, in tunnels) is still good: use it,
        with less trust, as long as we had a precise fix recently */
     if(!this.goodT||t-this.goodT>30000||speed==null){this.rough={t:t,acc:acc};return this.last;}
-    acc=15;
+    /* (trusted almost like a good fix for the first seconds: on a loop ramp under an overpass it follows the curve
+       well, and the old 15 m made the car lag outside the loop; less and less after that, for long tunnels) */
+    const lost=t-this.goodT;acc=lost<10000?4:lost<20000?8:15;
   }else this.goodT=t;
   this.rough=null;
   if(!this.kf||t-this.kfT>5000){
@@ -61,14 +63,23 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
   }
   const fx=this.kf.x.p,fz=this.kf.z.p,v=Math.hypot(this.kf.x.v,this.kf.z.v);
   const hPrev=this.hd,tPrev=this.hdT;
-  if(v>1.5) this.hd=(Math.atan2(this.kf.x.v,-this.kf.z.v)/TN.R+360)%360;
-  else if(heading!=null&&!isNaN(heading)&&sp>1) this.hd=heading;
+  let hNew=null;
+  if(v>1.5) hNew=(Math.atan2(this.kf.x.v,-this.kf.z.v)/TN.R+360)%360;
+  else if(heading!=null&&!isNaN(heading)&&sp>1) hNew=heading;
+  /* reversing (parallel parking, backing out): at low speed the movement suddenly points the other way from the
+     direction you were driving. The car keeps facing forward (otherwise it turned around on screen and, on a
+     two-way street, was put in the left half, as if parked on the wrong side) */
+  const spd=sp!=null?sp:v;
+  if(hNew!=null){
+    if(this.fwd!=null&&spd<3&&TN.angDiff(hNew,this.fwd)>135) this.rev=true;
+    else if(this.fwd==null||TN.angDiff(hNew,this.fwd)<60||spd>=3) this.rev=false;
+    if(!this.rev){this.hd=hNew;if(spd>1.5) this.fwd=hNew;}}
   /* how fast the direction is turning (degrees per second, smoothed): lets the car continue along the curve */
   this.hdT=t;
   if(hPrev!=null&&this.hd!=null&&tPrev&&t>tPrev&&v>1.5){const r=(((this.hd-hPrev+540)%360)-180)/((t-tPrev)/1000);
     this.hdRate=(this.hdRate||0)+(Math.max(-60,Math.min(60,r))-(this.hdRate||0))*0.5;}
   else if(v<=1.5) this.hdRate=0;
-  this.last={t:t,x:fx,z:fz,v:sp!=null?sp:v,acc:acc||5,rx:x,rz:z,hd:(heading!=null&&!isNaN(heading))?heading:null};
+  this.last={t:t,x:fx,z:fz,v:sp!=null?sp:v,acc:acc||5,rx:x,rz:z,hd:this.rev?this.hd:(heading!=null&&!isNaN(heading))?heading:null,rev:!!this.rev};
   this.match();
   return this.last;
 };
@@ -346,11 +357,12 @@ TN.Track.prototype.frame=function(now,dt){
     }
   }
   /* along the road: own speed, softly corrected toward the GPS (no running past, no rolling back) */
-  car.v+=(L.v-car.v)*(1-Math.exp(-dt*(L.v<car.v?6:2.5)));
+  const lv=L.rev?-L.v:L.v;          /* (backwards while reversing) */
+  car.v+=(lv-car.v)*(1-Math.exp(-dt*(lv<car.v?6:2.5)));
   let err=(sG-car.s)*dir;          /* + = GPS ahead of the car */
   if(Math.abs(err)>40){car.s=sG;err=0;car.cv=0;}
   const wa=2.0;car.cv+=(wa*wa*err-2*wa*car.cv)*dt;
-  let ds=(car.v+car.cv)*dt;if(ds<0&&err>-4) ds=0;
+  let ds=(car.v+car.cv)*dt;if(ds<0&&err>-4&&!L.rev) ds=0;
   if(L.v<0.3&&err<0) ds=0;          /* stopped: never roll back */
   car.s+=dir*ds;
   /* lane: smoothed GPS across the road, centred in its lane, with hysteresis */

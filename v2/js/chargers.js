@@ -40,7 +40,9 @@ TN.Chargers.prototype.wanted=function(){
   for(const s of this.list){
     if(s.kind==='sc'?!on:!dc) continue;
     const d=km(s.ll,[c.lng,c.lat]);s._d=d;
-    if(follow){if(d>15) continue;}
+    /* (while driving only close ones: in the low street view a far charger sits on the horizon at full size,
+       looking as if it were right there, and seems to follow you) */
+    if(follow){if(d>1.5) continue;}
     else if(b&&b.contains&&!b.contains(s.ll)) continue;
     out.push(s);}
   out.sort((a,b2)=>a._d-b2._d);
@@ -52,10 +54,21 @@ TN.Chargers.prototype.draw=function(force){
   const want=this.wanted(),keep=new Set(want.map(s=>s.id));
   for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
   for(const s of want){if(this.markers.has(s.id)) continue;
-    const el=document.createElement('div');el.className='tn-chg'+(s.kind==='dc'?' dc':'');
-    el.innerHTML=TN.CHG_SVG+(s.stalls?'<b>'+s.stalls+'</b>':'');el.title=s.name;
+    /* (an outer box the map moves, and the pin inside it, which shrinks with distance while driving) */
+    const el=document.createElement('div'),pin=document.createElement('div');pin.className='tn-chg'+(s.kind==='dc'?' dc':'');
+    pin.innerHTML=TN.CHG_SVG+(s.stalls?'<b>'+s.stalls+'</b>':'');el.appendChild(pin);el.title=s.name;
     el.onclick=e=>{e.stopPropagation();this.show(s);};
-    this.markers.set(s.id,new maplibregl.Marker({element:el}).setLngLat(s.ll).addTo(this.api.map));}
+    const mk=new maplibregl.Marker({element:el}).setLngLat(s.ll).addTo(this.api.map);mk.pin=pin;mk.site=s;
+    this.markers.set(s.id,mk);}
+  this.sizes(true);
+};
+/* while driving, pins shrink with distance: full size within 250 m, about half size at 1.5 km */
+TN.Chargers.prototype.sizes=function(force){
+  const now=Date.now();if(!force&&now-(this.szT||0)<500) return;this.szT=now;
+  const follow=this.api.following?this.api.following():false;
+  for(const mk of this.markers.values()){if(!mk.pin) continue;
+    let k=1;if(follow){const d=this.distKm(mk.site);if(d!=null) k=Math.max(0.5,Math.min(1,1-(d-0.25)/1.25*0.5));}
+    const tf=k>0.99?'':'scale('+k.toFixed(2)+')';if(mk.pin.style.transform!==tf){mk.pin.style.transform=tf;mk.pin.style.transformOrigin='50% 100%';}}
 };
 TN.Chargers.prototype.distKm=function(s){
   const c=this.api.getCar&&this.api.getCar();if(!c||c.x==null||!TN.toLocal) return null;
@@ -76,5 +89,5 @@ TN.Chargers.prototype.show=function(s){
     const it={name:s.name,sub:s.kind==='sc'?'Tesla Supercharger':(s.net||''),lng:s.ll[0],lat:s.ll[1],charger:s.id};
     if(routing){nav.stops.push(it);nav.stopPins&&nav.stopPins();nav.plan(true);}else nav.pick(it);};
 };
-TN.Chargers.prototype.update=function(){this.draw(false);};
+TN.Chargers.prototype.update=function(){this.draw(false);this.sizes(false);};
 TN.Chargers.prototype.clear=function(){for(const m of this.markers.values()){try{m.remove();}catch(e){}}this.markers.clear();this.t=0;};
