@@ -666,12 +666,14 @@ TN.Nav.prototype.overview=function(){
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
   this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+(TN.avoidList().length?' \u00b7 avoiding '+TN.avoidList().map(x=>({toll:'tolls',motorway:'highways',ferry:'ferries',unpaved:'unpaved roads'})[x]).join(', '):'')+'</small>'+
-    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="det">Details</button><button class="cancel">Cancel</button></div>';
+    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="det">Details</button>'+(TN.tesla&&TN.tesla.connected()&&!(this.dest&&this.dest.fromTesla)?'<button class="tsend">'+TN.TESLA_T(16)+' Send to Tessy</button>':'')+'<button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
   this.ov.querySelector('.save').onclick=ev=>{ev.stopPropagation();this.saveMenu(ev.currentTarget);};
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
   this.ov.querySelector('.det').onclick=ev=>{ev.stopPropagation();this.details();};
+  {const ts=this.ov.querySelector('.tsend');if(ts) ts.onclick=async ev=>{ev.stopPropagation();ts.disabled=true;const r=await TN.tesla.send(this.dest,this);ts.disabled=false;
+    this.note('tesla send',{ok:!!(r&&r.ok),why:r&&r.why,detail:r&&r.detail?String(r.detail).slice(0,120):undefined},true);};}
   {const bt=this.ov.querySelector('.btns'),rl=this.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
   this.tripButtons(this.ov);
 };
