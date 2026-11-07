@@ -111,7 +111,7 @@ TN.Trees.prototype.build=function(ck){
   const cones=nc?new THREE.InstancedMesh(this.geo.cone,this.mats.cone,nc):null;
   const trunks=new THREE.InstancedMesh(this.geo.trunk,this.mats.trunk,n);
   const m=new THREE.Matrix4(),q=new THREE.Quaternion(),sc=new THREE.Vector3(),pos=new THREE.Vector3(),up=new THREE.Vector3(0,1,0);
-  let id=0,ic=0;
+  let id=0,ic=0;const shade=[];
   for(let i=0;i<n;i++){
     const x=keep[i*4],z=keep[i*4+1],s=keep[i*4+2],seed=keep[i*4+3];
     q.setFromAxisAngle(up,(seed%360)*TN.R);
@@ -121,20 +121,23 @@ TN.Trees.prototype.build=function(ck){
       pos.set(x,0.8*s,z);sc.set(r,h,r);m.compose(pos,q,sc);cones.setMatrixAt(ic,m);
       cones.setColorAt(ic,this.conePalette[seed%this.conePalette.length]);ic++;
       pos.set(x,0,z);sc.set(s,1.2*s,s);m.compose(pos,q,sc);trunks.setMatrixAt(i,m);
+      shade.push({x:x,z:z,r:r*0.9,th:3.5*s});
     }else{
       const r=(bare?1.5:2.2)*s,h=3.2*s;
       pos.set(x,h,z);sc.set(r,r*(bare?1.2:1.05),r);m.compose(pos,q,sc);crowns.setMatrixAt(id,m);
       crowns.setColorAt(id,this.palette[seed%this.palette.length]);id++;
       pos.set(x,0,z);sc.set(s,h+0.3,s);m.compose(pos,q,sc);trunks.setMatrixAt(i,m);
+      shade.push({x:x,z:z,r:r*(bare?0.7:1.0),th:h});
     }
   }
   const grp=new THREE.Group();
   for(const o of [trunks,crowns,cones]) if(o){o.frustumCulled=false;grp.add(o);}
+  if(TN.shadows&&TN.shadows.treeMesh){try{const sh=TN.shadows.treeMesh(shade);if(sh) grp.add(sh);}catch(e){}}   /* (their shadows) */
   return grp;
 };
 TN.Trees.prototype.free=function(ck){
   const e=this.cells.get(ck);if(!e) return;
-  if(e.grp){this.scene.three.scene.remove(e.grp);for(const c of e.grp.children) c.dispose&&c.dispose();}
+  if(e.grp){this.scene.three.scene.remove(e.grp);for(const c of e.grp.children){c.dispose&&c.dispose();if(c.tnOwnGeo&&c.geometry) c.geometry.dispose();if(TN.shadows) TN.shadows.forget(c);}}
   this.cells.delete(ck);
 };
 TN.Trees.prototype.update=function(lng,lat,fps){

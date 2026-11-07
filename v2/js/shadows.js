@@ -55,6 +55,28 @@ TN.Shadows.prototype.mesh=function(S){
   return m;
 };
 TN.Shadows.prototype.forget=function(m){if(this.meshes) this.meshes.delete(m);};
+/* tree shadows: a soft disc under each crown, moved away from the sun by the crown's height and stretched along the
+   sun's direction (a round crown's shadow at a low sun is a long oval); one instanced batch per tree area */
+TN.Shadows.prototype.treeMaterial=function(){
+  if(this.tmat) return this.tmat;
+  this.tmat=new THREE.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-6,
+    vertexShader:['attribute float th;uniform vec2 sun;varying float vE;',
+      'void main(){vec4 w=instanceMatrix*vec4(position,1.0);vec2 c=(instanceMatrix*vec4(0.0,0.0,0.0,1.0)).xz;vec2 d=w.xz-c;',
+      /* one long oval from the trunk to where the crown's shadow falls: centred halfway, stretched to cover both */
+      '  float L=length(sun),r=max(0.3,length(instanceMatrix[0].xyz));if(L>0.001){vec2 sd=sun/L;d+=sd*dot(d,sd)*(0.45*L*th/r);}',
+      '  w.xz=c+d+sun*th*0.5;w.y=0.23;vE=length(position.xz);gl_Position=projectionMatrix*viewMatrix*w;}'].join('\n'),
+    fragmentShader:['uniform float str;varying float vE;','void main(){float a=0.20*str*(1.0-smoothstep(0.6,1.0,vE));gl_FragColor=vec4(0.04,0.06,0.10,a);}'].join('\n')});
+  return this.tmat;
+};
+TN.Shadows.prototype.treeMesh=function(list){
+  if(!list||!list.length) return null;
+  if(!this.discGeo){const g=new THREE.CircleGeometry(1,14);g.rotateX(-Math.PI/2);this.discGeo=g;}
+  const m=new THREE.InstancedMesh(this.discGeo,this.treeMaterial(),list.length),M=new THREE.Matrix4(),th=new Float32Array(list.length);
+  for(let i=0;i<list.length;i++){const t=list[i];M.makeScale(t.r,1,t.r);M.setPosition(t.x,0,t.z);m.setMatrixAt(i,M);th[i]=t.th;}
+  const g=this.discGeo.clone();g.setAttribute('th',new THREE.InstancedBufferAttribute(th,1));m.geometry=g;m.tnOwnGeo=true;   /* (each area its own copy) */
+  m.frustumCulled=false;m.renderOrder=1;m.visible=this.on&&this.strength>0.08;(this.meshes||(this.meshes=new Set())).add(m);
+  return m;
+};
 /* the car's two shadows: a soft blob texture */
 TN.Shadows.prototype.blobTex=function(){
   if(this.tex) return this.tex;
