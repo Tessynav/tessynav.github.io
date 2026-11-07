@@ -952,7 +952,10 @@ TN.Nav.prototype.update=function(dt){
     if(rb){const m=this.rainbowMat();if(this.mesh.material!==m) this.mesh.material=m;m.uniforms.shift.value=(m.uniforms.shift.value+dt*0.35)%1;m.uniforms.op.value=this.mat?this.mat.opacity:0.85;}
     else if(this.mat&&this.mesh.material!==this.mat) this.mesh.material=this.mat;}
   if(!this.route||!this.active) return;
-  const R=this.route,c=this.api.getCar();if(!c||c.x==null) return;
+  const R=this.route,c=this.api.getCar();
+  /* (the car not on a road yet: parked in a garage or a lot, or a rough location on a computer): the bar shows the
+     route's first instruction from its start, instead of staying empty, until the car is placed */
+  if(!c||c.x==null){this.idleBar();return;}
   /* where the car is along the route: from the real GPS position when there is one (the matched car can
      briefly sit on a wrong street), searching a little ahead of the last place */
   const G=this.api.gps?this.api.gps():null,px=G&&G.x!=null?G.x:c.x,pz=G&&G.x!=null?G.z:c.z;
@@ -1044,6 +1047,18 @@ TN.Nav.prototype.update=function(dt){
   if(away) this.offT+=dt;else this.offT=Math.max(0,this.offT-dt*2);
   const need=off>10&&hoff>50?1.5:2;
   if(this.offT>need&&!this.rerouting&&Date.now()-this.lastReroute>5000){this.reroute();}
+};
+/* the bar before the car is placed: the first turn from the route's start */
+TN.Nav.prototype.idleBar=function(){
+  const R=this.route;if(!R||!this.bar) return;
+  const now=Date.now();if(now-(this.idleT||0)<1000) return;this.idleT=now;
+  let nx=null;for(const st of R.steps){if(st.type!=='depart'&&st.at>8){nx=st;break;}}
+  if(!nx) nx=R.steps[R.steps.length-1];if(!nx) return;
+  const I=this.instr(nx);
+  if(this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'currentColor');this.lastIcon=I.a;}
+  const dEl=this.bar.querySelector('.dist'),iEl=this.bar.querySelector('.ins'),t=fmtDist(nx.at),txt=I.t+(I.where?' \u00b7 '+I.where:'');
+  if(dEl.textContent!==t) dEl.textContent=t;
+  if(iEl.textContent!==txt) iEl.textContent=txt;
 };
 /* ---------- Rocco on trips: one line about this trip (overview and details), and short bubbles while driving: a greeting
    on Go, once if traffic gets much worse, and on arrival. Text only (the voice stays for turns and alerts); hidden when
