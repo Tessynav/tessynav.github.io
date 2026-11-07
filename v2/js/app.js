@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=84;
+TN.APPBUILD=85;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -266,7 +266,11 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(now.join('|')!==mine.join('|')){
         const changed=now.filter(x=>mine.indexOf(x)<0).map(label).join(', ');
         panel('Update available: <b>'+changed+'</b><br><br>Running now: '+mine.map(label).join(', '),[['Update now',()=>update(now)],['Later',hide]]);
-      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(64)+'</div>':'')+'TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><small>(app.js file inside: build '+TN.APPBUILD+')</small><br><br>You have the latest version.',[['Close',hide]]);
+      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(64)+'</div>':'')+'TessyNav '+TN.VERSION+'<br><br>'+mine.map(label).join(', ')+'<br><small>(app.js file inside: build '+TN.APPBUILD+')'+(function(){try{   /* (diagnostic: what the bridges card knows) */
+        if(!TN.Bridges) return '<br>Bridges: file not loaded';if(!TN.bridges) return '<br>Bridges: not started';
+        const c=track.car,l=track.last,f=v=>v==null?'none':(Number.isFinite(v)?Math.round(v):String(v));
+        const n=TN.bridges.near();return '<br>Bridges: car '+(c?f(c.x)+','+f(c.z):'none')+' · gps '+(l?f(l.x)+','+f(l.z):'none')+' · closest '+(n?n.b.name+' '+Math.round(n.d/1000)+' km':'none');
+      }catch(e){return '<br>Bridges error: '+e.message;}})()+'</small><br><br>You have the latest version.',[['Close',hide]]);
     }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
   /* the app checks for updates by itself (20 s after opening, then every 10 minutes); a found update shows a dot on
