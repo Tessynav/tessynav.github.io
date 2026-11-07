@@ -23,6 +23,10 @@ TN.Feedback.prototype.err=function(msg,where){this.errs.push([Date.now(),String(
 TN.Feedback.prototype.button=function(){
   const st=document.createElement('style');
   st.textContent='#tn-fbbtn{right:16px;top:78px;width:50px;height:50px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:16px}'+
+    /* phones: the search bar spans the width, so the button joins the Record / Trips row; during a route it moves
+       down the right side, clear of the instruction bar */
+    '@media (max-width:760px){#tn-fbbtn{top:132px;width:44px;height:44px;border-radius:14px}}'+
+    'body.tn-routing #tn-fbbtn{top:auto;bottom:228px}'+
     '#tn-fb{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;width:min(92vw,520px);max-height:86vh;overflow:auto;display:none;background:rgb(var(--tn-panel-rgb,43 45 49)/.98);color:var(--tn-text,#f3f1ec);border-radius:18px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif}'+
     '#tn-fb h3{margin:0 0 4px;font-size:19px}#tn-fb .s{color:var(--tn-sub,#b9b6ae);font-size:13px;margin-bottom:12px}'+
     '#tn-fb .k{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}#tn-fb .k button{border:0;border-radius:11px;padding:11px 8px;font:600 14px system-ui,sans-serif;background:rgba(255,255,255,.08);color:var(--tn-text,#f3f1ec)}'+
