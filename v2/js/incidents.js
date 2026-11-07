@@ -140,7 +140,24 @@ TN.Incidents.prototype.fetch=async function(lng,lat){
     if(this.api.note) this.api.note('incidents',{n:out.length});
   }catch(e){this.err='net';}
 };
-TN.Incidents.prototype.merge=function(){this.list=this.tt.concat(this.reports.list,(TN.settings&&TN.settings.cameras===false)?[]:(this.cams||[]),(TN.settings&&TN.settings.rail===false)?[]:(this.rails||[]),(TN.settings&&TN.settings.schools===false)?[]:(this.schools||[]));this.drawMarkers();};
+TN.Incidents.prototype.mtqList=function(){
+  if(!this.mtqAll||(TN.settings&&TN.settings.incidents===false)) return [];
+  const c=this.api.getCar&&this.api.getCar(),G={closed:1,works:1,lane:1,accident:2,hazard:3};
+  return this.mtqAll.filter(m=>{
+    if(c&&c.x!=null&&!m.pts.some(p=>Math.hypot(p[0]-c.x,p[1]-c.z)<40000)) return false;   /* (within 40 km) */
+    return !this.tt.some(t=>(G[t.kind]||9)===(G[m.kind]||8)&&t.pts.some(q=>m.pts.some(p=>Math.hypot(p[0]-q[0],p[1]-q[1])<80)));});
+};
+TN.Incidents.prototype.merge=function(){this.list=this.tt.concat(this.mtqList(),this.reports.list,(TN.settings&&TN.settings.cameras===false)?[]:(this.cams||[]),(TN.settings&&TN.settings.rail===false)?[]:(this.rails||[]),(TN.settings&&TN.settings.schools===false)?[]:(this.schools||[]));this.drawMarkers();};
+/* Transports Québec (Québec 511): warnings and road works active now, published every 15 minutes by a GitHub job */
+TN.MTQ_URL='https://raw.githubusercontent.com/Tessynav/tessynav-roads/live/mtq.json';
+TN.Incidents.prototype.loadMtq=function(car){
+  if(this.mtqLoading) return;this.mtqLoading=true;this.mtqT=Date.now();
+  fetch(TN.MTQ_URL+'?t='+Math.floor(Date.now()/120000)).then(r=>r.ok?r.json():null).then(j=>{this.mtqLoading=false;if(!j||!j.e) return;
+    const H={N:0,E:90,S:180,W:270},out=[];
+    for(const e of j.e){const f=e.p;if(!f||f.length<2) continue;const pts=[];for(let i=0;i<f.length;i+=2) pts.push(TN.toLocal(f[i],f[i+1]));
+      out.push({id:'mtq'+e.id,kind:e.k,pts:pts,ll:[f[0],f[1]],desc:e.d||'',from:'',to:'',road:'Transports Qu\u00e9bec',mtq:true,dirH:H[e.dir]!=null?H[e.dir]:null});}
+    this.mtqAll=out;this.merge();}).catch(()=>{this.mtqLoading=false;});
+};
 TN.schoolTime=function(d){d=d||new Date();const m=d.getMonth(),wd=d.getDay(),h=d.getHours()+d.getMinutes()/60;return m!==6&&m!==7&&wd>=1&&wd<=5&&h>=7&&h<17;};
 /* schools within about 1.5 km (school hours only): their grounds' outline, as points every ~15 m */
 TN.Incidents.prototype.findSchools=function(car){
@@ -245,13 +262,14 @@ TN.Incidents.prototype.ahead=function(car,moderate){
     if(it.kind==='jam'&&it.pts.some(p=>Math.hypot(p[0]-car.x,p[1]-car.z)<40)) continue;   /* (already in that jam) */
     /* (quick skip: nothing of it near the way ahead) */
     const p0=it.pts[0];if(Math.hypot(p0[0]-car.x,p0[1]-car.z)>maxD+3000) continue;
-    const follows=it.pts.length>=2&&!it.rail&&!it.cam&&!it.user&&!it.school;
+    if(it.mtq&&it.dirH!=null&&Math.abs((((car.hd||0)-it.dirH)+540)%360-180)>80) continue;   /* (the other direction) */
+    const follows=it.pts.length>=2&&!it.rail&&!it.cam&&!it.user&&!it.school&&!it.mtq;
     let d=null;
     for(let k=0;k<it.pts.length;k++){const p=it.pts[k];
       let ix=0,iz=0;if(follows){const q=it.pts[Math.min(it.pts.length-1,k+1)],o=it.pts[Math.max(0,k-1)];ix=q[0]-o[0];iz=q[1]-o[1];const l=Math.hypot(ix,iz)||1;ix/=l;iz/=l;}
       for(let i=0;i<P.length-1;i++){const a=P[i],b=P[i+1],sx=b[0]-a[0],sz=b[1]-a[1],l2=sx*sx+sz*sz||1;
         const u=Math.max(0,Math.min(1,((p[0]-a[0])*sx+(p[1]-a[1])*sz)/l2)),qx=a[0]+sx*u,qz=a[1]+sz*u;
-        if(Math.hypot(p[0]-qx,p[1]-qz)>(it.school?(it.point?60:45):12)) continue;
+        if(Math.hypot(p[0]-qx,p[1]-qz)>(it.school?(it.point?60:45):it.mtq?30:12)) continue;
         if(follows){const l=Math.sqrt(l2);if((ix*sx+iz*sz)/l<0.7) continue;}   /* (cross street or the other direction) */
         const dd=C[i]+(C[i+1]-C[i])*u;
         if(it.school&&dd<25) continue;   /* (a school you're already beside or past doesn't alert) */
@@ -301,6 +319,7 @@ TN.Incidents.prototype.update=function(car,lng,lat){
   if(now-this.lastFetch>120000||moved>3000){this.lastFetch=now;this.lastPos=[lng,lat];this.fetch(lng,lat);}
   if(!this.cams&&!this.camsLoading&&now-(this.camsTried||0)>300000) this.loadCams();
   if(now-(this.railT||0)>2000){this.railT=now;this.findRails(car);this.findSchools(car);}
+  if(now-(this.mtqT||0)>300000) this.loadMtq(car);
   if(now-this.repFetch>60000){this.repFetch=now;this.reports.fetch(lng,lat).then(()=>this.merge());}
   if(!car||car.x==null) return;
   /* a tapped badge shows its card for 8 s; otherwise the next incident ahead within reach */
