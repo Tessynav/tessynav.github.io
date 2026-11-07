@@ -143,7 +143,7 @@ TN.esc=t=>String(t==null?'':t).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':
 TN.distLL=(a,b)=>{const R=6371000,p=Math.PI/180,dLa=(b[1]-a[1])*p,dLo=(b[0]-a[0])*p,s=Math.sin(dLa/2)**2+Math.cos(a[1]*p)*Math.cos(b[1]*p)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(s));};
 TN.Nav.prototype.showRecent=function(){this.showStart();};
 TN.Nav.prototype.savePlaces=function(){try{localStorage.setItem('tn2_places',JSON.stringify(this.places));}catch(e){}};
-TN.Nav.prototype.slim=it=>({name:it.name,sub:it.sub||'',lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat});
+TN.Nav.prototype.slim=it=>({name:it.name,sub:it.sub||'',lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat,ub:it.ub});
 /* the list before typing: Home and Work (with the time to get there now), Favorites, Recent */
 TN.Nav.prototype.showStart=function(){
   const R=this.res,P=this.places,h=this.here(),items=[];let html='';
@@ -224,7 +224,8 @@ TN.Nav.prototype.pick=async function(it){
     this.sess=null;   /* a new search session next time */
     if(it.lng==null){this.ov.style.display='flex';this.ov.innerHTML='<div>Could not open that place</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};return;}
   }
-  this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
+  {const old=this.recent.find(r=>r.name===it.name&&Math.abs(r.lat-it.lat)<1e-4);if(old&&old.ub&&it.ub==null) it.ub=true;}   /* (your choice for this place, remembered) */
+  this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat,ub:it.ub}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
   try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
   if(this.setting){const k=this.setting;this.setting=null;this.places[k]=this.slim(it);this.savePlaces();
     this.input.value='';this.input.placeholder='Search a place or address';this.syncX();this.res.style.display='none';this.input.blur();
@@ -401,7 +402,7 @@ TN.Nav.prototype.traffic=function(show){
 TN.avoidList=function(){const S=TN.settings||{},a=[];if(S.avoidToll) a.push('toll');if(S.avoidHwy) a.push('motorway');if(S.avoidFerry) a.push('ferry');if(S.avoidUnpaved) a.push('unpaved');return a;};
 TN.avoidParam=function(){const a=TN.avoidList();return a.length?'&exclude='+a.join(','):'';};
 /* where to route to: the place's routable point when known, otherwise the place itself */
-TN.routeTo=p=>p.rlng!=null?[p.rlng,p.rlat]:[p.lng,p.lat];
+TN.routeTo=p=>p.rlng!=null&&!p.ub?[p.rlng,p.rlat]:[p.lng,p.lat];   /* (ub: you chose the building over the car access point) */
 TN.llDist=(a,b)=>{const k=111320,dx=(a[0]-b[0])*k*Math.cos(a[1]*Math.PI/180),dy=(a[1]-b[1])*k;return Math.hypot(dx,dy);};
 /* does this route end badly? arriving on a highway, or passing close to the destination, going away and coming back */
 TN.badEnding=function(rt,to){
@@ -675,6 +676,15 @@ TN.Nav.prototype.overview=function(){
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
   this.ov.querySelector('.det').onclick=ev=>{ev.stopPropagation();this.details();};
+  /* the car access point (Mapbox's "where cars reach this place") far from the building: offer the building instead */
+  {const d=this.dest;if(d&&d.rlng!=null&&TN.distLL([d.lng,d.lat],[d.rlng,d.rlat])>50&&!this.stops.length){
+    const bt=this.ov.querySelector('.btns'),fr=TN.LANG==='fr';
+    const msg=d.ub?(fr?'Vers le bâtiment.':'Going to the building.'):(fr?'Vers l’accès voiture (stationnement).':'Going to the car access point (parking).');
+    const sw=d.ub?(fr?'Aller à l’accès voiture':'Go to the car access point'):(fr?'Aller au bâtiment':'Go to the building instead');
+    if(bt){bt.insertAdjacentHTML('beforebegin','<div class="tn-acc notr" style="display:flex;align-items:center;gap:10px;margin:8px 0;font-size:14px;color:var(--tn-sub,#b9b6ae)"><span style="flex:1">'+msg+'</span><button class="acc" style="border:0;border-radius:9px;padding:7px 11px;font:600 13px system-ui,sans-serif;background:var(--tn-btn,#45474d);color:var(--tn-text,#f3f1ec)">'+sw+'</button></div>');
+      this.ov.querySelector('.tn-acc .acc').onclick=ev=>{ev.stopPropagation();d.ub=!d.ub;
+        const r=this.recent.find(x=>x.name===d.name&&Math.abs(x.lat-d.lat)<1e-4);if(r){r.ub=d.ub;try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}}
+        this.plan(false);};}}}
   {const ts=this.ov.querySelector('.tsend');if(ts) ts.onclick=async ev=>{ev.stopPropagation();ts.disabled=true;const r=await TN.tesla.send(this.dest,this);ts.disabled=false;
     this.note('tesla send',{ok:!!(r&&r.ok),why:r&&r.why,detail:r&&r.detail?String(r.detail).slice(0,120):undefined},true);};}
   {const bt=this.ov.querySelector('.btns'),rl=this.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
@@ -1153,7 +1163,54 @@ TN.Nav.prototype.roccoWatch=function(){
     this.roccoBubble('amber',fr?'Ça ralentit : +'+d+' min. Nouvelle arrivée '+t+'.':'Things just slowed down: +'+d+' min. New arrival '+t+'.');}
 };
 TN.Nav.prototype.roccoArrive=function(){
-  const f=this.roccoFacts();if(!f) return;const fr=TN.LANG==='fr',pick=a=>a[Math.floor(Math.random()*a.length)];
-  if(f.charging) this.roccoBubble('green',fr?'Place à la recharge! Rocco va chercher une collation.':'Charging time! Rocco’s grabbing a snack.');
-  else this.roccoBubble('green',pick(fr?['Vous êtes arrivé à '+f.short+'. Rocco fait la sieste.',f.short+'! Bien joué.']:['You made it to '+f.short+'. Rocco’s taking a nap.',f.short+'! Nicely done.']));
+  /* arrival: Rocco rises from the bottom edge with a little bounce, says his line, then sinks back (about 6 s).
+     At a charger he holds a charging plug (sparks, a battery filling up in his bubble); elsewhere he waves, with a
+     burst of confetti. Fun mode off: nothing here (the bar already says "You have arrived"). */
+  if(TN.settings&&TN.settings.fun===false) return;
+  const f=this.roccoFacts();if(!f) return;
+  const d=this.dest||{},fr=TN.LANG==='fr',pick=a=>a[Math.floor(Math.random()*a.length)];
+  const charging=f.charging||!!d.charger||/supercharg|borne|charging|recharge/i.test((d.name||'')+' '+(d.sub||''));
+  const text=charging?pick(fr?['Place à la recharge! Je m’occupe des collations.','On se branche et on relaxe. Pause collation!']:['Charging time! I’ll grab the snacks.','Plug in and relax. Snack break!'])
+    :pick(fr?['Vous êtes arrivé à '+f.short+'! 🎉',f.short+'! Bien joué.','Nous y voilà : '+f.short+'. Rocco est fier.']:['You made it to '+f.short+'! 🎉',f.short+'! Nicely done.','Here we are: '+f.short+'. Rocco is proud.']);
+  this.roccoArriveShow(text,charging);
 };
+TN.Nav.prototype.roccoArriveShow=function(text,charging){
+  if(!document.getElementById('tn-rarr-css')){const st=document.createElement('style');st.id='tn-rarr-css';
+    st.textContent='#tn-rarr{position:absolute;left:50%;bottom:0;width:min(46vw,380px);height:min(60vh,460px);transform:translateX(-50%);z-index:31;pointer-events:auto;overflow:visible}'+
+      '#tn-rarr .rc{position:absolute;left:0;right:0;bottom:-110%;animation:tnRise 9s ease-in-out forwards}'+
+      '@keyframes tnRise{0%{bottom:-110%}9%{bottom:-6%}12%{bottom:-14%}14%{bottom:-9%}85%{bottom:-9%}96%{bottom:-110%}100%{bottom:-110%}}'+
+      '#tn-rarr .arm{transform-box:fill-box;transform-origin:20% 90%}#tn-rarr .wv{animation:tnWave .5s ease-in-out 1.3s 6 alternate}#tn-rarr .lf{animation:tnLift .6s ease-in-out 1.2s 5 alternate}'+
+      '@keyframes tnWave{from{transform:rotate(-10deg)}to{transform:rotate(16deg)}}@keyframes tnLift{from{transform:rotate(-4deg)}to{transform:rotate(9deg)}}'+
+      '#tn-rarr .sp{opacity:0;transform-box:fill-box;transform-origin:center;animation:tnSpark .45s ease-out infinite}#tn-rarr .sp2{animation-delay:.15s}#tn-rarr .sp3{animation-delay:.3s}'+
+      '@keyframes tnSpark{0%{opacity:0;transform:scale(.5)}30%{opacity:1;transform:scale(1.15)}100%{opacity:0;transform:scale(.7) translate(4px,-6px)}}'+
+      '#tn-rarr .bub{position:absolute;left:50%;bottom:62%;transform:translateX(-50%) scale(.6);opacity:0;background:rgb(var(--tn-panel-rgb,30 32 36)/.97);color:var(--tn-text,#f3f1ec);padding:14px 22px;border-radius:18px;font:700 22px system-ui,sans-serif;max-width:min(80vw,560px);white-space:normal;text-align:center;display:flex;align-items:center;gap:12px;box-shadow:0 6px 24px rgba(0,0,0,.4);animation:tnBub 9s ease forwards}'+
+      '#tn-rarr .bub:after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-7px;border:7px solid transparent;border-top-color:rgb(var(--tn-panel-rgb,30 32 36)/.97);border-bottom:0}'+
+      '@keyframes tnBub{0%,12%{opacity:0;transform:translateX(-50%) scale(.6)}16%{opacity:1;transform:translateX(-50%) scale(1.05)}18%,85%{opacity:1;transform:translateX(-50%) scale(1)}90%,100%{opacity:0;transform:translateX(-50%) scale(.8)}}'+
+      '#tn-rarr .bt{position:relative;width:42px;height:20px;border:2px solid currentColor;border-radius:4px;flex-shrink:0}#tn-rarr .bt:after{content:"";position:absolute;right:-6px;top:4px;width:3px;height:6px;border-radius:0 2px 2px 0;background:currentColor}'+
+      '#tn-rarr .bt i{position:absolute;left:2px;top:2px;bottom:2px;width:4px;border-radius:1px;background:#5dcaa5;animation:tnFill 3.4s ease-in-out 1.4s forwards}@keyframes tnFill{to{width:26px}}'+
+      '#tn-rarr .cf i{position:absolute;left:50%;bottom:48%;width:8px;height:8px;border-radius:2px;opacity:0;animation:tnConf 1.6s ease-out 1.1s forwards}'+
+      '@keyframes tnConf{0%{opacity:1;transform:translate(0,0) rotate(0)}100%{opacity:0;transform:translate(var(--x),var(--y)) rotate(260deg)}}'+
+      '@media (prefers-reduced-motion:reduce){#tn-rarr .rc{animation:none;bottom:-9%}#tn-rarr .bub{animation:none;opacity:1;transform:translateX(-50%)}#tn-rarr .arm,#tn-rarr .sp,#tn-rarr .cf i{animation:none}}';
+    document.head.appendChild(st);}
+  const old=document.getElementById('tn-rarr');if(old) old.remove();
+  const el=document.createElement('div');el.id='tn-rarr';el.className='notr';
+  const arm=charging
+    ?'<path d="M172 150 C 200 170, 206 190, 214 214" stroke="#2c2c2a" stroke-width="6" fill="none" stroke-linecap="round"/><g class="arm lf"><ellipse cx="156" cy="142" rx="13" ry="25" fill="#9a998f" transform="rotate(-24 156 142)"/>'+
+      '<rect x="158" y="96" width="30" height="40" rx="10" fill="#e9e9e6" stroke="#5f5e5a" stroke-width="2"/><rect x="164" y="88" width="18" height="12" rx="4" fill="#5f5e5a"/>'+
+      '<path d="M176 104 L168 118 L175 118 L170 130 L181 113 L174 113 Z" fill="#E8913A"/><circle cx="168" cy="134" r="9" fill="#5f5e5a"/>'+
+      '<path class="sp" d="M170 80 l4 -8 l-1 7 l6 -3 l-6 8 z" fill="#f0c24a"/><path class="sp sp2" d="M182 84 l6 -6 l-3 7 l7 0 l-8 5 z" fill="#f0c24a"/><path class="sp sp3" d="M160 82 l-3 -8 l4 6 l2 -6 l0 9 z" fill="#f0c24a"/></g>'
+    :'<g class="arm wv"><ellipse cx="160" cy="140" rx="13" ry="26" fill="#9a998f" transform="rotate(-28 160 140)"/><circle cx="170" cy="118" r="10" fill="#5f5e5a"/></g>';
+  const svg='<svg viewBox="0 0 220 210" width="100%" style="display:block;overflow:visible" aria-hidden="true">'+
+    '<path d="M46 62 L54 18 L86 50 Z" fill="#888780"/><path d="M154 62 L146 18 L114 50 Z" fill="#888780"/><path d="M52 56 L57 30 L76 49 Z" fill="#d3d1c7"/><path d="M148 56 L143 30 L124 49 Z" fill="#d3d1c7"/>'+
+    '<ellipse cx="100" cy="182" rx="64" ry="44" fill="#9a998f"/><ellipse cx="100" cy="188" rx="36" ry="30" fill="#d9d7cd"/>'+arm+
+    '<ellipse cx="42" cy="152" rx="12" ry="22" fill="#9a998f" transform="rotate(20 42 152)"/><circle cx="100" cy="92" r="56" fill="#b4b2a9"/>'+
+    '<path d="M44 86 Q100 58 156 86 L156 106 Q100 84 44 106 Z" fill="#2c2c2a"/><circle cx="78" cy="94" r="10" fill="#f1efe8"/><circle cx="122" cy="94" r="10" fill="#f1efe8"/>'+
+    '<circle cx="'+(charging?81:80)+'" cy="95" r="5" fill="#2c2c2a"/><circle cx="'+(charging?125:120)+'" cy="95" r="5" fill="#2c2c2a"/>'+
+    '<ellipse cx="100" cy="122" rx="24" ry="18" fill="#f1efe8"/><ellipse cx="100" cy="114" rx="8" ry="6" fill="#2c2c2a"/><path d="M88 126 Q100 136 112 126" stroke="#2c2c2a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
+  const conf=charging?'':'<div class="cf">'+[['#E8913A',-90,-70],['#5dcaa5',80,-80],['#f0c24a',-50,-110],['#e24b4a',60,-40],['#85b7eb',-110,-20],['#E8913A',110,-100]].map(c=>'<i style="background:'+c[0]+';--x:'+c[1]+'px;--y:'+c[2]+'px"></i>').join('')+'</div>';
+  el.innerHTML=conf+'<div class="bub">'+(charging?'<span class="bt"><i></i></span>':'')+'<span>'+TN.esc(text)+'</span></div><div class="rc">'+svg+'</div>';
+  el.onclick=()=>el.remove();
+  document.body.appendChild(el);
+  clearTimeout(this.rarrT);this.rarrT=setTimeout(()=>{try{el.remove();}catch(e){}},9400);
+};
+
