@@ -9,7 +9,8 @@ TN.CHARGERS_URL='https://raw.githubusercontent.com/Tessynav/tessynav-roads/charg
 TN.Chargers=function(api){
   this.api=api;this.list=[];this.markers=new Map();this.card=null;this.t=0;
   const st=document.createElement('style');
-  st.textContent='.tn-chg{width:30px;height:30px;border-radius:9px;background:#e31937;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}'+
+  st.textContent='.maplibregl-marker{z-index:1}'+   /* (map pins under the buttons) */
+    '.tn-chg{width:30px;height:30px;border-radius:9px;background:#e31937;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}'+
     '.tn-chg.dc{background:#2f6fd6}.tn-chg b{position:absolute;right:-8px;top:-8px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#fff;color:#222;font:700 10px/16px system-ui,sans-serif;text-align:center}'+
     '#tn-chgcard{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);z-index:30;min-width:260px;max-width:92vw;background:rgb(var(--panel-rgb,43 45 49)/.96);color:var(--text,#f3f1ec);border-radius:16px;padding:14px 16px;box-shadow:0 6px 24px rgba(0,0,0,.45);font:15px system-ui,sans-serif;display:none}'+
     '#tn-chgcard .n{font-weight:700;font-size:17px;margin-bottom:2px}#tn-chgcard .s{color:var(--sub,#b9b6ae);font-size:13px}#tn-chgcard .row{display:flex;gap:8px;margin-top:12px}'+
