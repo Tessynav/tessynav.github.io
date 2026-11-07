@@ -88,6 +88,7 @@ const D={
   'Disconnect':'Déconnecter','Connect ›':'Connecter ›','Asking Tessy…':'Demande à Tessy…','Tessy is asleep. Try again from the car.':'Tessy dort. Réessayez depuis la voiture.',
   'No trip in Tessy’s navigation':'Aucun trajet dans la navigation de Tessy','Connect your Tesla first':'Connectez d’abord votre Tesla','No car found on this Tesla account':'Aucune voiture sur ce compte Tesla',
   'Could not reach Tessy right now':'Impossible de joindre Tessy pour le moment','From Tessy':'De Tessy',
+  'Sync':'Synchro','Sync with Tessy':'Synchroniser avec Tessy',
   'Language':'Langue','this car':'cette voiture','rainbow road':'route arc-en-ciel','Fun mode off':'Mode amusant désactivé',
   /* alerts */
   'School zone':'Zone scolaire','Railway crossing':'Passage à niveau','Speed camera':'Radar photo','Speed and red-light camera':'Radar photo et feu rouge',
