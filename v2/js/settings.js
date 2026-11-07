@@ -13,6 +13,9 @@ TN.Settings=function(m){
 };
 TN.Settings.prototype.save=function(){try{localStorage.setItem('tn2_settings',JSON.stringify(this.s));}catch(e){}};
 TN.Settings.prototype.set=function(k,v){this.s[k]=v;TN.settings=this.s;this.save();this.apply(k);
+  /* the language: only when you change it, the app restarts in the new language (never at startup: if the
+     translator file were missing or wrong, that used to restart the app again and again) */
+  if(k==='lang'&&typeof TN.LANG==='string'&&v!==TN.LANG){setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);}
   /* while recording, every setting change is noted with its time (to compare before and after) */
   try{if(TN.recorder&&TN.recorder.rec) TN.recorder.note('setting',{k:k,v:v});}catch(e){}};
 /* make one setting take effect right away */
@@ -49,7 +52,6 @@ TN.Settings.prototype.apply=function(k){
     if(k==='theme'){const nt=()=>{const sc2=this.m.scene;return sc2?(sc2.night||0)>0.5:false;};TN.applyTheme(s.theme,nt());
       /* (the Tesla theme follows the map's day and night: checked every few seconds) */
       if(!this.themeT) this.themeT=setInterval(()=>{if(this.s.theme==='tesla') TN.applyTheme('tesla',nt());},4000);}
-    if(k==='lang'&&s.lang!==TN.LANG){setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);}   /* (restarts in the new language) */
     if((k==='chargers'||k==='fastdc')&&TN.chargers){TN.chargers.clear();TN.chargers.draw(true);}
     if(k==='record'){for(const id of ['rec','trips']){const b=document.getElementById(id);if(b) b.style.display=s.record?'':'none';}}
     if(k==='zoombtns'){for(const id of ['zin','zout']){const b=document.getElementById(id);if(b) b.style.display=s.zoombtns?'':'none';}}
