@@ -44,6 +44,11 @@ body.tn-intro .hud:not(#panel){opacity:0;pointer-events:none}
 #tn-upd .shot{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:.6}
 #tn-upd .t,#tn-upd .bar,#tn-upd .s{position:relative}
 #tn-upd .t{font-size:22px;letter-spacing:.5px}#tn-upd .s{font-size:14px;color:var(--tn-tip);min-height:18px}
+/* with the opening playing: no title or background, just a slim progress line low on the screen, under the headlights */
+body.tn-intro #tn-upd{background:transparent;justify-content:flex-end;padding-bottom:6vh;box-sizing:border-box;gap:8px;pointer-events:none}
+body.tn-intro #tn-upd .t,body.tn-intro #tn-upd .shot{display:none}
+body.tn-intro #tn-upd .bar{width:min(40vw,320px)!important;height:3px!important;opacity:.7}
+body.tn-intro #tn-upd .s{font-size:12px;opacity:.75}
 #tn-upd .bar{width:min(70%,420px);height:8px;border-radius:4px;background:rgba(120,220,255,.18);overflow:hidden}
 #tn-upd .fill{height:100%;width:0;background:#78dcff;border-radius:4px;transition:width .35s}
 button.hud{border:0;cursor:pointer}
@@ -118,7 +123,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/shadows.js?v=4"></script>
 <script src="js/trees.js?v=8"></script>
 <script src="js/buildings.js?v=16"></script>
-<script src="js/intro.js?v=7"></script>
+<script src="js/intro.js?v=8"></script>
 <script src="js/rem.js?v=10"></script>
 <script src="js/season.js?v=4"></script>
 <script src="js/ground.js?v=1"></script>
