@@ -21,7 +21,7 @@ TN.frameT0=0;TN.WORK_MS=7;TN.workLeft=()=>TN.frameT0?Math.max(0,TN.WORK_MS-(perf
 TN.ROAD_W1={motorway:10.5,trunk:9.5,primary:8,secondary:7.5,tertiary:6.5,minor:5.5,service:4};
 TN.ROAD_W2={motorway:11,trunk:10,primary:13,secondary:12,tertiary:11,minor:9.5,service:5.5};
 /* Codriver-like palette: dark asphalt, light concrete edges, crisp bright markings */
-TN.COL={ballast:'#5c5852',sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#ffa64a',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
+TN.COL={tunwall:'#8a8c90',tunlow:'#5f6266',tunlight:'#ffd27a',ballast:'#5c5852',sigbox:'#1d1f22',sigred:'#b3302a',sigyel:'#c9a227',siggrn:'#2f9a4e',remdeck:'#d4d7da',remside:'#bcc0c4',rail:'#55595e',lamp:'#d9dde2',girder:'#8e9297',cap:'#a3a7ab',tower:'#d3d6d9',cable:'#e6e8ea',glowc:'#ffa64a',walk:'#c9c6bf',curbtop:'#a3a6aa',stopred:'#8a0404',signw:'#e9e9e6',post:'#8f9397',park:'#5a5e64',road:'#45494f',curb:'#9a9ea3',white:'#f4f4f2',yellow:'#efc23a',side:'#a7abb0',barrier:'#c9ccd0',pier:'#b0b4b8'};
 
 /* ---------------- network ---------------- */
 TN.Net=function(){
@@ -1382,6 +1382,38 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       const bot=j=>w.br?Math.max(0,H(j)-1.2):Math.min(Math.max(0,H(j)-1.2),Math.max(0,(H(j)-3)*2));
       wall(L.road,a,b,j=>hwJ(j),0.04,bot,TN.C.side);wall(L.road,a,b,j=>-hwJ(j),0.04,bot,TN.C.side);
       wall(L.road,a,b,j=>hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);wall(L.road,a,b,j=>-hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);
+    }
+    /* tunnels: concrete walls on both sides (about 5 m, a darker band at the bottom) with a row of warm lights that
+       glow at night; open wherever another road crosses at the surface (streets above the Ville-Marie tunnel); no
+       roof, so the camera behind the car still sees the road. Only for tunnel pieces of 40 m or more. */
+    if(w.tun&&w.cum[b]-w.cum[a]>=40){
+      const TH=5.0,lightEvery=12;
+      for(let i=a;i<b;i++){
+        const len=Math.hypot(P[i+1][0]-P[i][0],P[i+1][1]-P[i][1]),n=Math.max(1,Math.ceil(len/8));   /* (8 m wall pieces) */
+        for(const sd of [1,-1]){
+          for(let k=0;k<n;k++){
+            const u0=k/n,u1=(k+1)/n,um=(u0+u1)/2;
+            const at=(u,off)=>{const nx=N[i][0]+(N[i+1][0]-N[i][0])*u,nz=N[i][1]+(N[i+1][1]-N[i][1])*u;
+              return [P[i][0]+(P[i+1][0]-P[i][0])*u+nx*off,P[i][1]+(P[i+1][1]-P[i][1])*u+nz*off];};
+            const of=sd*(hwJ(i)+(hwJ(i+1)-hwJ(i))*um+0.5),q=at(um,of+sd*0.8);
+            if(net.onOther(w,q[0],q[1],0,2.6)) continue;   /* (a road crossing here: one check per 8 m piece) */
+            const pa=at(u0,of),pb=at(u1,of),h0=H(i)+(H(i+1)-H(i))*u0,h1=H(i)+(H(i+1)-H(i))*u1;
+            TN.quad(L.road,[pa[0],h0+0.04,pa[1]],[pb[0],h1+0.04,pb[1]],[pb[0],h1+1.1,pb[1]],[pa[0],h0+1.1,pa[1]],TN.C.tunlow);
+            TN.quad(L.road,[pa[0],h0+1.1,pa[1]],[pb[0],h1+1.1,pb[1]],[pb[0],h1+TH,pb[1]],[pa[0],h0+TH,pa[1]],TN.C.tunwall);
+          }
+        }
+      }
+      /* the lights: small warm boxes high on both walls, each with a soft glow at night */
+      for(let s0=Math.ceil(w.cum[a]/lightEvery)*lightEvery+3;s0<w.cum[b];s0+=lightEvery){
+        let i=a;while(i<b-1&&w.cum[i+1]<s0) i++;
+        const sg=w.cum[i+1]-w.cum[i]||1,t=Math.max(0,Math.min(1,(s0-w.cum[i])/sg));
+        const x0=P[i][0]+(P[i+1][0]-P[i][0])*t,z0=P[i][1]+(P[i+1][1]-P[i][1])*t,y0=H(i)+(H(i+1)-H(i))*t;
+        const ux=(P[i+1][0]-P[i][0])/sg,uz=(P[i+1][1]-P[i][1])/sg,nl=Math.hypot(N[i][0],N[i][1])||1,nx=N[i][0]/nl,nz=N[i][1]/nl;
+        for(const sd of [1,-1]){const o=sd*(hwJ(i)+0.4),x=x0+nx*o,z=z0+nz*o;
+          if(net.onOther(w,x,z,0,2.2)) continue;
+          TN.box(L.road,x,z,ux,uz,1.2,0.16,y0+TH-0.75,y0+TH-0.55,TN.C.tunlight);
+          if(L.glow&&TN.glowDisc&&Math.round(s0/lightEvery)%3===0) TN.glowDisc(L.glow,x-nx*sd*0.3,y0+TH-0.65,z-nz*sd*0.3,1.1,[0.7,0.34,0.08,0],[0,0.25,0.6,1],[1,0.8,0.5],'ball',ux,uz);}
+      }
     }
     if(!w.br&&w.hs) this.rampPiers(L,w,a,b);
     /* girders: two beams under the deck of a bridge, seen from the side */

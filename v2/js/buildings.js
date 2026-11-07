@@ -277,7 +277,23 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   }
   this.lastCenter=[lng,lat];
   const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),R=this.range,now=performance.now();
-  for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx)>R+1||Math.abs(y-cy)>R+1) this.free(k);}
+  /* where you're heading: speed and direction from the last positions (smoothed), in areas per second */
+  {const p=this.mv;if(p&&now>p.t){const dt=(now-p.t)/1000;if(dt>0.25){
+      const vx=(lng-p.lng)/TN.CELL/dt,vy=(lat-p.lat)/TN.CELL/dt,k=Math.min(1,dt/2);
+      this.vx=(this.vx||0)+(vx-(this.vx||0))*k;this.vy=(this.vy||0)+(vy-(this.vy||0))*k;this.mv={lng:lng,lat:lat,t:now};}}
+    else this.mv={lng:lng,lat:lat,t:now};}
+  const mps=Math.hypot((this.vx||0)*TN.CELL*78000,(this.vy||0)*TN.CELL*111000);   /* (metres per second, roughly) */
+  const moving=mps>8&&R>=2;   /* (about 30 km/h and up, and only while the screen keeps up) */
+  const sp=Math.hypot(this.vx||0,this.vy||0)||1,ux=(this.vx||0)/sp,uy=(this.vy||0)/sp;
+  /* the point you'll reach in about 30 s (at most ~1.5 km ahead): areas are built closest to it first */
+  const look=moving?Math.min(3.2,sp*30):0,ax=cx+0.5+ux*look,ay=cy+0.5+uy*look;
+  /* ahead at speed: up to 2 extra areas beyond the usual range, in front of you only */
+  const ahead=(dx,dy)=>{if(!moving) return false;const d=Math.hypot(dx,dy);return d<=R+2.6&&(dx*ux+dy*uy)>0.55*d;};
+  this.aheadInfo={moving:moving,mps:Math.round(mps),look:+look.toFixed(1)};
+  for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number),dx=x-cx,dy=y-cy,m=Math.max(Math.abs(dx),Math.abs(dy));
+    /* (behind you at speed: dropped as soon as it's out of the usual range, to keep the total about the same) */
+    const behind=moving&&(dx*ux+dy*uy)<-0.2*Math.hypot(dx,dy)&&m>R-1;
+    if(((m>R+1)&&!ahead(dx,dy))||behind) this.free(k);}
   /* keep building the current area: a few hundred buildings per frame */
   if(this.job){
     const t0=performance.now(),J=this.job;
@@ -294,9 +310,12 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   }
   if(now-(this.lastStart||0)<400) return;
   if(TN.workLeft&&TN.workLeft()<4) return;   /* starting a new area is the heavy part: only with budget left */
-  let best=null;const tileHere=this.covered(lng,lat);
-  for(let dx=-R;dx<=R;dx++) for(let dy=-R;dy<=R;dy++){
-    const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),d=dx*dx+dy*dy;
+  let best=null;const tileHere=this.covered(lng,lat);const E=moving?R+3:R;
+  for(let dx=-E;dx<=E;dx++) for(let dy=-E;dy<=E;dy++){
+    if((Math.abs(dx)>R||Math.abs(dy)>R)&&!ahead(dx,dy)) continue;
+    /* priority: nearest to where you'll be soon (or to you, when parked); your own area and its neighbours first */
+    const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),near=Math.max(Math.abs(dx),Math.abs(dy))<=1;
+    const d=near?(dx*dx+dy*dy)*0.25:(moving?Math.pow(cx+dx+0.5-ax,2)+Math.pow(cy+dy+0.5-ay,2):dx*dx+dy*dy);
     /* an area that came out empty (often because its detailed map tiles, the ones with buildings, hadn't loaded
        yet: far away the map only loads simpler tiles) is tried again: every 4, 8, 16, then 30 s, and every 4 s
        once the car is in it or next to it, so it never stays empty by mistake */

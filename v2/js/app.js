@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=86;
+TN.APPBUILD=87;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -31,7 +31,8 @@ TN.APPBUILD=86;
   const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,net:net,getCar:()=>track.car,following:()=>follow,roadsBase:'https://tessynav.github.io/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
   /* Superchargers on the map (and other fast chargers, if chosen) */
   const chargers=TN.Chargers?new TN.Chargers({map:map,nav:nav,getCar:()=>track.car,following:()=>follow}):null;TN.chargers=chargers;
-  TN.incidentsObj=incidents;   /* (Transports Québec events, also used by the bridges card) */
+  TN.incidentsObj=incidents;
+  TN.tunnel=TN.Tunnel?new TN.Tunnel(scene,net,()=>track.cur&&track.cur.w):null;   /* (Transports Québec events, also used by the bridges card) */
   TN.bridges=TN.Bridges?new TN.Bridges({getCar:()=>track.car,gps:()=>track.last,map:map,nav:nav}):null;
   if(chargers&&map.on) map.on('moveend',()=>{try{chargers.draw(true);}catch(e){}});
   if(incidents){try{incidents.build();}catch(e){}}
@@ -425,6 +426,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       /* live traffic lines when browsing the map or looking at a route overview (not while following the car) */
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
       if(chargers) try{chargers.update();}catch(e){}
+      if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}   /* (tunnel mode: the tunnel you're in, and the view dims) */
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
       if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);
