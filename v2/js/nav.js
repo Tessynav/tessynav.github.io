@@ -663,6 +663,7 @@ TN.Nav.prototype.overview=function(){
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
   this.ov.querySelector('.det').onclick=ev=>{ev.stopPropagation();this.details();};
+  {const bt=this.ov.querySelector('.btns'),rl=this.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
   this.tripButtons(this.ov);
 };
 /* trip details, for any route: summary (time, distance, arrival, traffic), what Tessy said (when synced), your stops,
@@ -688,6 +689,7 @@ TN.Nav.prototype.details=function(){
   if(dest.tesla){const t=dest.tesla;if(t.energy!=null) tsl+='<div class="tile tsl"><small>Battery on arrival (Tesla)</small><span>'+Math.round(t.energy)+' %</span></div>';}
   const charging=/supercharg|superchargeur/i.test(dest.name||'');
   let h='<div class="hd"><div><b>'+TN.esc(dest.name||'Trip')+'</b><small>'+TN.esc(charging?'Charging stop':(dest.sub||''))+'</small></div><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span></div>';
+  {const rl=this.roccoHtml();if(rl) h+='<div style="padding:0 18px">'+rl+'</div>';}
   h+='<div class="sum">'+tiles.map(t=>'<div class="tile"><small>'+t[0]+'</small><span>'+TN.esc(t[1])+'</span></div>').join('')+tsl+'</div>';
   if(dest.fromTesla) h+='<div class="note">'+(charging?'After charging, tap Sync for the next leg':'Synced from Tessy’s navigation')+'</div>';
   if(this.stops&&this.stops.length) h+='<div class="sec">YOUR STOPS</div><div class="list" style="flex:none;max-height:none">'+this.stops.map((s2,i)=>'<div class="st"><div class="ic">'+(i+1)+'</div><div class="tx">'+TN.esc(s2.name)+'<small>'+TN.esc(s2.sub||'')+'</small></div></div>').join('')+'</div>';
@@ -779,6 +781,7 @@ TN.Nav.prototype.go=function(){
   if(this.route) this.note('go',{dest:this.dest&&this.dest.name,km:+(this.route.L/1000).toFixed(2),pts:this.route.pts.length},true);
   this.bar.style.display='flex';this.endBtn.style.display='block';this.roadName.style.display='block';
   this.api.setFollow(true);
+  try{this.roccoGo();}catch(e){}
 };
 TN.Nav.prototype.end=function(why){
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
@@ -897,7 +900,9 @@ TN.Nav.prototype.instr=function(s){
     case 'new name':case 'continue':t=m&&m!=='straight'?'Keep '+side:'Continue';break;
     default:t=m?'Turn '+m:'Continue';
   }
-  const where=s.type==='off ramp'||s.type==='on ramp'?(s.dest||s.ref||s.name):(s.name||s.ref);
+  let where=s.type==='off ramp'||s.type==='on ramp'?(s.dest||s.ref||s.name):(s.name||s.ref);
+  /* (highway numbers as the map data writes them, "15; 20", read as "15 / 20") */
+  if(where) where=String(where).replace(/\s*;\s*/g,' / ');
   return {a:a,t:t,where:where};
 };
 /* recalculate from where the car is now: the old line fades, the top bar says so, the new route replaces it */
@@ -942,6 +947,7 @@ TN.Nav.prototype.curveAt=function(s){
   const k=Math.max(0,Math.min(1,(dh-12)/13));return k*k*(3-2*k);
 };
 TN.Nav.prototype.update=function(dt){
+  try{this.roccoWatch();}catch(e){}
   if(this.mesh){const rb=!!(TN.settings&&TN.settings.rainbow);
     if(rb){const m=this.rainbowMat();if(this.mesh.material!==m) this.mesh.material=m;m.uniforms.shift.value=(m.uniforms.shift.value+dt*0.35)%1;m.uniforms.op.value=this.mat?this.mat.opacity:0.85;}
     else if(this.mat&&this.mesh.material!==this.mat) this.mesh.material=this.mat;}
@@ -1024,7 +1030,7 @@ TN.Nav.prototype.update=function(dt){
    if(db.dataset.t!==txt){db.dataset.t=txt;db.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:6px"><path d="M4 20l1-5L16 4l4 4L9 19z M14 6l4 4" stroke="#fcd34d" stroke-width="2.4" fill="none" stroke-linejoin="round"/></svg>'+TN.esc(txt);}}
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
   /* arrived */
-  if(left<30||(nx.type==='arrive'&&dNext<25)){this.arriveT+=dt;if(this.arriveT>3&&!this.saidArrive){this.saidArrive=true;if(TN.voice) TN.voice.say('You have arrived at '+(this.dest?this.dest.name:'your destination'),true);}
+  if(left<30||(nx.type==='arrive'&&dNext<25)){this.arriveT+=dt;if(this.arriveT>3&&!this.saidArrive){this.saidArrive=true;try{this.roccoArrive();}catch(e){}if(TN.voice) TN.voice.say('You have arrived at '+(this.dest?this.dest.name:'your destination'),true);}
     if(this.arriveT>3){this.bar.querySelector('.dist').textContent='You have arrived';this.bar.querySelector('.ins').textContent=TN.esc(this.dest.name);}
     if(this.arriveT>12) this.end('arrived');return;}
   /* left the route: find a new one (at most every 15 s) */
@@ -1038,4 +1044,83 @@ TN.Nav.prototype.update=function(dt){
   if(away) this.offT+=dt;else this.offT=Math.max(0,this.offT-dt*2);
   const need=off>10&&hoff>50?1.5:2;
   if(this.offT>need&&!this.rerouting&&Date.now()-this.lastReroute>5000){this.reroute();}
+};
+/* ---------- Rocco on trips: one line about this trip (overview and details), and short bubbles while driving: a greeting
+   on Go, once if traffic gets much worse, and on arrival. Text only (the voice stays for turns and alerts); hidden when
+   Fun mode is off. English and French written here directly. ---------- */
+TN.Nav.prototype.roccoFacts=function(){
+  const R=this.route,d=this.dest||{};if(!R) return null;
+  const short=String(d.name||'').split(',')[0].trim().slice(0,30)||(TN.LANG==='fr'?'destination':'your destination');
+  const delay=R.typ&&R.traffic?Math.round((R.dur-R.typ)/60):0,arr=new Date(Date.now()+R.dur*1000);
+  return {short:short,delay:delay,min:Math.round(R.dur/60),km:R.L/1000,arrH:arr.getHours(),
+    batt:d.tesla&&d.tesla.energy!=null?Math.round(d.tesla.energy):null,charging:/supercharg/i.test(d.name||'')};
+};
+/* the line for this trip: {tone, text}, the most important fact first; chosen once per route */
+TN.Nav.prototype.roccoPlan=function(){
+  const R=this.route;if(!R||(TN.settings&&TN.settings.fun===false)) return null;
+  if(R.rocco) return R.rocco;
+  const f=this.roccoFacts(),fr=TN.LANG==='fr',pick=a=>a[Math.floor(Math.random()*a.length)];
+  let r;
+  if(f.batt!=null&&f.batt<15) r=['red',fr?f.batt+' % à '+f.short+'. Conduite douce, pas de course.':f.batt+'% at '+f.short+'. Smooth driving, no racing.'];
+  else if(f.batt!=null&&f.batt<25) r=['amber',fr?f.batt+' % à l’arrivée. Rocco compte chaque kilomètre.':f.batt+'% on arrival. Rocco’s counting every kilometre.'];
+  else if(f.charging) r=['amber',fr?'Arrêt recharge en vue : pause collation!':'Charging stop ahead: snack time!'];
+  else if(f.delay>=10) r=['amber',pick(fr?['+'+f.delay+' min de circulation. Rocco a apporté un balado.','+'+f.delay+' min de circulation. Le temps d’une bonne liste de lecture.']:['+'+f.delay+' min of traffic. Rocco brought a podcast.','+'+f.delay+' min of traffic. Good time for a playlist.'])];
+  else if(f.delay>=5) r=['amber',fr?'Un peu de circulation : +'+f.delay+' min.':'A little traffic: +'+f.delay+' min.'];
+  else if(f.min>=120) r=['amber',fr?'Long trajet! Dégourdissez-vous les jambes en route.':'Long one! Stretch your legs on the way.'];
+  else if(f.arrH>=0&&f.arrH<5) r=['amber',fr?'Trajet de nuit. Rocco garde les yeux grands ouverts.':'Night drive. Rocco’s eyes are wide open.'];
+  else if(f.min<10) r=['plain',fr?'Facile. Rocco est à peine réveillé.':'Easy one. Rocco barely woke up.'];
+  else r=['plain',pick(fr?['Route dégagée. Rocco approuve.','Un trajet tout en douceur.']:['Clear road ahead. Rocco approves.','Smooth trip ahead.'])];
+  R.rocco={tone:r[0],text:r[1]};return R.rocco;
+};
+TN.Nav.prototype.roccoCss=function(){
+  if(document.getElementById('tn-rocco-css')) return;
+  const st=document.createElement('style');st.id='tn-rocco-css';
+  st.textContent='.tn-rline{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;margin:10px 0;background:rgba(255,255,255,.06);font:15px system-ui,sans-serif;line-height:1.3}'+
+    '.tn-rline.amber{background:rgba(245,158,11,.16);color:#fcd34d}.tn-rline.red{background:rgba(239,68,68,.18);color:#fca5a5}.tn-rline.green{background:rgba(34,197,94,.16);color:#86efac}.tn-rline svg{flex-shrink:0}'+
+    '#tn-rbub{position:absolute;z-index:35;left:50%;transform:translateX(-50%);max-width:min(88vw,520px);display:none;align-items:flex-start;gap:8px;transition:opacity .4s}'+
+    '#tn-rbub .b{background:rgb(var(--tn-panel-rgb,43 45 49)/.97);color:var(--tn-text,#f3f1ec);border-radius:14px;padding:9px 13px;font:15px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35)}'+
+    '#tn-rbub.amber .b{color:#fcd34d}#tn-rbub.red .b{color:#fca5a5}#tn-rbub.green .b{color:#86efac}';
+  document.head.appendChild(st);
+};
+TN.Nav.prototype.roccoHtml=function(){
+  const p=this.roccoPlan();if(!p) return '';this.roccoCss();
+  return '<div class="tn-rline notr '+p.tone+'">'+(TN.roccoSVG?TN.roccoSVG(30):'')+'<span>'+TN.esc(p.text)+'</span></div>';
+};
+/* a short bubble under the instruction bar: 6 s, or until tapped */
+TN.Nav.prototype.roccoBubble=function(tone,text){
+  if(TN.settings&&TN.settings.fun===false) return;this.roccoCss();
+  let b=document.getElementById('tn-rbub');
+  if(!b){b=document.createElement('div');b.id='tn-rbub';b.className='notr';document.body.appendChild(b);b.onclick=()=>{b.style.display='none';};}
+  const bar=this.bar&&this.bar.getBoundingClientRect?this.bar.getBoundingClientRect():null;
+  b.style.top=((bar&&bar.bottom>0?bar.bottom:90)+10)+'px';
+  b.className='notr '+(tone||'');b.innerHTML=(TN.roccoSVG?TN.roccoSVG(36):'')+'<div class="b">'+TN.esc(text)+'</div>';
+  b.style.display='flex';b.style.opacity='1';
+  clearTimeout(this.rbT);clearTimeout(this.rbT2);
+  this.rbT=setTimeout(()=>{b.style.opacity='0';this.rbT2=setTimeout(()=>{b.style.display='none';},450);},6000);
+};
+TN.Nav.prototype.roccoGo=function(){
+  if(!this.route||(TN.settings&&TN.settings.fun===false)) return;
+  const f=this.roccoFacts(),fr=TN.LANG==='fr',h=new Date().getHours(),pick=a=>a[Math.floor(Math.random()*a.length)];
+  const hi=h>=5&&h<11?(fr?'Bonjour!':'Good morning!'):h>=11&&h<17?(fr?'Bon trajet!':'Have a nice trip!'):h>=17&&h<22?(fr?'Bonsoir!':'Good evening!'):(fr?'Trajet de nuit!':'Night drive!');
+  const t=f.min<60?f.min+' min':Math.floor(f.min/60)+' h '+String(f.min%60).padStart(2,'0');
+  let msg,tone='plain';
+  if(f.charging) msg=hi+' '+(fr?'Prochain arrêt : '+f.short+'. Pause collation!':'Next stop: '+f.short+'. Snack time!');
+  else msg=hi+' '+(fr?t+' jusqu’à '+f.short+'. ':t+' to '+f.short+'. ')+pick(fr?['Rocco a pris la place du passager.','Rocco a les collations.','Ceinture bouclée, Rocco est prêt.']:['Rocco called shotgun.','Rocco’s got the snacks.','Seatbelt on, Rocco’s ready.']);
+  if(f.batt!=null&&f.batt<15){tone='red';msg+=' '+(fr?f.batt+' % à l’arrivée : douceur!':f.batt+'% on arrival: go easy!');}
+  this.etaGo=Date.now()+this.route.dur*1000;this.slowSaid=false;
+  setTimeout(()=>{if(this.active) this.roccoBubble(tone,msg);},1200);
+};
+/* once per trip: the arrival time has slipped by 5 min or more since Go (traffic, a jam) */
+TN.Nav.prototype.roccoWatch=function(){
+  if(!this.active||!this.route||this.slowSaid||!this.etaGo||this.ps==null) return;
+  const now=Date.now();if(now-(this.rwT||0)<20000) return;this.rwT=now;
+  const R=this.route,left=Math.max(0,R.L-this.ps),eta=now+R.dur*1000*(R.L>0?left/R.L:0);
+  const d=Math.round((eta-this.etaGo)/60000);
+  if(d>=5&&left>1500){this.slowSaid=true;const t=new Date(eta).toTimeString().slice(0,5),fr=TN.LANG==='fr';
+    this.roccoBubble('amber',fr?'Ça ralentit : +'+d+' min. Nouvelle arrivée '+t+'.':'Things just slowed down: +'+d+' min. New arrival '+t+'.');}
+};
+TN.Nav.prototype.roccoArrive=function(){
+  const f=this.roccoFacts();if(!f) return;const fr=TN.LANG==='fr',pick=a=>a[Math.floor(Math.random()*a.length)];
+  if(f.charging) this.roccoBubble('green',fr?'Place à la recharge! Rocco va chercher une collation.':'Charging time! Rocco’s grabbing a snack.');
+  else this.roccoBubble('green',pick(fr?['Vous êtes arrivé à '+f.short+'. Rocco fait la sieste.',f.short+'! Bien joué.']:['You made it to '+f.short+'. Rocco’s taking a nap.',f.short+'! Nicely done.']));
 };
