@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TessyNav · Tesla</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#2b2d31;color:#f3f1ec;font:17px system-ui,sans-serif}
+  .box{max-width:420px;padding:28px;text-align:center}
+  h1{font-size:22px;margin:0 0 10px}
+  p{color:#b9b6ae;line-height:1.45}
+  a.btn{display:inline-block;margin-top:14px;padding:12px 22px;border-radius:12px;background:#e8913a;color:#2b1a08;font-weight:700;text-decoration:none}
+  .err{color:#ff8a80}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1 id="t">Connecting to your Tesla…</h1>
+  <p id="m">One moment.</p>
+  <a class="btn" id="b" href="/v2/" style="display:none">Back to TessyNav</a>
+</div>
+<script>
+/* Tesla sends you here after signing in, with a one-time code. The TessyNav server turns it into access tokens,
+   which stay in this browser only. Then the app finds your car and goes back to the map. */
+(async function(){
+  var SERVER='https://tessynav.mznwattar.workers.dev';
+  var fr=false;try{fr=(JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{}).lang==='fr';}catch(e){}
+  var T=fr?{ok:'Connecté à votre Tesla',okm:'TessyNav peut maintenant lire le trajet de ',back:'Retour à TessyNav',err:'La connexion n’a pas fonctionné',again:'Réessayez depuis TessyNav.'}
+          :{ok:'Connected to your Tesla',okm:'TessyNav can now read the trip from ',back:'Back to TessyNav',err:'The connection didn’t work',again:'Try again from TessyNav.'};
+  var t=document.getElementById('t'),m=document.getElementById('m'),b=document.getElementById('b');b.textContent=T.back;
+  function fail(why){t.textContent=T.err;t.className='err';m.textContent=T.again+(why?' ('+why+')':'');b.style.display='inline-block';}
+  var q=new URLSearchParams(location.search),code=q.get('code'),state=q.get('state');
+  if(q.get('error')) return fail(q.get('error_description')||q.get('error'));
+  if(!code) return fail('no code');
+  var want=null;try{want=localStorage.getItem('tn2_tesla_state');}catch(e){}
+  if(want&&state!==want) return fail('state');
+  try{
+    var r=await fetch(SERVER+'/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})});
+    var j=await r.json();
+    if(!r.ok||!j.access_token) return fail(j.error_description||j.error||('server '+r.status));
+    var a={access:j.access_token,refresh:j.refresh_token,exp:Date.now()+(j.expires_in||28800)*1000};
+    localStorage.setItem('tn2_tesla',JSON.stringify(a));localStorage.removeItem('tn2_tesla_state');
+    /* the car (first on the account) */
+    var name='';
+    try{var v=await fetch(SERVER+'/api/1/vehicles',{headers:{Authorization:'Bearer '+a.access}});var vj=await v.json();
+      var c=vj.response&&vj.response[0];if(c){a.vin=c.vin;a.name=c.display_name||'';name=a.name;localStorage.setItem('tn2_tesla',JSON.stringify(a));}}catch(e){}
+    history.replaceState(null,'','/v2/tesla.html');   /* (the one-time code leaves the address bar) */
+    t.textContent=T.ok+' ✓';m.textContent=T.okm+(name||'Tessy')+'.';b.style.display='inline-block';
+    setTimeout(function(){location.replace('/v2/');},2500);
+  }catch(e){fail(e.message);}
+})();
+</script>
+</body>
+</html>
