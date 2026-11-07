@@ -16,7 +16,30 @@ html,body,#map{margin:0;height:100%;background:#e9ece6}
 :root{--tn-panel-rgb:43 45 49;--tn-text:#f3f1ec;--tn-sub:#b9b6ae;--tn-tip:#f2b55a;--tn-link:#f2b55a;--tn-accent:#e8913a;--tn-on-accent:#2b1a08;--tn-btn:#45474d;--tn-off:#55575d;--tn-line:rgba(255,255,255,.09);--tn-joke:#f2b55a;--tn-danger:#ff8a80}
 .hud{position:absolute;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-text);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;border-radius:16px;padding:10px 16px;z-index:5;transition:opacity .6s;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 body.tn-intro .hud:not(#panel){opacity:0;pointer-events:none}
-#tn-boot{position:absolute;left:0;top:0;width:100%;height:100%;background:#080e1a;z-index:49;transition:opacity .35s}
+/* the opening ("Headlights on"): drawn by the page itself, so it starts the moment the page appears, before any
+   library has downloaded; the light wave then reveals the real city (intro.js) */
+@property --tnr{syntax:'<length>';inherits:false;initial-value:0px}
+#tn-boot{position:absolute;left:0;top:0;width:100%;height:100%;background:radial-gradient(ellipse at 50% 80%,#141c2c 0%,#080e1a 60%);z-index:49;overflow:hidden;
+  -webkit-mask:radial-gradient(circle at 50% 76%,transparent var(--tnr),#000 calc(var(--tnr) + 70px));mask:radial-gradient(circle at 50% 76%,transparent var(--tnr),#000 calc(var(--tnr) + 70px))}
+#tn-boot.reveal{animation:tnRev 1.9s cubic-bezier(.45,0,.2,1) forwards}
+@keyframes tnRev{to{--tnr:160vmax}}
+#tn-boot .nm{position:absolute;left:0;right:0;top:30%;text-align:center;font:700 clamp(40px,7vw,76px) system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#f3f1ec;letter-spacing:-.01em;opacity:0;animation:tnNm .7s ease .15s forwards}
+#tn-boot .nm b{color:#e8913a}
+#tn-boot .sub{position:absolute;left:0;right:0;top:calc(30% + clamp(52px,9vw,96px));text-align:center;font:500 clamp(13px,1.8vw,18px) system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#8d96a3;opacity:0;animation:tnNm .7s ease .45s forwards}
+@keyframes tnNm{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#tn-boot .road{position:absolute;left:50%;bottom:0;width:70vmin;height:24%;transform:translateX(-50%);background:linear-gradient(transparent,rgba(120,140,170,.10));clip-path:polygon(47% 0,53% 0,100% 100%,0 100%)}
+#tn-boot .hl{position:absolute;top:76%;width:clamp(26px,3.4vw,40px);height:clamp(14px,1.8vw,20px);margin-top:-10px;border-radius:50%;background:radial-gradient(ellipse,#fffbe9 0%,#ffe9b0 45%,rgba(255,220,150,0) 72%);opacity:0;
+  box-shadow:0 0 30px 10px rgba(255,236,190,.35);animation:tnHl 1.5s linear .3s forwards,tnBr 2.4s ease-in-out 1.8s infinite}
+#tn-boot .hl.l{left:calc(50% - clamp(46px,6vw,70px))}#tn-boot .hl.r{left:calc(50% + clamp(20px,2.6vw,30px))}
+#tn-boot .beam{position:absolute;left:50%;top:76%;width:46vmin;height:30vmin;transform:translate(-50%,-100%);background:radial-gradient(ellipse at 50% 100%,rgba(255,240,205,.28),rgba(255,240,205,0) 70%);opacity:0;animation:tnHl 1.5s linear .3s forwards,tnBr 2.4s ease-in-out 1.8s infinite}
+@keyframes tnHl{0%{opacity:0}10%{opacity:1}24%{opacity:.15}38%{opacity:1}52%{opacity:.2}70%,100%{opacity:.9}}
+@keyframes tnBr{0%,100%{opacity:.9}50%{opacity:.6}}
+#tn-ring{position:absolute;left:50%;top:76%;width:0;height:0;border-radius:50%;transform:translate(-50%,-50%);z-index:50;pointer-events:none;
+  box-shadow:0 0 0 4px rgba(232,145,58,.95),0 0 34px 14px rgba(232,145,58,.55),inset 0 0 26px 6px rgba(232,145,58,.35);animation:tnRing 1.9s cubic-bezier(.45,0,.2,1) forwards}
+@keyframes tnRing{0%{width:0;height:0;opacity:1}85%{opacity:.9}100%{width:320vmax;height:320vmax;opacity:0}}
+#tn-hi{position:absolute;left:50%;bottom:19%;transform:translateX(-50%) scale(.6);z-index:48;display:flex;align-items:center;gap:12px;padding:10px 18px 10px 12px;border-radius:18px;background:rgb(var(--tn-panel-rgb) / .97);color:var(--tn-text);font:700 20px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);opacity:0;pointer-events:none;animation:tnHi 2.6s ease forwards}
+@keyframes tnHi{0%{opacity:0;transform:translateX(-50%) translateY(20px) scale(.6)}14%{opacity:1;transform:translateX(-50%) translateY(-4px) scale(1.05)}20%,82%{opacity:1;transform:translateX(-50%) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(10px) scale(.9)}}
+@media (prefers-reduced-motion:reduce){#tn-boot .hl,#tn-boot .beam{animation:none;opacity:.9}}
 #tn-upd{position:absolute;left:0;top:0;width:100%;height:100%;z-index:60;background:rgba(8,14,26,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:sans-serif;color:var(--tn-text);transition:opacity .4s}
 #tn-upd .shot{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:.6}
 #tn-upd .t,#tn-upd .bar,#tn-upd .s{position:relative}
@@ -43,8 +66,9 @@ button.hud{border:0;cursor:pointer}
 </style>
 </head>
 <body>
-<div id="tn-boot"></div>
+<div id="tn-boot"><div class="road"></div><div class="beam"></div><div class="hl l"></div><div class="hl r"></div><div class="nm">Tessy<b>Nav</b></div><div class="sub">Navigation for Tesla</div></div>
 <script>
+window.TN_T0=performance.now();
 /* the opening animation starts dark from the first moment (no blank screen); skipped after an update or with ?intro=0 */
 /* after an update (reload): a faded "Updating TessyNav" screen with a progress bar instead of a blank page */
 window.TN_PROGRESS=function(){};
@@ -64,7 +88,7 @@ window.TN_PROGRESS=function(){};
   /* never stay on this screen if something goes wrong */
   setTimeout(()=>window.TN_PROGRESS(100,'Ready'),12000);
 })();
-(function(){let on=true;try{if(/[?&]intro=0/.test(location.search)||/[?&]r=\d/.test(location.search)||sessionStorage.getItem('tn2_target')) on=false;
+(function(){let on=true;try{if(/[?&]intro=0/.test(location.search)||(/[?&]r=\d/.test(location.search)&&!/[?&]intro=1/.test(location.search))||sessionStorage.getItem('tn2_target')) on=false;
   const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');if(st&&st.intro===false) on=false;}catch(e){}
   const b=document.getElementById('tn-boot');
   if(!on){b.parentNode.removeChild(b);return;}
@@ -94,7 +118,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/shadows.js?v=4"></script>
 <script src="js/trees.js?v=8"></script>
 <script src="js/buildings.js?v=16"></script>
-<script src="js/intro.js?v=6"></script>
+<script src="js/intro.js?v=7"></script>
 <script src="js/rem.js?v=10"></script>
 <script src="js/season.js?v=4"></script>
 <script src="js/ground.js?v=1"></script>
@@ -110,7 +134,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/tunnel.js?v=3"></script>
 <script src="js/feedback.js?v=5"></script>
 <script src="js/rec.js?v=4"></script>
-<script src="js/app.js?v=93"></script>
+<script src="js/app.js?v=94"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
