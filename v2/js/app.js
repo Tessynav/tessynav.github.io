@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=72;
+TN.APPBUILD=73;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -29,6 +29,9 @@ TN.APPBUILD=72;
   /* shadows that follow the real sun (buildings and the car), and the car's soft contact shadow */
   TN.shadows=TN.Shadows?new TN.Shadows(scene):null;
   const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,net:net,getCar:()=>track.car,following:()=>follow,roadsBase:'https://tessynav.github.io/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
+  /* Superchargers on the map (and other fast chargers, if chosen) */
+  const chargers=TN.Chargers?new TN.Chargers({map:map,nav:nav,getCar:()=>track.car,following:()=>follow}):null;TN.chargers=chargers;
+  if(chargers&&map.on) map.on('moveend',()=>{try{chargers.draw(true);}catch(e){}});
   if(incidents){try{incidents.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */
   const weather=TN.Weather?new TN.Weather(scene,season):null;
@@ -415,6 +418,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(nav&&!nav.active){try{const rc=track.car;nav.showLimit(rc&&rc.w&&rc.snapped?(rc.w.lim||null):null,(track.last?track.last.v:0)*3.6);}catch(e){}}
       /* live traffic lines when browsing the map or looking at a route overview (not while following the car) */
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
+      if(chargers) try{chargers.update();}catch(e){}
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
       if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);

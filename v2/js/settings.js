@@ -4,7 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.SETDEF={lang:'en',theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={lang:'en',chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -50,6 +50,7 @@ TN.Settings.prototype.apply=function(k){
       /* (the Tesla theme follows the map's day and night: checked every few seconds) */
       if(!this.themeT) this.themeT=setInterval(()=>{if(this.s.theme==='tesla') TN.applyTheme('tesla',nt());},4000);}
     if(k==='lang'&&s.lang!==TN.LANG){setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);}   /* (restarts in the new language) */
+    if((k==='chargers'||k==='fastdc')&&TN.chargers){TN.chargers.clear();TN.chargers.draw(true);}
     if(k==='record'){for(const id of ['rec','trips']){const b=document.getElementById(id);if(b) b.style.display=s.record?'':'none';}}
     if(k==='zoombtns'){for(const id of ['zin','zout']){const b=document.getElementById(id);if(b) b.style.display=s.zoombtns?'':'none';}}
     if(k==='time'||k==='nightLevel'){if(m.night) m.night();}
@@ -92,7 +93,7 @@ TN.Settings.prototype.build=function(){
     {id:'map',t:'Map and view',sum:()=>list([({auto:'Light: auto',day:'Always day',night:'Always night'})[S.time]||'Light: auto',on('traffic')&&'live traffic']),
      html:()=>'<div class="h">TIME OF DAY</div><div class="r"><div>Light</div><div class="seg" data-k="time"><span data-v="auto">Auto</span><span data-v="day">Day</span><span data-v="night">Night</span></div></div>'+
        '<div class="r" style="display:block"><div>Night brightness</div><input type="range" min="0" max="100" step="1" data-k="nightLevel" value="'+Math.round(S.nightLevel*100)+'"><div class="lbls"><span>Softer</span><span>Darker</span></div></div>'+
-       '<div class="h">MAP</div>'+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('cut','See-through around Tessy','Bridges and buildings in front of the car fade')+tog('zoombtns','Zoom buttons','Pinching the map works too')},
+       '<div class="h">MAP</div>'+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('chargers','Superchargers on the map','Tap one for its stalls and to go there')+tog('fastdc','Other fast chargers','FLO, Circuit électrique, Electrify Canada… (adapter needed)')+tog('cut','See-through around Tessy','Bridges and buildings in front of the car fade')+tog('zoombtns','Zoom buttons','Pinching the map works too')},
     {id:'look',t:'3D details',sum:()=>{const k=['buildings','trees','shadows','leaves','weather','water','lights','rem'];return k.filter(on).length+' of '+k.length+' on'+(on('rainbow')?' \u00b7 rainbow road':'');},
      html:()=>'<div class="h">THE CITY</div>'+tog('buildings','Detailed buildings')+tog('trees','Trees')+tog('rem','REM trains and labels')+tog('water','Animated water')+
        '<div class="h">LIGHT AND SEASONS</div>'+tog('shadows','Shadows','Follow the real sun; the car always has a soft shadow')+tog('lights','Street light glow','At night')+tog('weather','Real weather','Rain, snow, fog and clouds from the live weather')+tog('leaves','Leaves and snow','Falling, on the ground and on the car (autumn leaves; snow when there is some)')+

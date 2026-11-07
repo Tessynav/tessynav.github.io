@@ -79,6 +79,9 @@ const D={
   'APP':'APPLICATION','Opening animation':'Animation d’ouverture','Record and Trips buttons':'Boutons Enregistrer et Trajets',
   'For test drives (hidden while navigating)':'Pour les essais (cachés pendant le guidage)','Version and updates':'Version et mises à jour','Check ›':'Vérifier ›',
   'MAP':'CARTE','Falling, on the ground and on the car (autumn leaves; snow when there is some)':'Qui tombent, au sol et sur la voiture (feuilles d’automne; neige quand il y en a)',
+  'Superchargers on the map':'Superchargeurs sur la carte','Tap one for its stalls and to go there':'Touchez-en un pour ses bornes et pour y aller',
+  'Other fast chargers':'Autres bornes rapides','FLO, Circuit électrique, Electrify Canada… (adapter needed)':'FLO, Circuit électrique, Electrify Canada… (adaptateur requis)',
+  'Tesla Supercharger':'Superchargeur Tesla','Fast charger':'Borne rapide','Add as a stop':'Ajouter comme arrêt',
   'Language':'Langue','this car':'cette voiture','rainbow road':'route arc-en-ciel','Fun mode off':'Mode amusant désactivé',
   /* alerts */
   'School zone':'Zone scolaire','Railway crossing':'Passage à niveau','Speed camera':'Radar photo','Speed and red-light camera':'Radar photo et feu rouge',
@@ -161,6 +164,8 @@ const R=[
   [/^(.+?)( reported)? ahead, ([\d.]+) (metres|kilometres)$/,m=>(D[m[1]]||m[1])+(m[2]?', signalé par un conducteur,':'')+' à '+dist(m[3],m[4])],
   [/^Next: (.+)$/,m=>'Prochain arrêt : '+m[1]],
   [/^(\d+) places$/,m=>m[1]+' arrêts'],
+  [/^(\d+) stalls$/,m=>m[1]+' bornes'],
+  [/^up to (\d+) kW$/,m=>'jusqu’à '+m[1]+' kW'],
   [/^arrive (\d+:\d+)$/,m=>'arrivée '+m[1]],
   [/^avoiding (.+)$/,m=>'en évitant '+m[1].replace(/toll roads|tolls/,'les péages').replace('highways','les autoroutes').replace('ferries','les traversiers').replace('unpaved roads','les routes non pavées').replace(/ and /g,' et ')],
   [/^(\d+) min ago$/,m=>'il y a '+m[1]+' min'],
