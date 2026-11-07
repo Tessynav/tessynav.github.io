@@ -5,7 +5,12 @@
    slow or partly closed, Rocco's line in the route overview says so (and names a clear alternative).
    Positions and directions come from TessyNav's own road tiles (OpenStreetMap). */
 var TN=globalThis.TN||{};globalThis.TN=TN;
-TN.BRIDGES=[{"id": "champlain", "name": "Samuel-De Champlain", "ref": "A-10 / A-15", "g": "south", "len": 3503, "tun": false, "mid": [45.46905, -73.51599], "out": [45.46915, -73.51544], "in": [45.46986, -73.52025], "both": false, "brg": 96}, {"id": "jc", "name": "Jacques-Cartier", "ref": "Route 134", "g": "south", "len": 2861, "tun": false, "mid": [45.52231, -73.53973], "out": [45.52423, -73.55013], "in": [45.52423, -73.55013], "both": true, "brg": null}, {"id": "victoria", "name": "Victoria", "ref": "Route 112", "g": "south", "len": 4131, "tun": false, "mid": [45.49441, -73.52114], "out": [45.48922, -73.53673], "in": [45.48922, -73.53673], "both": true, "brg": null}, {"id": "lafontaine", "name": "Louis-H.-La Fontaine tunnel", "ref": "A-25", "g": "south", "len": 1399, "tun": true, "mid": [45.58368, -73.50044], "out": [45.58184, -73.49194], "in": [45.58552, -73.50894], "both": false, "brg": 107}, {"id": "mercier", "name": "Honoré-Mercier", "ref": "Route 138", "g": "south", "len": 2061, "tun": false, "mid": [45.40927, -73.65895], "out": [45.41261, -73.65732], "in": [45.41378, -73.65659], "both": false, "brg": 200}, {"id": "a15", "name": "Médéric-Martin", "ref": "A-15", "g": "north", "len": 639, "tun": false, "mid": [45.54008, -73.71143], "out": [45.54097, -73.71311], "in": [45.54085, -73.71324], "both": false, "brg": 314}, {"id": "papineau", "name": "Papineau-Leblanc", "ref": "A-19", "g": "north", "len": 446, "tun": false, "mid": [45.57595, -73.66662], "out": [45.57549, -73.66598], "in": [45.57597, -73.66675], "both": false, "brg": 322}, {"id": "pieix", "name": "Pie-IX", "ref": "Route 125", "g": "north", "len": 522, "tun": false, "mid": [45.59954, -73.64736], "out": [45.59793, -73.64485], "in": [45.59785, -73.64497], "both": false, "brg": 313}, {"id": "a25", "name": "Olivier-Charbonneau", "ref": "A-25 (toll)", "g": "north", "len": 1198, "tun": false, "mid": [45.63645, -73.61892], "out": [45.63645, -73.61882], "in": [45.63695, -73.61957], "both": false, "brg": 323}, {"id": "bisson", "name": "Louis-Bisson", "ref": "A-13", "g": "north", "len": 709, "tun": false, "mid": [45.58093, -73.83777], "out": [45.5835, -73.84045], "in": [45.57837, -73.83509], "both": false, "brg": 322}, {"id": "lachapelle", "name": "Lachapelle", "ref": "Route 117", "g": "north", "len": 265, "tun": false, "mid": [45.5329, -73.72808], "out": [45.53388, -73.72904], "in": [45.53192, -73.72711], "both": false, "brg": 320}];
+TN.BRIDGES=[{"id": "champlain", "name": "Samuel-De Champlain", "ref": "A-10 / A-15", "g": "south", "len": 3503, "tun": false, "mid": [45.46905, -73.51599], "out": [45.46915, -73.51544], "in": [45.46986, -73.52025], "both": false, "brg": 96, "axis": 96}, {"id": "ids", "name": "Pont de l'Île-des-Sœurs", "noAlt": true, "ref": "A-15", "g": "south", "len": 493, "tun": false, "mid": [45.47101, -73.55012], "out": [45.47069, -73.54796], "in": [45.47132, -73.55221], "both": false, "brg": 96, "axis": 96}, {"id": "jc", "name": "Jacques-Cartier", "ref": "Route 134", "g": "south", "len": 2861, "tun": false, "mid": [45.52231, -73.53973], "out": [45.52423, -73.55013], "in": [45.52423, -73.55013], "both": true, "brg": null, "axis": 111}, {"id": "victoria", "name": "Victoria", "ref": "Route 112", "g": "south", "len": 4131, "tun": false, "mid": [45.49441, -73.52114], "out": [45.48922, -73.53673], "in": [45.48922, -73.53673], "both": true, "brg": null, "axis": 64}, {"id": "lafontaine", "name": "Louis-H.-La Fontaine tunnel", "ref": "A-25", "g": "south", "len": 1399, "tun": true, "mid": [45.58368, -73.50044], "out": [45.58184, -73.49194], "in": [45.58552, -73.50894], "both": false, "brg": 107, "axis": 107}, {"id": "mercier", "name": "Honoré-Mercier", "ref": "Route 138", "g": "south", "len": 2061, "tun": false, "mid": [45.40927, -73.65895], "out": [45.41261, -73.65732], "in": [45.41378, -73.65659], "both": false, "brg": 200, "axis": 22}, {"id": "a15", "name": "Médéric-Martin", "ref": "A-15", "g": "north", "len": 639, "tun": false, "mid": [45.54008, -73.71143], "out": [45.54097, -73.71311], "in": [45.54085, -73.71324], "both": false, "brg": 314, "axis": 134}, {"id": "papineau", "name": "Papineau-Leblanc", "ref": "A-19", "g": "north", "len": 446, "tun": false, "mid": [45.57595, -73.66662], "out": [45.57549, -73.66598], "in": [45.57597, -73.66675], "both": false, "brg": 322, "axis": 142}, {"id": "pieix", "name": "Pie-IX", "ref": "Route 125", "g": "north", "len": 522, "tun": false, "mid": [45.59954, -73.64736], "out": [45.59793, -73.64485], "in": [45.59785, -73.64497], "both": false, "brg": 313, "axis": 133}, {"id": "a25", "name": "Olivier-Charbonneau", "ref": "A-25 (toll)", "g": "north", "len": 1198, "tun": false, "mid": [45.63645, -73.61892], "out": [45.63645, -73.61882], "in": [45.63695, -73.61957], "both": false, "brg": 323, "axis": 143}, {"id": "bisson", "name": "Louis-Bisson", "ref": "A-13", "g": "north", "len": 709, "tun": false, "mid": [45.58093, -73.83777], "out": [45.5835, -73.84045], "in": [45.57837, -73.83509], "both": false, "brg": 322, "axis": 142}, {"id": "lachapelle", "name": "Lachapelle", "ref": "Route 117", "g": "north", "len": 265, "tun": false, "mid": [45.5329, -73.72808], "out": [45.53388, -73.72904], "in": [45.53192, -73.72711], "both": false, "brg": 320, "axis": 140}];
+/* a bridge's own line (its middle, its axis, its length) and the distance from a point to it, in metres */
+TN.brLine=b=>{if(b._ln) return b._ln;const m=TN.toLocal(b.mid[1],b.mid[0]),r=(b.axis||0)*Math.PI/180,ux=Math.sin(r),uz=-Math.cos(r),h=b.len/2;
+  return b._ln=[[m[0]-ux*h,m[1]-uz*h],[m[0]+ux*h,m[1]+uz*h]];};
+TN.brDist=(b,x,z)=>{const L=TN.brLine(b),a=L[0],c=L[1],vx=c[0]-a[0],vz=c[1]-a[1],l2=vx*vx+vz*vz||1;
+  let u=((x-a[0])*vx+(z-a[1])*vz)/l2;u=Math.max(0,Math.min(1,u));return Math.hypot(x-(a[0]+vx*u),z-(a[1]+vz*u));};
 TN.Bridges=function(api){this.api=api;this.cache=new Map();this.dir='out';};
 /* the crossing time in one direction: TomTom's live speed on that carriageway, over the bridge's length */
 TN.Bridges.prototype.flow=async function(b,dir){
@@ -20,9 +25,10 @@ TN.Bridges.prototype.flow=async function(b,dir){
 /* Transports Québec events on (or at the ends of) a crossing */
 TN.Bridges.prototype.mtq=function(b){
   const inc=TN.incidentsObj;if(!inc||!inc.mtqAll||!TN.toLocal) return null;
-  const m=TN.toLocal(b.mid[1],b.mid[0]),R=b.len/2+250;let best=null;
+  /* (on the bridge itself: within 150 m of its line, not just anywhere near its middle) */
+  let best=null;
   for(const e of inc.mtqAll){if(!/closed|lane|works/.test(e.kind)) continue;
-    if(e.pts.some(q=>Math.hypot(q[0]-m[0],q[1]-m[1])<R)){if(!best||e.kind==='closed') best=e;}}
+    if(e.pts.some(q=>TN.brDist(b,q[0],q[1])<150)){if(!best||e.kind==='closed') best=e;}}
   return best;
 };
 TN.Bridges.prototype.status=async function(b,dir){
@@ -60,7 +66,7 @@ TN.Bridges.prototype.css=function(){
    '#tn-br .it{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:11px;margin-bottom:6px;background:rgba(255,255,255,.05);cursor:pointer}#tn-br .it .d{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#888}'+
    '#tn-br .it b{display:block;font-weight:600}#tn-br .it small{color:var(--tn-sub,#b9b6ae)}#tn-br .it .t{margin-left:auto;text-align:right;white-space:nowrap}#tn-br .it .t b{font-size:16px}'+
    '#tn-br .it.green .d{background:#1d9e75}#tn-br .it.amber{background:rgba(245,158,11,.14)}#tn-br .it.amber .d{background:#f59e0b}#tn-br .it.red{background:rgba(239,68,68,.16)}#tn-br .it.red .d{background:#ef4444}#tn-br .it.close{outline:1.5px solid rgba(255,255,255,.35)}'+
-   '#tn-br .it.amber small,#tn-br .it.amber .t{color:#fcd34d}#tn-br .it.red small,#tn-br .it.red .t{color:#fca5a5}#tn-br .tn-rline{margin:8px 18px 2px}';
+   '#tn-br .it.amber{box-shadow:inset 4px 0 0 #f59e0b}#tn-br .it.red{box-shadow:inset 4px 0 0 #ef4444}#tn-br .it.amber small,#tn-br .it.red small{color:var(--tn-text,#f3f1ec);opacity:.75}#tn-br .tn-rline{margin:8px 18px 2px}';
   document.head.appendChild(st);
 };
 TN.Bridges.prototype.open=async function(){
@@ -82,10 +88,10 @@ TN.Bridges.prototype.open=async function(){
   /* Rocco: the best crossing toward the side of the closest bridge */
   /* (the closest crossing that is clear: comparing crossing times alone would favour short bridges far away) */
   const dist=b=>{const c=this.pos();if(!c) return 0;const m=TN.toLocal(b.mid[1],b.mid[0]);return Math.hypot(m[0]-c.x,m[1]-c.z);};
-  const grp=near?near.b.g:'south',ok=sts.filter(s=>s.b.g===grp&&s.mins!=null&&s.tone==='green'&&s.delay<2).sort((a,b)=>dist(a.b)-dist(b.b))[0];
+  const grp=near?near.b.g:'south',ok=sts.filter(s=>s.b.g===grp&&!s.b.noAlt&&s.mins!=null&&s.tone==='green'&&s.delay<2).sort((a,b)=>dist(a.b)-dist(b.b))[0];
   if(ok&&!(TN.settings&&TN.settings.fun===false)&&TN.roccoSVG){
     const side=grp==='south'?(fr?(dir==='out'?'la Rive-Sud':'Montréal'):(dir==='out'?'the South Shore':'Montreal')):(fr?(dir==='out'?'Laval':'Montréal'):(dir==='out'?'Laval':'Montreal'));
-    P.querySelector('.rl').innerHTML='<div class="tn-rline notr">'+TN.roccoSVG(28)+'<span>'+(fr?(near&&ok.b===near.b?'Le plus proche, '+ok.b.name+', est fluide vers '+side+'.':ok.b.name+' est votre meilleure option vers '+side+' en ce moment.'):(near&&ok.b===near.b?'Your closest, '+ok.b.name+', is clear to '+side+'.':ok.b.name+' is your best bet to '+side+' right now.'))+'</span></div>';}
+    P.querySelector('.rl').innerHTML='<div class="tn-rline notr">'+TN.roccoSVG(28)+'<span>'+(fr?(near&&ok.b===near.b&&!near.b.noAlt?'Le plus proche, '+ok.b.name+', est fluide vers '+side+'.':ok.b.name+' est votre meilleure option vers '+side+' en ce moment.'):(near&&ok.b===near.b&&!near.b.noAlt?'Your closest, '+ok.b.name+', is clear to '+side+'.':ok.b.name+' is your best bet to '+side+' right now.'))+'</span></div>';}
   P.querySelectorAll('.it').forEach(el=>el.onclick=()=>{const b=TN.BRIDGES.find(x=>x.id===el.dataset.id);P.style.display='none';
     if(b&&this.api.nav) this.api.nav.pick({name:(b.tun?'':'Pont ')+b.name,sub:b.ref,lng:b.mid[1],lat:b.mid[0]});});
 };
@@ -95,14 +101,14 @@ TN.Bridges.prototype.checkRoute=async function(nav){
   let hit=null;
   for(const b of TN.BRIDGES){const m=TN.toLocal(b.mid[1],b.mid[0]);
     for(let i=1;i<R.pts.length;i++){const p=R.pts[i];if(Math.abs(p[0]-m[0])>b.len/2+60||Math.abs(p[1]-m[1])>b.len/2+60) continue;
-      if(Math.hypot(p[0]-m[0],p[1]-m[1])<b.len/2+40){const q=R.pts[i-1],brg=(Math.atan2(p[0]-q[0],-(p[1]-q[1]))*180/Math.PI+360)%360;
+      if(TN.brDist(b,p[0],p[1])<35&&Math.hypot(p[0]-m[0],p[1]-m[1])<b.len/2-Math.min(80,b.len*0.2)){   /* (on the bridge, well inside its ends) */const q=R.pts[i-1],brg=(Math.atan2(p[0]-q[0],-(p[1]-q[1]))*180/Math.PI+360)%360;
         let dir='out';if(b.brg!=null){const dd=Math.abs(((brg-b.brg)%360+540)%360-180);dir=dd<90?'out':'in';}hit={b:b,dir:dir};break;}}
     if(hit) break;}
   if(!hit) return;
   const s=await this.status(hit.b,hit.dir);if(nav.route!==R) return;
   if(!(s.tone==='red'||s.tone==='amber')) return;
   const hm=TN.toLocal(hit.b.mid[1],hit.b.mid[0]),dh=b=>{const m=TN.toLocal(b.mid[1],b.mid[0]);return Math.hypot(m[0]-hm[0],m[1]-hm[1]);};
-  const alts=(await Promise.all(TN.BRIDGES.filter(b=>b.g===hit.b.g&&b!==hit.b).map(b=>this.status(b,hit.dir)))).filter(a=>a.tone==='green'&&a.delay<2).sort((a,b)=>dh(a.b)-dh(b.b));   /* (the nearest clear one) */
+  const alts=hit.b.noAlt?[]:(await Promise.all(TN.BRIDGES.filter(b=>b.g===hit.b.g&&b!==hit.b).map(b=>this.status(b,hit.dir)))).filter(a=>a.tone==='green'&&a.delay<2).sort((a,b)=>dh(a.b)-dh(b.b));   /* (the nearest clear one) */
   const fr=TN.LANG==='fr',alt=alts[0],what=s.tone==='red'?(fr?(s.ev&&s.ev.kind==='closed'?'fermé':'une voie fermée'):(s.ev&&s.ev.kind==='closed'?'closed':'a lane closed')):(fr?'ralenti, +'+s.delay+' min':'slow, +'+s.delay+' min');
   const txt=fr?'Votre trajet passe par '+hit.b.name+' : '+what+'.'+(alt?' '+alt.b.name+' est fluide.':''):'Your route takes '+hit.b.name+': '+what+'.'+(alt?' '+alt.b.name+' is clear.':'');
   R.rocco={tone:s.tone==='red'?'red':'amber',text:txt};

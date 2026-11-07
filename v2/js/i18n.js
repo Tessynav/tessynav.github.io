@@ -95,7 +95,7 @@ const D={
   'RECENT':'RÉCENTS','FAVORITES':'FAVORIS','Edit':'Modifier','Done':'Terminé','Change':'Changer','Remove':'Retirer',
   'Send to Tessy':'Envoyer à Tessy','Sending to Tessy…':'Envoi à Tessy…','Sent to Tessy ✓':'Envoyé à Tessy ✓',
   'Tessy needs signed commands: next update':'Tessy exige des commandes signées : prochaine mise à jour',
-  'Bridges and tunnels':'Ponts et tunnels','Bridges':'Ponts','Live status':'État en direct','Leaving Montreal':'Sortir de Montréal','Into Montreal':'Vers Montréal',
+  'Île-des-Sœurs':'Île-des-Sœurs','Bridges and tunnels':'Ponts et tunnels','Bridges':'Ponts','Live status':'État en direct','Leaving Montreal':'Sortir de Montréal','Into Montreal':'Vers Montréal',
   'SOUTH SHORE':'RIVE-SUD','LAVAL AND NORTH SHORE':'LAVAL ET RIVE-NORD','Updated now':'Mis à jour','Loading…':'Chargement…','fluid':'fluide','slow':'ralenti',
   'closed':'fermé','closed (Transports Québec)':'fermé (Transports Québec)','lane closed (Transports Québec)':'voie fermée (Transports Québec)',
   'works nearby':'travaux à proximité','no traffic data':'pas de données de circulation','· closest':'· le plus proche',
