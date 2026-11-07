@@ -11,10 +11,12 @@ TN.Voice.prototype.on=function(){return !(TN.settings&&TN.settings.voice===false
 TN.Voice.prototype.englishVoice=function(){
   if(!this.synth||!this.synth.getVoices) return null;
   const vs=this.synth.getVoices()||[];if(!vs.length) return null;
+  if(TN.LANG==='fr') return vs.find(v=>/fr[-_]CA/i.test(v.lang))||vs.find(v=>/fr[-_]FR/i.test(v.lang))||vs.find(v=>/^fr/i.test(v.lang))||null;
   return vs.find(v=>/en[-_]CA/i.test(v.lang))||vs.find(v=>/en[-_]US/i.test(v.lang))||vs.find(v=>/^en/i.test(v.lang))||null;
 };
 /* say something; "urgent" replaces whatever is waiting (an instruction about to happen beats an older one) */
 TN.Voice.prototype.say=function(text,urgent){
+  if(TN.tr) text=TN.tr(text);   /* (French when the app is in French) */
   if(!this.on()||!text) return;
   text=text.charAt(0).toUpperCase()+text.slice(1);
   if(urgent) this.q=[];
@@ -30,7 +32,7 @@ TN.Voice.prototype.next=function(){
       setTimeout(()=>{if(this.busy&&this.last===t) done();},12000);return;}catch(e){}}
   /* no browser voice: Mapbox's voice service */
   try{
-    const a=new Audio('https://api.mapbox.com/voice/v1/speak/'+encodeURIComponent(t)+'?textType=text&language=en-US&outputFormat=mp3&access_token='+TN.MBX);
+    const a=new Audio('https://api.mapbox.com/voice/v1/speak/'+encodeURIComponent(t)+'?textType=text&language='+(TN.LANG==='fr'?'fr-FR':'en-US')+'&outputFormat=mp3&access_token='+TN.MBX);
     this.audio=a;this.mode='mapbox';a.onended=done;a.onerror=done;
     const p=a.play();if(p&&p.catch) p.catch(done);
     setTimeout(()=>{if(this.busy&&this.last===t) done();},12000);

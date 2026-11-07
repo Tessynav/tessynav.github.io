@@ -175,7 +175,7 @@ TN.Nav.prototype.search=async function(q){
   const h=this.here(),my=++this.qn;this.qn=my;
   if(TN.MBX){try{
     if(!this.sess) this.sess=Math.random().toString(36).slice(2)+Date.now().toString(36);
-    const u='https://api.mapbox.com/search/searchbox/v1/suggest?q='+encodeURIComponent(q)+'&language=en&country=ca,us&limit=8&proximity='+h[0].toFixed(5)+','+h[1].toFixed(5)+
+    const u='https://api.mapbox.com/search/searchbox/v1/suggest?q='+encodeURIComponent(q)+'&language='+(TN.LANG||'en')+'&country=ca,us&limit=8&proximity='+h[0].toFixed(5)+','+h[1].toFixed(5)+
       '&origin='+h[0].toFixed(5)+','+h[1].toFixed(5)+'&session_token='+this.sess+'&access_token='+TN.MBX;
     const r=await fetch(u);if(!r.ok) throw 0;const j=await r.json();if(my!==this.qn) return;
     const items=(j.suggestions||[]).filter(sg=>sg.feature_type!=='category'&&sg.mapbox_id).map(sg=>({name:sg.name,sub:sg.full_address||sg.place_formatted||'',mbid:sg.mapbox_id,dist:sg.distance}));
@@ -244,7 +244,7 @@ TN.Nav.prototype.showAll=async function(q){
   let items=[];
   /* 1. Mapbox: the nearest places, in about a second */
   if(TN.MBX){try{
-    const u='https://api.mapbox.com/search/searchbox/v1/forward?q='+encodeURIComponent(q)+'&types=poi&limit=10&language=en&proximity='+h[0].toFixed(5)+','+h[1].toFixed(5)+'&access_token='+TN.MBX;
+    const u='https://api.mapbox.com/search/searchbox/v1/forward?q='+encodeURIComponent(q)+'&types=poi&limit=10&language='+(TN.LANG||'en')+'&proximity='+h[0].toFixed(5)+','+h[1].toFixed(5)+'&access_token='+TN.MBX;
     const r=await fetch(u);if(r.ok){const j=await r.json();
       items=(j.features||[]).map(f=>({name:f.properties.name||q,sub:f.properties.full_address||f.properties.place_formatted||'',lng:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]}));}
   }catch(e){}}
@@ -423,7 +423,7 @@ TN.Nav.prototype.fetchRouteOnce=async function(from,to){
     const via=(this.stops||[]).map(p=>{const r=TN.routeTo(p);return r[0].toFixed(6)+','+r[1].toFixed(6);});
     const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60'+';'.repeat(via.length+1):'';
     const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+[from[0].toFixed(6)+','+from[1].toFixed(6)].concat(via,[to[0].toFixed(6)+','+to[1].toFixed(6)]).join(';')+
-      '?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language=en&voice_instructions=true&voice_units=metric'+brg+TN.avoidParam()+'&access_token='+TN.MBX;
+      '?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language='+(TN.LANG||'en')+'&voice_instructions=true&voice_units=metric'+brg+TN.avoidParam()+'&access_token='+TN.MBX;
     const r=await fetch(u);if(r.ok){const j=await r.json();if(j.routes&&j.routes[0]){j.routes[0].traffic=true;return j.routes[0];}}
   }catch(e){}}
   return this.fetchRouteFree(from,to);

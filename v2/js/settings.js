@@ -4,7 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.SETDEF={theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={lang:'en',theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -49,6 +49,7 @@ TN.Settings.prototype.apply=function(k){
     if(k==='theme'){const nt=()=>{const sc2=this.m.scene;return sc2?(sc2.night||0)>0.5:false;};TN.applyTheme(s.theme,nt());
       /* (the Tesla theme follows the map's day and night: checked every few seconds) */
       if(!this.themeT) this.themeT=setInterval(()=>{if(this.s.theme==='tesla') TN.applyTheme('tesla',nt());},4000);}
+    if(k==='lang'&&s.lang!==TN.LANG){setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);}   /* (restarts in the new language) */
     if(k==='record'){for(const id of ['rec','trips']){const b=document.getElementById(id);if(b) b.style.display=s.record?'':'none';}}
     if(k==='zoombtns'){for(const id of ['zin','zout']){const b=document.getElementById(id);if(b) b.style.display=s.zoombtns?'':'none';}}
     if(k==='time'||k==='nightLevel'){if(m.night) m.night();}
@@ -96,9 +97,9 @@ TN.Settings.prototype.build=function(){
      html:()=>'<div class="h">THE CITY</div>'+tog('buildings','Detailed buildings')+tog('trees','Trees')+tog('rem','REM trains and labels')+tog('water','Animated water')+
        '<div class="h">LIGHT AND SEASONS</div>'+tog('shadows','Shadows','Follow the real sun; the car always has a soft shadow')+tog('lights','Street light glow','At night')+tog('weather','Real weather','Rain, snow, fog and clouds from the live weather')+tog('leaves','Leaves and snow','Falling, on the ground and on the car (autumn leaves; snow when there is some)')+
        '<div class="h">FOR FUN</div>'+tog('rainbow','Rainbow road','The route line flows through the colours (hides traffic colours on it)')},
-    {id:'app',t:'App',sum:()=>({rocco:'Rocco theme',tesla:'Tesla theme',futuristic:'Futuristic theme'})[S.theme||'rocco']+' \u00b7 version, recording',
+    {id:'app',t:'App',sum:()=>({rocco:'Rocco theme',tesla:'Tesla theme',futuristic:'Futuristic theme'})[S.theme||'rocco']+(TN.LANG==='fr'?' \u00b7 Français':' \u00b7 English')+' \u00b7 version, recording',
      html:()=>'<div class="h">LOOK</div><div class="r"><div>Theme</div><div class="seg" data-k="theme"><span data-v="rocco">Rocco</span><span data-v="tesla">Tesla</span><span data-v="futuristic">Futuristic</span></div></div>'+
-       '<div class="sub" style="margin:2px 0 6px">Tesla: light by day, dark at night</div><div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+'<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>'}];
+       '<div class="sub" style="margin:2px 0 6px">Tesla: light by day, dark at night</div><div class="r"><div>Language</div><div class="seg notr" data-k="lang"><span data-v="en">English</span><span data-v="fr">Français</span></div></div><div class="h">APP</div>'+tog('intro','Opening animation')+tog('record','Record and Trips buttons','For test drives (hidden while navigating)')+'<div class="r"><div>Version and updates</div><div class="lnk" id="tn-setver">Check \u203a</div></div>'}];
   const show=id=>{
     if(!id){const fun=!(TN.settings&&TN.settings.fun===false);
       p.innerHTML='<div class="ttlrow">'+(TN.roccoSVG?TN.roccoSVG(44):'')+'<div><div class="ttl">Settings</div>'+(fun&&TN.roccoTip?'<div class="tip">Tip: '+TN.roccoTip()+'</div>':'')+'</div></div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
