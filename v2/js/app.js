@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=87;
+TN.APPBUILD=88;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -288,10 +288,10 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   setTimeout(bgCheck,5000);setInterval(bgCheck,180000);   /* first check 5 s after opening, then every 3 minutes */
   try{const st=document.createElement('style');
    st.textContent='#tn-gear.upd:after{content:"";position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:#ff5a4f;box-shadow:0 0 0 2px rgb(var(--tn-panel-rgb) / .9)}'+
-     '#tn-updbar{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:none;align-items:center;gap:12px;padding:8px 10px 8px 16px;border-radius:14px;background:rgb(var(--tn-panel-rgb) / .95);color:var(--tn-text);font:15px sans-serif}'+
+     '#tn-updbar{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:8;display:none;align-items:center;gap:12px;padding:8px 10px 8px 16px;border-radius:14px;background:rgb(var(--tn-panel-rgb) / .95);color:var(--tn-text);font:15px sans-serif}'+
      '#tn-updbar button{border:0;border-radius:9px;padding:7px 12px;font:600 14px sans-serif;cursor:pointer}#tn-updbar .u{background:var(--tn-accent);color:var(--tn-on-accent)}#tn-updbar .l{background:var(--tn-btn);color:var(--tn-text)}'+
      '#tn-updbar .i{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--tn-accent);color:var(--tn-on-accent);font-size:15px}'+
-     '#tn-updpill{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:none;padding:6px 14px;border-radius:999px;background:rgb(var(--tn-panel-rgb) / .85);color:var(--tn-tip);font:13px sans-serif}';
+     '#tn-updpill{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:8;display:none;padding:6px 14px;border-radius:999px;background:rgb(var(--tn-panel-rgb) / .85);color:var(--tn-tip);font:13px sans-serif}';
    document.head.appendChild(st);
    const bar=document.createElement('div');bar.id='tn-updbar';bar.innerHTML='<span class="i"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 4v13M6 11l6 6 6-6" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="m">New update arrived</span><button class="u">Update now</button><button class="l">Later</button>';document.body.appendChild(bar);
    /* while driving: a quiet note without buttons */
