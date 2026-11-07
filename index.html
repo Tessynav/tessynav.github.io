@@ -1,53 +1,14 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TessyNav</title>
-<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
-<style>
-html,body,#map{margin:0;height:100%}
-.hud{position:absolute;background:rgba(10,18,32,.85);color:#e8f1fa;font-family:sans-serif;border-radius:12px;padding:10px 16px}
-#status{top:12px;left:12px;font-size:15px}
-#sun{top:64px;left:12px;font-size:13px}
-#shbtn{top:110px;left:12px;font-size:13px;border:0;cursor:pointer}
-#skybtn{top:156px;left:12px;font-size:13px;border:0;cursor:pointer}
-#trees{top:12px;right:56px;font-size:14px}
-#speed{bottom:24px;left:12px;font-size:34px;font-weight:bold}
-#speed small{font-size:15px;font-weight:normal;opacity:.7}
-#btn{bottom:24px;right:12px;font-size:18px;border:0;cursor:pointer}
-</style>
+<!-- TessyNav: the app lives in /v2/. This page sends you there at once, keeping anything after the address
+     (for example ?schooltest=1 or #...). The old version is still available at /v1.html -->
+<script>location.replace('/v2/'+location.search+location.hash);</script>
+<meta http-equiv="refresh" content="0; url=/v2/">
+<style>body{margin:0;background:#2b2d31;color:#f3f1ec;font:16px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}a{color:#f2b55a}</style>
 </head>
-<body>
-<div id="map"></div>
-<div id="status" class="hud">Tap Start to follow Tessy</div>
-<div id="sun" class="hud">Sun: calculating...</div>
-<button id="shbtn" class="hud">Shadows: On</button>
-<button id="skybtn" class="hud">Sky: Off</button>
-<div id="trees" class="hud">Trees: 0</div>
-<div id="speed" class="hud">0 <small>km/h</small></div>
-<button id="btn" class="hud">Start</button>
-<script src="js/core.js?v=3"></script>
-<script src="js/sun.js?v=2"></script>
-<script src="js/ground.js?v=2"></script>
-<script src="js/trees.js?v=1"></script>
-<script src="js/main.js?v=3"></script>
-<script src="js/buildings.js?v=3"></script>
-<script src="js/bridges.js?v=4"></script>
-<script src="js/lights.js?v=4"></script>
-<script src="js/signs.js?v=5"></script>
-<script src="js/perf.js?v=24"></script>
-<script src="js/rec.js?v=4"></script>
-<script src="js/roads.js?v=6"></script>
-<script src="js/fixes.js?v=35"></script>
-<script src="js/motion.js?v=10"></script>
-<script src="js/match.js?v=5"></script>
-<script src="js/tiles.js?v=1"></script>
-<script src="js/roadperf.js?v=1"></script>
-<script src="js/objects.js?v=19"></script>
-<script src="js/roads3d.js?v=8"></script>
-<script src="js/upload.js?v=10"></script>
-</body>
+<body><p>Opening TessyNav… <a href="/v2/">Tap here</a> if nothing happens.</p></body>
 </html>
