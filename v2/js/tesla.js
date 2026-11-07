@@ -61,7 +61,7 @@ TN.Tesla.prototype.getTrip=async function(nav){
     if(t.asleep){say('Tessy is asleep. Try again from the car.');return;}
     if(t.none){say('No trip in Tessy’s navigation');return;}
     const sub=['From Tessy'];if(t.energy!=null) sub.push(Math.round(t.energy)+'% at arrival');
-    if(nav) nav.pick({name:t.name,sub:sub.join(' \u00b7 '),lng:t.lng,lat:t.lat,fromTesla:true});
+    if(nav) nav.pick({name:t.name,sub:sub.join(' \u00b7 '),lng:t.lng,lat:t.lat,fromTesla:true,tesla:{energy:t.energy,min:t.min,km:t.km}});
   }catch(e){
     if(e.message==='signin'){say('Connect your Tesla first');return;}
     if(e.message==='novehicle'){say('No car found on this Tesla account');return;}

@@ -69,6 +69,7 @@ TN.Nav.prototype.build=function(){
   this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>'+(TN.tesla?'<span class="tz" title="Sync with Tessy">'+TN.TESLA_T(20)+'<b>Sync</b></span>':''));
   {const tz=this.box.querySelector('.tz');if(tz) tz.onclick=ev=>{ev.stopPropagation();this.closeSearch&&this.closeSearch();if(TN.tesla.connected()) TN.tesla.getTrip(this);else TN.tesla.signIn();};}
   this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dline"><div class="dist"></div><div class="lanes"></div></div><div class="ins"></div><div class="then"></div></div><div class="etabox"><div class="eta"></div><button class="dst"></button></div><div class="pb"><div class="car"></div></div>');
+  {const tt=this.bar.querySelector('.t');if(tt){tt.style.cursor='pointer';tt.onclick=ev=>{ev.stopPropagation();if(this.route) this.details();};}}
   this.endBtn=el('tn-end','','End route','button');
   this.stopBtn=el('tn-stopbtn','','+ Stop','button');this.stopBtn.onclick=()=>this.addStop();
   this.muteBtn=el('tn-mute','','','button');
@@ -489,7 +490,7 @@ TN.Nav.prototype.setRoute=function(rt){
       ann:annPrev});
     annPrev=(s.voiceInstructions||[]).map(v=>({d:v.distanceAlongGeometry,text:v.announcement})).sort((a,b)=>b.d-a.d);}}
   this.said=new Set();
-  this.route={pts:pts,cum:cum,L:cum[cum.length-1],dur:rt.duration,dist:rt.distance,steps:steps,hy:null,traffic:!!rt.traffic};
+  this.route={pts:pts,cum:cum,L:cum[cum.length-1],dur:rt.duration,dist:rt.distance,steps:steps,hy:null,traffic:!!rt.traffic,typ:rt.duration_typical||null};
   /* traffic per stretch (from the route's congestion levels), placed along the line by distance */
   {const cong=[];for(const lg of rt.legs||[]) if(lg.annotation&&lg.annotation.congestion) cong.push(...lg.annotation.congestion);
    const C=rt.geometry.coordinates,D=[0];for(let i=1;i<C.length;i++) D.push(D[i-1]+TN.distLL(C[i-1],C[i]));
@@ -656,12 +657,49 @@ TN.Nav.prototype.overview=function(){
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
   this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+(TN.avoidList().length?' \u00b7 avoiding '+TN.avoidList().map(x=>({toll:'tolls',motorway:'highways',ferry:'ferries',unpaved:'unpaved roads'})[x]).join(', '):'')+'</small>'+
-    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="cancel">Cancel</button></div>';
+    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="det">Details</button><button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
   this.ov.querySelector('.save').onclick=ev=>{ev.stopPropagation();this.saveMenu(ev.currentTarget);};
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
+  this.ov.querySelector('.det').onclick=ev=>{ev.stopPropagation();this.details();};
   this.tripButtons(this.ov);
+};
+/* trip details, for any route: summary (time, distance, arrival, traffic), what Tessy said (when synced), your stops,
+   and every turn with the distance between them; while driving, from your next turn on.
+   Opened from the overview (Details) or by tapping the instruction bar while driving. */
+TN.Nav.prototype.details=function(){
+  const R=this.route;if(!R) return;
+  let P=document.getElementById('tn-det');
+  if(!P){P=document.createElement('div');P.id='tn-det';document.body.appendChild(P);
+    const st=document.createElement('style');
+    st.textContent='#tn-det{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;width:min(92vw,560px);max-height:78vh;display:none;flex-direction:column;background:rgb(var(--tn-panel-rgb,43 45 49)/.98);color:var(--tn-text,#f3f1ec);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.5);font:16px system-ui,sans-serif;overflow:hidden}'+
+      '#tn-det .hd{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 8px}#tn-det .hd b{font-size:19px;display:block}#tn-det .hd small{color:var(--tn-sub,#b9b6ae)}#tn-det .hd .x{margin-left:auto;cursor:pointer;padding:4px}'+
+      '#tn-det .sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;padding:6px 18px 12px}#tn-det .tile{background:rgba(255,255,255,.06);border-radius:12px;padding:9px 11px}#tn-det .tile small{display:block;color:var(--tn-sub,#b9b6ae);font-size:12px}#tn-det .tile span{font-size:18px;font-weight:700}'+
+      '#tn-det .tile.tsl{border:1px solid rgba(227,25,55,.5)}#tn-det .note{padding:0 18px 10px;color:var(--tn-sub,#b9b6ae);font-size:13px}#tn-det .sec{padding:8px 18px 4px;font-size:12px;letter-spacing:.06em;color:var(--tn-sub,#b9b6ae)}'+
+      '#tn-det .list{overflow-y:auto;padding:0 10px 12px;-webkit-overflow-scrolling:touch}#tn-det .st{display:flex;align-items:center;gap:12px;padding:9px 8px;border-bottom:1px solid var(--tn-line,rgba(255,255,255,.08))}#tn-det .st .ic{width:28px;flex-shrink:0;display:flex;justify-content:center;color:var(--tn-accent,#e8913a)}#tn-det .st .tx{flex:1;min-width:0}#tn-det .st .tx small{display:block;color:var(--tn-sub,#b9b6ae)}#tn-det .st .d{color:var(--tn-sub,#b9b6ae);font-size:14px;white-space:nowrap}#tn-det .st.next{background:rgba(255,255,255,.05);border-radius:10px}';
+    document.head.appendChild(st);}
+  const dest=this.dest||{},now=this.active&&this.ps!=null?this.ps:0;
+  const left=Math.max(0,R.L-now),durLeft=R.dur*(R.L>0?left/R.L:1),arr=new Date(Date.now()+durLeft*1000);
+  const hm=s2=>{const m=Math.max(1,Math.round(s2/60));return m<60?m+' min':Math.floor(m/60)+' h '+String(m%60).padStart(2,'0');};
+  const tiles=[['Time',hm(durLeft)],['Distance',fmtDist(left)],['Arrival',arr.toTimeString().slice(0,5)]];
+  if(R.typ&&R.traffic){const dl=Math.round((R.dur-R.typ)/60);tiles.push(['Traffic',dl>=2?'+'+dl+' min':'normal']);}
+  let tsl='';
+  if(dest.tesla){const t=dest.tesla;if(t.energy!=null) tsl+='<div class="tile tsl"><small>Battery on arrival (Tesla)</small><span>'+Math.round(t.energy)+' %</span></div>';}
+  const charging=/supercharg|superchargeur/i.test(dest.name||'');
+  let h='<div class="hd"><div><b>'+TN.esc(dest.name||'Trip')+'</b><small>'+TN.esc(charging?'Charging stop':(dest.sub||''))+'</small></div><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span></div>';
+  h+='<div class="sum">'+tiles.map(t=>'<div class="tile"><small>'+t[0]+'</small><span>'+TN.esc(t[1])+'</span></div>').join('')+tsl+'</div>';
+  if(dest.fromTesla) h+='<div class="note">'+(charging?'After charging, tap Sync for the next leg':'Synced from Tessy’s navigation')+'</div>';
+  if(this.stops&&this.stops.length) h+='<div class="sec">YOUR STOPS</div><div class="list" style="flex:none;max-height:none">'+this.stops.map((s2,i)=>'<div class="st"><div class="ic">'+(i+1)+'</div><div class="tx">'+TN.esc(s2.name)+'<small>'+TN.esc(s2.sub||'')+'</small></div></div>').join('')+'</div>';
+  /* the turns, from the next one while driving */
+  const steps=R.steps.filter(st=>st.at>=now-5&&st.type!=='depart'||(!this.active&&st.type==='depart'));
+  let prev=now,rows='';
+  steps.forEach((st,i)=>{const I=this.instr(st),gap=Math.max(0,st.at-prev);prev=st.at;
+    const txt=I.t+(I.where&&st.type!=='arrive'&&st.type!=='depart'?' onto '+I.where:'');
+    rows+='<div class="st'+(this.active&&i===0?' next':'')+'"><div class="ic">'+TN.ICON(I.a,24,'currentColor')+'</div><div class="tx">'+TN.esc(txt)+(st.exits?'<small>Exit '+TN.esc(st.exits)+'</small>':(st.dest&&st.type!=='arrive'?'<small>'+TN.esc(st.dest)+'</small>':''))+'</div><div class="d">'+(i===0&&this.active?'in ':'')+fmtDist(gap)+'</div></div>';});
+  h+='<div class="sec">'+(this.active?'NEXT TURNS':'TURNS')+' \u00b7 '+steps.length+'</div><div class="list">'+rows+'</div>';
+  P.innerHTML=h;P.style.display='flex';
+  P.querySelector('.x').onclick=ev=>{ev.stopPropagation();P.style.display='none';};
 };
 TN.Nav.prototype.isFav=function(p){return !!(p&&this.places.favs.some(f=>Math.abs(f.lat-p.lat)<1e-5&&Math.abs(f.lng-p.lng)<1e-5));};
 TN.Nav.prototype.saveMenu=function(btn){
