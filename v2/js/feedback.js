@@ -30,9 +30,9 @@ TN.Feedback.prototype.button=function(){
     '#tn-fb{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;width:min(92vw,520px);max-height:86vh;overflow:auto;display:none;background:rgb(var(--tn-panel-rgb,43 45 49)/.98);color:var(--tn-text,#f3f1ec);border-radius:18px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif}'+
     '#tn-fb h3{margin:0 0 4px;font-size:19px}#tn-fb .s{color:var(--tn-sub,#b9b6ae);font-size:13px;margin-bottom:12px}'+
     '#tn-fb .k{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}#tn-fb .k button{border:0;border-radius:11px;padding:11px 8px;font:600 14px system-ui,sans-serif;background:rgba(255,255,255,.08);color:var(--tn-text,#f3f1ec)}'+
-    '#tn-fb .k button.on{background:var(--tn-accent,#e8913a);color:#2b1a08}#tn-fb textarea{width:100%;box-sizing:border-box;min-height:84px;border-radius:12px;border:1px solid rgba(127,127,127,.35);background:rgba(0,0,0,.15);color:inherit;padding:10px;font:15px system-ui,sans-serif;resize:vertical}'+
+    '#tn-fb .k button.on{background:var(--tn-accent,#e8913a);color:var(--tn-on-accent,#2b1a08)}#tn-fb textarea{width:100%;box-sizing:border-box;min-height:84px;border-radius:12px;border:1px solid rgba(127,127,127,.35);background:rgba(0,0,0,.15);color:inherit;padding:10px;font:15px system-ui,sans-serif;resize:vertical}'+
     '#tn-fb label{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px}#tn-fb label input{width:20px;height:20px}'+
-    '#tn-fb .row{display:flex;gap:8px;margin-top:14px}#tn-fb .row button{flex:1;border:0;border-radius:11px;padding:12px;font:600 15px system-ui,sans-serif;background:rgba(255,255,255,.08);color:var(--tn-text,#f3f1ec)}#tn-fb .row .send{background:var(--tn-accent,#e8913a);color:#2b1a08}';
+    '#tn-fb .row{display:flex;gap:8px;margin-top:14px}#tn-fb .row button{flex:1;border:0;border-radius:11px;padding:12px;font:600 15px system-ui,sans-serif;background:rgba(255,255,255,.08);color:var(--tn-text,#f3f1ec)}#tn-fb .row .send{background:var(--tn-accent,#e8913a);color:var(--tn-on-accent,#2b1a08)}';
   document.head.appendChild(st);
   const b=document.createElement('button');b.id='tn-fbbtn';b.className='hud';b.setAttribute('aria-label','Send feedback');b.title='Send feedback';
   b.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>';
@@ -70,7 +70,7 @@ TN.Feedback.prototype.report=function(withLoc){
   const info={build:TN.APPBUILD,files:(window.TN_FILES||[]).map(f=>f.replace('js/','')),lang:TN.LANG,ua:navigator.userAgent,screen:[window.innerWidth,window.innerHeight,window.devicePixelRatio],
     time:new Date().toString(),settings:safe,tesla:!!(TN.tesla&&TN.tesla.connected()),car:TN.carInfo||null,
     route:r?{active:!!nav.active,dest:nav.dest&&nav.dest.name,km:+(r.L/1000).toFixed(2),at:nav.ps!=null?Math.round(nav.ps):null}:null,
-    gps:g?{acc:g.acc,speed:Math.round((g.v||0)*3.6)}:null,snapped:!!(c&&c.snapped)};
+    gps:g?{acc:g.acc!=null?Math.round(g.acc):null,speed:Math.round((g.v||0)*3.6)}:null,snapped:!!(c&&c.snapped)};
   if(withLoc&&c&&c.x!=null&&TN.fromLocal){const ll=TN.fromLocal(c.x,c.z);info.position=[+ll[1].toFixed(5),+ll[0].toFixed(5)];}
   return {info:info,errors:this.errs.slice(),events:this.log.slice(-80),seconds:this.sec.slice()};
 };
