@@ -112,7 +112,7 @@ TN.Incidents.prototype.build=function(){
     '#tn-repgrid button.x{justify-content:center;color:var(--tn-sub)}';
   document.head.appendChild(st);
   this.card=document.createElement('div');this.card.id='tn-alert';this.card.className='hud';document.body.appendChild(this.card);
-  this.btn=document.createElement('button');this.btn.id='tn-report';this.btn.className='hud';this.btn.innerHTML=TN.ROCCO('hazard',30)+'<span>Report</span>';document.body.appendChild(this.btn);
+  this.btn=document.createElement('button');this.btn.id='tn-report';this.btn.className='hud';this.btn.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L22.5 20.5 H1.5 Z" fill="#f59e0b" stroke="#7a4a06" stroke-width="1.2" stroke-linejoin="round"/><rect x="11" y="9" width="2" height="6" rx="1" fill="#2b1a08"/><circle cx="12" cy="17.4" r="1.2" fill="#2b1a08"/></svg>'+TN.ROCCO('hazard',26)+'<span>Alert</span>';   /* ("Alert": warn other drivers; "Report" is for the TessyNav team) */document.body.appendChild(this.btn);
   this.btn.onclick=()=>this.openReport();
   this.grid=document.createElement('div');this.grid.id='tn-repgrid';this.grid.className='hud';document.body.appendChild(this.grid);
 };

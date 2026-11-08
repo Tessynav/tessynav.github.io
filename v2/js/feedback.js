@@ -1,4 +1,4 @@
-/* TessyNav v2 — feedback.js (v4)
+/* TessyNav v2 — feedback.js (v7)
    While driving (a route, or moving): one tap on the button SENDS the moment right away (screenshot, time, street,
    position, what the app was doing) and Rocco confirms it clearly; no typing on the road. After the trip, Rocco asks
    whether to add details, which are added to that same report (a comment on the same issue). The app keeps a light
@@ -21,6 +21,8 @@ TN.Feedback=function(api){
   setInterval(()=>{const c=me.api.getCar&&me.api.getCar();if(c&&c.x!=null&&TN.fromLocal){const ll=TN.fromLocal(c.x,c.z);
     me.gps.push([Date.now(),+ll[1].toFixed(5),+ll[0].toFixed(5)]);if(me.gps.length>1200) me.gps.shift();}},3000);
   setInterval(()=>me.flush(),60000);setTimeout(()=>me.flush(),15000);
+  /* the clip: one small picture per second while driving, the last 15 kept (sent with a report) */
+  this.clip=[];setInterval(()=>me.clipTick(),1000);
   document.addEventListener('visibilitychange',()=>{me.visT=Date.now();});   /* (coming back from the background is not a freeze) */
   window.addEventListener('error',e=>me.err(String(e.message||e.error||'error'),(e.filename||'').split('/').pop()+':'+(e.lineno||'')),true);
   window.addEventListener('unhandledrejection',e=>me.err('promise: '+String((e.reason&&e.reason.message)||e.reason||'')));
@@ -30,6 +32,7 @@ TN.Feedback=function(api){
 TN.Feedback.prototype.save=function(){try{localStorage.setItem('tn2_fbpend',JSON.stringify(this.pend.slice(-10)));localStorage.setItem('tn2_fbqueue',JSON.stringify(this.queue.slice(-5)));}catch(e){}};
 TN.Feedback.prototype.note=function(k,d){this.log.push([Date.now(),k,d]);while(this.log.length&&(this.log.length>3000||Date.now()-this.log[0][0]>3600000)) this.log.shift();};
 TN.Feedback.prototype.second=function(fps,worst){
+  this.fps=fps;
   const g=this.api.gps&&this.api.gps(),c=this.api.getCar&&this.api.getCar();
   this.sec.push([Date.now(),fps,Math.round(worst||0),g?Math.round((g.v||0)*3.6):null,c&&c.snapped?1:0]);
   while(this.sec.length>3600) this.sec.shift();
@@ -49,7 +52,8 @@ TN.Feedback.prototype.err=function(msg,where){this.errs.push([Date.now(),String(
 TN.Feedback.prototype.button=function(){
   const st=document.createElement('style');
   /* bottom right on every screen (where Recenter was); the compass sits above it, End route to its left */
-  st.textContent='#tn-fbbtn{right:16px;bottom:24px;width:56px;height:56px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:16px}'+
+  st.textContent='#tn-fbbtn{right:16px;bottom:24px;min-width:66px;height:66px;padding:6px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:18px;font:700 13px system-ui,sans-serif}'+
+    '#tn-fbbtn span{line-height:1}'+
     '#tn-fb{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;width:min(92vw,520px);max-height:86vh;overflow:auto;display:none;background:rgb(var(--tn-panel-rgb,43 45 49)/.98);color:var(--tn-text,#f3f1ec);border-radius:18px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif}'+
     '#tn-fb h3{margin:0 0 4px;font-size:19px}#tn-fb .s{color:var(--tn-sub,#b9b6ae);font-size:13px;margin-bottom:12px}'+
     '#tn-fb .k{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}#tn-fb .k button{border:0;border-radius:11px;padding:11px 8px;font:600 14px system-ui,sans-serif;background:rgba(255,255,255,.08);color:var(--tn-text,#f3f1ec)}'+
@@ -57,8 +61,8 @@ TN.Feedback.prototype.button=function(){
     '#tn-fb label{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px}#tn-fb label input{width:20px;height:20px}'+
     '#tn-fb .row{display:flex;gap:8px;margin-top:14px}#tn-fb .row button{flex:1;border:0;border-radius:11px;padding:12px;font:600 15px system-ui,sans-serif;background:rgba(255,255,255,.08);color:var(--tn-text,#f3f1ec)}#tn-fb .row .send{background:var(--tn-accent,#e8913a);color:var(--tn-on-accent,#2b1a08)}';
   document.head.appendChild(st);
-  const b=document.createElement('button');b.id='tn-fbbtn';b.className='hud';b.setAttribute('aria-label','Send feedback');b.title='Send feedback';
-  b.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>';
+  const b=document.createElement('button');b.id='tn-fbbtn';b.className='hud';
+  b.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>Report</span>';b.setAttribute('aria-label','Report a problem');b.title='Report a problem';
   b.onclick=()=>{if(this.driving()) this.moment();else if(this.pend.some(m=>!m.asked)) this.details();else this.open();};document.body.appendChild(b);
 };
 TN.Feedback.prototype.open=function(){
@@ -103,8 +107,9 @@ TN.Feedback.prototype.send=async function(P){
   btn.disabled=true;btn.textContent='Sending…';
   if(!this.shot&&P.querySelector('.sh').checked) await new Promise(r=>setTimeout(r,600));
   this.loc=P.querySelector('.lo').checked;try{localStorage.setItem('tn2_fbloc',JSON.stringify(this.loc));}catch(e){}
-  const body={kind:this.kind,text:P.querySelector('textarea').value.slice(0,2000),report:this.report(this.loc),
-    screenshot:P.querySelector('.sh').checked?this.shot:null,shots:this.auto.map(a=>a.img)};
+  const cl=P.querySelector('.sh').checked?await this.clipData():{img:[],t:[]};
+  const body={kind:this.kind,text:P.querySelector('textarea').value.slice(0,2000),report:Object.assign(this.report(this.loc),{clipT:cl.t}),
+    screenshot:P.querySelector('.sh').checked?this.shot:null,shots:this.auto.map(a=>a.img),clip:cl.img};
   try{
     const r=await fetch((TN.TESLA_SERVER||'https://tessynav.mznwattar.workers.dev')+'/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
@@ -123,7 +128,8 @@ TN.Feedback.prototype.moment=async function(){
   const t=Date.now(),place=this.place();
   this.flash();
   const img=await this.capture();
-  const body={kind:'moment',quick:true,text:'',place:place,report:this.report(this.loc),screenshot:img,shots:this.auto.map(a=>a.img)};
+  const cl=await this.clipData();
+  const body={kind:'moment',quick:true,text:'',place:place,report:Object.assign(this.report(this.loc),{clipT:cl.t}),screenshot:img,shots:this.auto.map(a=>a.img),clip:cl.img};
   const fr=TN.LANG==='fr',hm=new Date(t).toLocaleTimeString(fr?'fr-CA':'en-CA',{hour:'2-digit',minute:'2-digit'});
   try{const j=await this.post('/feedback',body);this.auto=[];
     this.pend.push({num:j.num,key:j.key,t:t,place:place,asked:false});this.save();
@@ -177,4 +183,18 @@ TN.Feedback.prototype.details=function(){
     done();
     if(bad) this.notice(fr?'Pas encore envoyé':'Not sent yet',fr?'Je n’ai pas pu ajouter vos détails. Réessayez plus tard avec le bouton commentaire.':'I couldn’t add your details. Please try again later with the feedback button.');
     else if(ok) this.notice(fr?'Merci! 🙌':'Thanks! 🙌',fr?'Vos détails ont été ajoutés au rapport.':'Your details were added to the report.');};
+};
+
+/* one picture for the clip: 320 px wide, encoded in the background (toBlob), skipped when the screen is busy */
+TN.Feedback.prototype.clipTick=function(){
+  const map=this.api.map;if(!map||!map.getCanvas||!this.driving()||document.visibilityState==='hidden'||(this.fps||60)<40) return;
+  try{map.once('render',()=>{try{const c=map.getCanvas();if(!c||!c.width) return;const w=320,h=Math.max(1,Math.round(c.height*w/c.width));
+      const o=this.clipCv||(this.clipCv=document.createElement('canvas'));o.width=w;o.height=h;o.getContext('2d').drawImage(c,0,0,w,h);
+      const t=Date.now();o.toBlob(bl=>{if(!bl) return;this.clip.push({t:t,b:bl});while(this.clip.length>15) this.clip.shift();},'image/jpeg',0.6);}catch(e){}});
+    if(map.triggerRepaint) map.triggerRepaint();}catch(e){}
+};
+TN.Feedback.prototype.clipData=function(){
+  const now=Date.now(),list=this.clip.filter(c=>now-c.t<20000);
+  return Promise.all(list.map(c=>new Promise(res=>{try{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(c.b);}catch(e){res(null);}})))
+    .then(a=>({img:a.filter(Boolean),t:list.map(c=>c.t)})).catch(()=>({img:[],t:[]}));
 };
