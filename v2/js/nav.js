@@ -809,15 +809,24 @@ TN.Nav.prototype.junctionSvg=function(nx){
 TN.Nav.prototype.go=function(){
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
-  this.ov.style.display='none';this.active=true;TN.navActive=true;this.saidArrive=false;this.parkT=0;document.body.classList.add('tn-routing');
+  this.ov.style.display='none';this.active=true;TN.navActive=true;{const self=this;TN.routeNear=(x,z)=>self.routeDist(x,z);}this.saidArrive=false;this.parkT=0;document.body.classList.add('tn-routing');
   if(TN.voice&&this.route){TN.voice.say('Starting route to '+(this.dest?this.dest.name:'your destination'),true);}
   if(this.route) this.note('go',{dest:this.dest&&this.dest.name,km:+(this.route.L/1000).toFixed(2),pts:this.route.pts.length},true);
   this.bar.style.display='flex';this.endBtn.style.display='block';this.roadName.style.display='block';
   this.api.setFollow(true);
   try{this.roccoGo();}catch(e){}
 };
+/* how far a point is from the route line, looked up around where the car is on it (used by the car's road matching
+   to pick the route's branch where a ramp splits off alongside the main road) */
+TN.Nav.prototype.routeDist=function(x,z){
+  const R=this.route;if(!R||!R.pts||R.pts.length<2) return null;
+  const c=Math.max(0,Math.min(R.pts.length-2,this.pi||this.idx||0));let m=1e18;
+  for(let i=Math.max(0,c-40);i<Math.min(R.pts.length-1,c+300);i++){const a=R.pts[i],b=R.pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l=dx*dx+dz*dz||1;
+    const u=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/l)),d=(a[0]+dx*u-x)**2+(a[1]+dz*u-z)**2;if(d<m) m=d;}
+  return Math.sqrt(m);
+};
 TN.Nav.prototype.end=function(why){
-  TN.navActive=false;
+  TN.navActive=false;TN.routeNear=null;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);

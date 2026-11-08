@@ -311,7 +311,10 @@ TN.Scene.prototype.styleMap=function(){
         else if(/sand|beach/.test(id)) c='#e6d39b';
         else if(/residential|commercial|industrial|retail|school|hospital|railway|airport|parking|landuse/.test(id)) c='#c8c7bb';
         if(c){map.setPaintProperty(l.id,'fill-color',c);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',c);}catch(e){}
-          this.dayPaint.push([l.id,'fill-color',c,TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);}
+          this.dayPaint.push([l.id,'fill-color',c,TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);
+          /* grass, parks and woods: a natural texture instead of one flat green (lighter and darker patches, a little
+             dry grass and soil showing through), like Codriver */
+          if(TN.GRASS[c]){const name=this.grassImg(c,c);if(name){try{map.setPaintProperty(l.id,'fill-pattern',name);this.texLayers=this.texLayers||[];this.texLayers.push([l.id,c]);}catch(e){}}}}
       }else if(l.type==='line'&&/water|river|stream|canal/.test(id)){map.setPaintProperty(l.id,'line-color','#2f9fd6');solid(l.id,'line-opacity');
         this.dayPaint.push([l.id,'line-color','#2f9fd6','#0e2a44']);}
     }catch(e){}
@@ -339,6 +342,54 @@ TN.Scene.prototype.applyGround=function(nt){
   for(const [id,prop,d,n] of this.dayPaint){const wat=d==='#2f9fd6';
     const dd=sg>0&&!wat?TN.mix(d,'#eef2f5',0.9*sg):d,nn=sg>0&&!wat?TN.mix(n,'#394150',0.8*sg):n;
     try{this.map.setPaintProperty(id,prop,TN.mix(dd,nn,nt));}catch(e){}}
+  /* the grass texture follows the same day/night and snow colours (redrawn only when the colour really changes) */
+  for(const [id,c] of (this.texLayers||[])){const n=TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8);
+    const dd=sg>0?TN.mix(c,'#eef2f5',0.9*sg):c,nn=sg>0?TN.mix(n,'#394150',0.8*sg):n;this.grassImg(c,TN.mix(dd,nn,nt),sg);}
+};
+/* grass texture: one seamless 256 px tile per kind of green (grass, park, wood), drawn from fixed noise so it never
+   shimmers; only its colours change with night and snow */
+TN.GRASS={'#6cc24a':{seed:11,dry:0.9},'#5dbb44':{seed:23,dry:0.6},'#3f9a3a':{seed:37,dry:0.25,dark:1}};
+TN.grassNoise=function(seed){
+  const S=256,rnd=(()=>{let a=seed*2654435761>>>0;return ()=>{a^=a<<13;a>>>=0;a^=a>>17;a^=a<<5;a>>>=0;return a/4294967296;};})();
+  /* smooth noise that repeats every tile (so the tiles join without seams) */
+  const layer=P=>{const g=[];for(let i=0;i<P*P;i++) g.push(rnd());const out=new Float32Array(S*S);
+    for(let y=0;y<S;y++)for(let x=0;x<S;x++){const fx=x/S*P,fy=y/S*P,ix=Math.floor(fx),iy=Math.floor(fy),tx=fx-ix,ty=fy-iy;
+      const sx=tx*tx*(3-2*tx),sy=ty*ty*(3-2*ty),G=(i,j)=>g[((j%P+P)%P)*P+((i%P+P)%P)];
+      const a=G(ix,iy)+(G(ix+1,iy)-G(ix,iy))*sx,b=G(ix,iy+1)+(G(ix+1,iy+1)-G(ix,iy+1))*sx;out[y*S+x]=a+(b-a)*sy;}
+    return out;};
+  const big=layer(3),mid=layer(8),fine=layer(32),spk=new Uint8Array(S*S);
+  /* little tufts: specks of dry grass / soil and darker blades, a few pixels each */
+  for(let k=0;k<1400;k++){const x=Math.floor(rnd()*S),y=Math.floor(rnd()*S),t=rnd()<0.55?1:2,r=rnd()<0.3?2:1;
+    for(let dy=0;dy<r;dy++)for(let dx=0;dx<r+(rnd()<0.5?1:0);dx++) spk[((y+dy)%S)*S+((x+dx)%S)]=t;}
+  return {S,big,mid,fine,spk};
+};
+TN.Scene.prototype.grassImg=function(kind,col,snow){
+  const map=this.map,cfg=TN.GRASS[kind];if(!cfg||!map||typeof document==='undefined') return null;
+  const name='tn-grass-'+kind.slice(1);this.grassCol=this.grassCol||{};
+  if(this.grassCol[name]===col&&map.hasImage&&map.hasImage(name)) return name;
+  try{
+    this.grassN=this.grassN||{};const N=this.grassN[kind]||(this.grassN[kind]=TN.grassNoise(cfg.seed)),S=N.S;
+    const cv=this.grassCv||(this.grassCv=document.createElement('canvas'));cv.width=S;cv.height=S;const g=cv.getContext('2d'),im=g.createImageData(S,S),D=im.data;
+    const hx=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
+    const base=hx(col),dry=hx(TN.mix(col,'#b9a75a',0.55)),soil=hx(TN.mix(col,'#7b5b36',0.6)),dark=hx(TN.mix(col,'#16401c',0.45));
+    const sn=Math.min(1,snow||0),dryK=cfg.dry*(1-sn);
+    for(let i=0;i<S*S;i++){
+      /* broad lighter/darker patches and a fine grain */
+      const b=N.big[i],m=N.mid[i],f=N.fine[i];
+      let lum=0.88+0.16*b+0.08*m+0.06*f;
+      /* drier, yellower patches in the open grass */
+      const dk=Math.max(0,(m-0.55)*2.2)*dryK*0.6;
+      let r=base[0]+(dry[0]-base[0])*dk,gg=base[1]+(dry[1]-base[1])*dk,bb=base[2]+(dry[2]-base[2])*dk;
+      if(cfg.dark){const w=Math.max(0,(0.45-b)*1.6);r+=(dark[0]-r)*w;gg+=(dark[1]-gg)*w;bb+=(dark[2]-bb)*w;}
+      const t=N.spk[i];
+      if(t===1&&dryK>0.1){const k=0.7*dryK;r+=(soil[0]-r)*k;gg+=(soil[1]-gg)*k;bb+=(soil[2]-bb)*k;}
+      else if(t===2) lum*=0.84;
+      D[i*4]=Math.max(0,Math.min(255,r*lum));D[i*4+1]=Math.max(0,Math.min(255,gg*lum));D[i*4+2]=Math.max(0,Math.min(255,bb*lum));D[i*4+3]=255;
+    }
+    const data={width:S,height:S,data:new Uint8Array(D.buffer.slice(0))};
+    if(map.hasImage(name)) map.updateImage(name,data);else map.addImage(name,data,{pixelRatio:1});
+    this.grassCol[name]=col;return name;
+  }catch(e){return null;}
 };
 TN.Scene.prototype.reapplyNight=function(){if(this.wxNt!=null) this.applyNight(this.wxNt);};
 TN.Scene.prototype.applyNight=function(nt){

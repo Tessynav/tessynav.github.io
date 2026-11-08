@@ -137,6 +137,16 @@ TN.Track.prototype.emit=function(h){
     if(h.jx!=null&&Math.hypot(L.x-h.jx,L.z-h.jz)<25) he*=0.05;
     e+=he;
   }
+  /* navigating: where a ramp splits off and runs alongside the main road (after the Champlain Bridge toward the
+     A-10 loop, both share the same lanes for 100 m), the GPS can't tell them apart. The route can: a road whose next
+     30-60 m leave the blue line costs more, so the car takes the route's branch right at the split instead of riding
+     the main road first and then cutting over. (Only while the GPS itself is on the route: if you leave it, the GPS
+     decides as before.) */
+  if(TN.navActive&&TN.routeNear&&L.v>3){
+    try{const g=TN.routeNear(L.x,L.z);
+      if(g!=null&&g<12){const s=h.r.s!=null?h.r.s:0,d=Math.max(...[30,60].map(a=>{const p=this.pointOn(h.w,s+h.dir*a,0,h.dir);return TN.routeNear(p.x,p.z);}));
+        if(d!=null&&d>2.5){const q=Math.min(2,(d-2.5)/3);e+=q*q;}}}catch(err){}
+  }
   return e;
 };
 /* move a hypothesis along its road to the GPS; spawn the roads that branch off at junctions it passes */
