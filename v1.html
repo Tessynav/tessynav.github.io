@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<script>/* private until launch: a device that hasn't been unlocked with the owner's private link goes to the Coming soon page, and nothing else loads (no map, no API keys used) */(function(){var ok=false;try{ok=localStorage.getItem('tn2_access')==='a292d7af1555f35512cac2a92b967747c92a9b77177e0bd85b7c9063b8edfbfc';}catch(e){}if(!ok){document.write('<style>html{display:none}</style>');location.replace('/soon.html');if(window.stop) window.stop();}})();</script>
+<script>/* private until launch: a device that hasn't been unlocked with the owner's private link goes to the Coming soon page, and nothing else loads (no map, no API keys used): the rest of the page becomes plain text, so no other script runs, while the move to Coming soon goes ahead (stopping the page instead also cancelled that move: a white screen) */(function(){var ok=false;try{ok=localStorage.getItem('tn2_access')==='a292d7af1555f35512cac2a92b967747c92a9b77177e0bd85b7c9063b8edfbfc';}catch(e){}if(!ok){location.replace('/soon.html');document.write('<style>html{display:none}</style><plaintext style="display:none">');}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TessyNav v1 (old version)</title>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
