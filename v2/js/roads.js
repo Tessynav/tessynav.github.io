@@ -369,7 +369,317 @@ TN.Net.prototype.crossesSomething=function(b){
 /* height model: 'cd' (Codriver-style, default) or 'old' */
 /* the new model is still being tuned: it is only used with ?heights=cd in the address */
 TN.HMODE=(typeof location!=='undefined'&&/[?&]heights=cd/.test(location.search))?'cd':'old';
-TN.Net.prototype.heights=function*(){if(TN.HMODE==='cd'){yield* this.heightsCD();return;}yield* this.heightsOld();if(TN.HV2) yield* this.capHeights();};
+TN.Net.prototype.heights=function*(){if(TN.HMODE==='cd'){yield* this.heightsCD();return;}if(TN.HV2){yield* this.heightsV2();if(TN.V2CAP) yield* this.capHeights();return;}yield* this.heightsOld();};
+/* ---------- heights v2 (only with ?heights=v2 while it is being tested) ----------
+   Sloped decks, codriver-style: each bridge/viaduct (pieces joined at their ends or inner points) carries its own climb.
+   Where it meets the ground road network it starts near ground level and climbs smoothly (about 7%) to its deck height,
+   reaching full height where it first passes over another road. Only when the deck is too short for that does the climb
+   start before the deck, on the road that carries straight on from it - on a city street never past the first
+   intersection. Roads joining a deck part-way up (ramps) climb from the deck's height at that point (the old method's
+   junction matching), and all pieces meeting at a point keep the same height there. */
+TN.ease=function(t){const a=0.2;t=Math.max(0,Math.min(1,t));if(t<a) return t*t/(2*a*(1-a));if(t>1-a) return 1-(1-t)*(1-t)/(2*a*(1-a));return (t-a/2)/(1-a);};
+TN.climbLen=function(H){return Math.max(60,Math.min(240,H*18));};
+TN.Net.prototype.heightsV2=function*(){
+  const ways=[...this.ways.values()];yield;
+  {let n=0;for(const w of ways){if(w.brSrc===undefined) w.brSrc=w.br;w._br=w.brSrc;w._hs=null;w._H=0;w._W=w.w;w._grp=null;if(++n%1500===0) yield;}}
+  /* a short ordinary piece between two bridge pieces (a gap in the bridge tagging, like a 10 m ramp piece in Turcot)
+     belongs to the deck: otherwise the two decks are sloped separately and meet with a step or a steep kink */
+  {const isB=w=>w.brSrc&&!w.tun;let n=0;
+    for(const w of ways){if(++n%2000===0) yield;w._lay=undefined;if(w._br||w.tun||w.L>40) continue;
+      const nb=k=>(this.keys.get(k)||[]).filter(([v])=>v!==w&&isB(v)).map(([v])=>v);
+      const a=nb(w.keys[0]),b=nb(w.keys[w.keys.length-1]);
+      if(a.length&&b.length){w._br=true;w._lay=Math.max(...a.map(v=>v.layer||0),...b.map(v=>v.layer||0));}}}
+  const brs=ways.filter(w=>w._br);
+  const G=0.07,MAXG=0.078,SL=0.078;
+  const unit=(x,z)=>{const l=Math.hypot(x,z)||1;return [x/l,z/l];};
+  const isCity=w=>!/motorway|trunk/.test(w.cls||'')&&!w.ramp;
+  const jun=k=>{const l=this.keys.get(k);if(!l) return false;let e=0;for(const [v,i] of l){if(v.tun) continue;e+=(i===0||i===v.pts.length-1)?1:2;}return e>=3;};
+  /* a climb along road w must be finished at key k: an intersection on a city street, or where a ramp or highway
+     meets city streets at an intersection (a ramp landing on Chemin des Moulins) */
+  const stopAt=(w,k)=>{if(!jun(k)) return false;if(isCity(w)) return true;for(const [v] of this.keys.get(k)) if(v!==w&&!v._br&&!v.tun&&isCity(v)) return true;return false;};
+  /* 1. decks: pieces joined at their ends or through inner points (a ramp landing on a deck) */
+  const parent=new Map();for(const b of brs) parent.set(b,b);
+  const find=a=>{while(parent.get(a)!==a){parent.set(a,parent.get(parent.get(a)));a=parent.get(a);}return a;};
+  {let n=0;for(const b of brs){for(const k of b.keys){const l=this.keys.get(k);if(l) for(const [v] of l) if(v!==b&&v._br) parent.set(find(v),find(b));}if(++n%100===0) yield;}}
+  /* does a deck piece pass over a road? (checked every 3 m to its ends, so a short overpass like the A15 over
+     René-Lévesque on Nuns' Island is found; roads it is joined to don't count) */
+  const crosses=b=>{let sunk=false;const mine=new Set(b.keys);
+    for(let s=Math.min(2,b.L/2);s<b.L-1;s+=3){let i=0;while(i<b.pts.length-2&&b.cum[i+1]<s) i++;const sg=b.cum[i+1]-b.cum[i]||1,t=(s-b.cum[i])/sg;
+      const ux=(b.pts[i+1][0]-b.pts[i][0])/sg,uz=(b.pts[i+1][1]-b.pts[i][1])/sg,x=b.pts[i][0]+ux*sg*t,z=b.pts[i][1]+uz*sg*t;let hit=false;
+      this.near(x,z,0,(w,k)=>{if(w===b||w._br||w.tun||w.keys.some(q=>mine.has(q))) return;const r=TN.seg(w,k,x,z);
+        if(r.d<w.w/2&&Math.abs(r.tx*ux+r.tz*uz)<0.9){if((w.layer||0)<0){sunk=true;return;}hit=true;return true;}});
+      if(hit) return true;}
+    return sunk?-1:false;};
+  const groups=new Map();
+  {let n=0;for(const b of brs){
+    const r=find(b);let g=groups.get(r);if(!g){g={L:0,cross:false,layer:0,m:[],W:0};groups.set(r,g);}
+    g.m.push(b);g.L+=b.L;g.layer=Math.max(g.layer,b._lay!==undefined?b._lay:(b.layer||0));g.W=Math.max(g.W,b.w);
+    if(g.cross!==true){const c=crosses(b);if(c===true) g.cross=true;else if(c===-1) g.sunk=true;}
+    if(++n%10===0) yield;}}
+  for(const g of groups.values()){
+    for(const b of g.m){
+      let T;
+      if(g.cross===true) T=6.5*Math.max(1,Math.min(2,b._lay!==undefined?b._lay:(b.layer||0)));
+      else if(g.sunk) T=0;
+      else if(g.L>=120) T=5;
+      else T=0;
+      b._T=T;b._H=T;b._W=Math.max(b.w,g.W);b._grp=g;
+    }
+    g.H=Math.max(...g.m.map(b=>b._T));
+    if(!(g.H>0)) for(const b of g.m){b._br=false;b._grp=null;}
+  }
+  /* walking along a deck group: distances from seed keys, through all its pieces */
+  const spread=(g,seeds)=>{
+    const dist=new Map(),q=[];
+    for(const [k,d] of seeds) if(!dist.has(k)||d<dist.get(k)){dist.set(k,d);q.push([k,d]);}
+    while(q.length){
+      let bi=0;for(let j=1;j<q.length;j++) if(q[j][1]<q[bi][1]) bi=j;
+      const [k,d]=q.splice(bi,1)[0];if(d>dist.get(k)) continue;
+      for(const [v,i] of (this.keys.get(k)||[])){
+        if(v._grp!==g) continue;
+        for(const sd of [1,-1]){
+          const j=i+sd;if(j<0||j>=v.pts.length) continue;
+          const acc=d+Math.abs(v.cum[j]-v.cum[i]),kj=v.keys[j];
+          if(!dist.has(kj)||acc<dist.get(kj)-0.01){dist.set(kj,acc);q.push([kj,acc]);}
+        }
+      }
+    }
+    return dist;
+  };
+  const underDeck=(x,z,g)=>{let hit=false;this.near(x,z,0,(v,k)=>{if(!v._br||v._grp===g) return;const r=TN.seg(v,k,x,z);if(r.d<TN.width(v)/2){hit=true;return true;}});return hit;};
+  const exitKeys=new Set(),deckKeys=new Set();
+  let ng=0;
+  for(const g of groups.values()){
+    if(!(g.H>0)) continue;
+    if(++ng%6===0) yield;
+    const gk=new Set();for(const b of g.m) for(const k of b.keys){gk.add(k);deckKeys.add(k);}
+    /* where the deck passes over another road (it must be at full height there) */
+    const over=[];
+    for(const b of g.m){const P=b.pts;
+      for(let i=0;i<P.length-1;i++){
+        const sl=b.cum[i+1]-b.cum[i];if(sl<0.5) continue;
+        const ux=(P[i+1][0]-P[i][0])/sl,uz=(P[i+1][1]-P[i][1])/sl;
+        for(let t=Math.min(3,sl/2);t<sl;t+=6){
+          const x=P[i][0]+ux*t,z=P[i][1]+uz*t;let hit=false;
+          this.near(x,z,0,(v,k)=>{if(v._grp===g||v.tun) return;if((v.layer||0)<0) return;if(v.keys.some(q=>gk.has(q))) return;const r=TN.seg(v,k,x,z);
+            if(r.d<TN.width(v)/2&&Math.abs(r.tx*ux+r.tz*uz)<0.9){hit=true;return true;}});
+          if(hit){over.push([b.keys[i],t],[b.keys[i+1],sl-t]);}
+        }
+      }
+    }
+    const dOver=over.length?spread(g,over):new Map();
+    /* exits: piece ends where the deck meets ground roads */
+    const exs=[];
+    for(const b of g.m){
+      const n=b.pts.length;
+      for(const [i,j] of [[0,1],[n-1,n-2]]){
+        const k=b.keys[i],others=(this.keys.get(k)||[]).filter(([v])=>v!==b);
+        if(others.some(([v])=>v._grp===g)) continue;
+        if(!others.some(([v])=>!v._br&&!v.tun)) continue;
+        exs.push({b,i,j,k,others,dO:dOver.has(k)?dOver.get(k):Infinity});
+      }
+    }
+    /* the climb before the deck, on the road that carries straight on (never past an intersection on a city
+       street, never under another deck) */
+    const walk=(x,want)=>{
+      const {b,i,j,k,others}=x;
+      const path=[];let E=0,key=k,dir=unit(b.pts[i][0]-b.pts[j][0],b.pts[i][1]-b.pts[j][1]),guard=0;
+      const stop=want<=0||(jun(k)&&others.filter(([v])=>!v._br&&!v.tun).length>1&&others.some(([v])=>!v._br&&isCity(v)));
+      while(!stop&&E<want&&guard++<20){
+        let best=null,bd=0.8;
+        for(const [v,vi] of (this.keys.get(key)||[])){
+          if(v._br||v.tun) continue;
+          for(const sd of [1,-1]){const vj=vi+sd;if(vj<0||vj>=v.pts.length) continue;
+            const u=unit(v.pts[vj][0]-v.pts[vi][0],v.pts[vj][1]-v.pts[vi][1]),d=u[0]*dir[0]+u[1]*dir[1];if(d>bd){bd=d;best=[v,vi,sd];}}
+        }
+        if(!best) break;
+        const [v,vi,sd]=best;let j2=vi,brk=false;
+        while(true){
+          const jn=j2+sd;if(jn<0||jn>=v.pts.length) break;
+          if(underDeck((v.pts[j2][0]+v.pts[jn][0])/2,(v.pts[j2][1]+v.pts[jn][1])/2,g)){brk=true;break;}
+          E+=Math.abs(v.cum[jn]-v.cum[j2]);path.push([v,jn,E]);dir=unit(v.pts[jn][0]-v.pts[j2][0],v.pts[jn][1]-v.pts[j2][1]);j2=jn;
+          if(E>=want) break;
+          if(stopAt(v,v.keys[jn])){brk=true;break;}
+        }
+        if(brk||E>=want) break;
+        if(j2!==0&&j2!==v.pts.length-1) break;
+        key=v.keys[j2];
+      }
+      return {E,path};
+    };
+    /* a short city-street bridge in the street grid with no room to climb (an intersection right before it, the road
+       below right after): the road below is in a trench (Ville-Marie, Berri under Sherbrooke, Decarie), so the street
+       stays at street level */
+    if(g.m.every(b=>isCity(b))&&g.L<150){
+      const need=1.25*6.5/MAXG;
+      if(exs.some(x=>x.dO<Infinity&&walk(x,need).E+x.dO<0.5*need)){
+        for(const b of g.m){b._T=0;b._H=0;b._br=false;b._grp=null;}g.H=0;g.trench=true;continue;}
+    }
+    const ex=[];
+    const CLR=6.5;   /* height a deck needs where it passes over a road */
+    const fNeed=r=>{let lo=0,hi=1;for(let q=0;q<30;q++){const m=(lo+hi)/2;if(TN.ease(m)<r) lo=m;else hi=m;}return hi;};
+    for(const x of exs){
+      exitKeys.add(x.k);
+      const T=x.b._T,R=TN.climbLen(T),dO=x.dO;
+      /* the climb starts before the deck only as much as needed to clear the first road below */
+      const want=dO<Infinity?Math.max(0,R*fNeed(Math.min(1,CLR/T))-dO):0;
+      const {E,path}=walk(x,want);
+      ex.push({k:x.k,T,E,R,path});
+    }
+    g.ex=ex;
+    /* deck heights: the lowest of the climbs from every exit */
+    const frac=new Map();
+    for(const x of ex){const d=spread(g,[[x.k,0]]);for(const [k,dd] of d){const f=(x.E+dd)/x.R;if(!(frac.get(k)<=f)) frac.set(k,f);}}
+    for(const b of g.m) b._hs=b.keys.map(k=>b._T*TN.ease(frac.has(k)?frac.get(k):1));
+    /* where the climb is too short to clear the road below (no room before the deck), the deck is lifted there and
+       slopes away more steeply (at most ~10%) */
+    if(over.length) for(const b of g.m) for(let i=0;i<b.keys.length;i++){const k=b.keys[i];if(!dOver.has(k)) continue;
+      const r=Math.min(b._T,CLR)-MAXG*0.8*dOver.get(k);if(r>b._hs[i]) b._hs[i]=r;}
+    /* pieces at different levels within one deck meet smoothly (never steeper than ~7%), and every point shared by
+       pieces of the deck has one height */
+    for(let pass=0;pass<6;pass++){
+      let ch=false;
+      for(const b of g.m) for(let i=0;i<b.keys.length;i++){const l=this.keys.get(b.keys[i]);let m=b._hs[i];for(const [v,vi] of l) if(v._grp===g&&v._hs[vi]>m) m=v._hs[vi];if(m>b._hs[i]+0.01){b._hs[i]=m;ch=true;}}
+      for(const b of g.m){const hs=b._hs,c=b.cum;for(let j=1;j<hs.length;j++){const v=hs[j-1]-G*(c[j]-c[j-1]);if(v>hs[j]+0.01){hs[j]=v;ch=true;}}
+        for(let j=hs.length-2;j>=0;j--){const v=hs[j+1]-G*(c[j+1]-c[j]);if(v>hs[j]+0.01){hs[j]=v;ch=true;}}}
+      if(!ch) break;
+    }
+    /* the climbs before the deck: from the deck's end height down to street level where the climb starts */
+    for(const x of ex){if(!x.path.length) continue;const he=(()=>{let m=0;for(const [v,vi] of this.keys.get(x.k)) if(v._grp===g&&v._hs[vi]>m) m=v._hs[vi];return m;})();
+      for(const [v,jn,e] of x.path){const h=Math.min(he,Math.max(x.T*TN.ease((x.E-e)/x.R),he*TN.ease(1-e/x.E)));if(!v._hs) v._hs=new Array(v.pts.length).fill(0);if(h>v._hs[jn]) v._hs[jn]=h;}}
+  }
+  const bh=(w,i)=>w._hs?w._hs[i]:0;
+  /* 2. roads joining a deck part-way (ramps, or streets reaching a viaduct where it is already up): they climb from
+     the deck's height at that point, along the network; on a city street the climb ends at the first intersection */
+  const keyH=new Map();
+  for(const k of deckKeys){
+    if(exitKeys.has(k)) continue;
+    const l=this.keys.get(k);if(!l||!l.some(([v])=>!v._br&&!v.tun)) continue;
+    let m=0;for(const [v,i] of l) if(v._br&&v._hs) m=Math.max(m,v._hs[i]);
+    if(m>0.3) keyH.set(k,m);
+  }
+  const best=new Map();
+  const setH=(w,i,h)=>{let a=best.get(w);if(!a){a=new Float64Array(w.pts.length);best.set(w,a);}if(h>a[i]) a[i]=h;};
+  let ns=0;
+  for(const [k0,H] of keyH){
+    if(++ns%4===0) yield;
+    const R=TN.climbLen(H),val=d=>H*TN.ease(1-d/R),dist=new Map([[k0,0]]),q=[[k0,0]];
+    let yq=0;while(q.length){if(++yq%300===0) yield;
+      let bi=0;for(let j=1;j<q.length;j++) if(q[j][1]<q[bi][1]) bi=j;
+      const [k,d]=q.splice(bi,1)[0];if(d>dist.get(k)) continue;
+      for(const [w,i] of (this.keys.get(k)||[])){
+        if(w._br||w.tun) continue;
+        for(const dir of [1,-1]){
+          const j1=i+dir;if(j1<0||j1>=w.pts.length) continue;
+          const h0=val(d);if(h0<0.05) continue;setH(w,i,h0);
+          {
+            /* find where this climb must be finished: the first intersection with a city street, or the end of the climb */
+            let acc=0,stopJ=-1;
+            for(let j=j1;j>=0&&j<w.pts.length;j+=dir){acc+=Math.abs(w.cum[j]-w.cum[j-dir]);if(d+acc>=R) break;if(stopAt(w,w.keys[j])){stopJ=j;break;}}
+            if(stopJ>=0){
+              const D=acc,Rl=Math.max(D,1.25*h0/MAXG);let a2=0;
+              for(let j=j1;;j+=dir){a2+=Math.abs(w.cum[j]-w.cum[j-dir]);setH(w,j,h0*TN.ease(1-a2/Rl));if(j===stopJ) break;}
+              continue;
+            }
+          }
+          let acc=d;
+          for(let j=j1;j>=0&&j<w.pts.length;j+=dir){
+            acc+=Math.abs(w.cum[j]-w.cum[j-dir]);if(acc>=R) break;
+            setH(w,j,val(acc));
+            const kj=w.keys[j];
+            if(!dist.has(kj)||acc<dist.get(kj)){dist.set(kj,acc);q.push([kj,acc]);}
+          }
+        }
+      }
+    }
+  }
+  {let yb=0;for(const [w,a] of best){if(a.some(h=>h>0.05)){if(!w._hs) w._hs=Array.from(a);else for(let i=0;i<a.length;i++) if(a[i]>w._hs[i]) w._hs[i]=a[i];}if(++yb%500===0) yield;}}
+  /* 2b. a ramp splitting from (or merging into) a wider road only climbs once it has left that road */
+  const rank=v=>(v.ramp?0:1000)+TN.width(v);
+  let n2b=0;
+  for(const w of ways){
+    if(++n2b%60===0) yield;
+    if(w._br||!w._hs) continue;
+    const P=w.pts,n=P.length,cap=new Array(n).fill(Infinity);let any=false;
+    for(let j=0;j<n;j++){
+      const x=P[j][0],z=P[j][1],a=P[Math.max(0,j-1)],b=P[Math.min(n-1,j+1)];let tx=b[0]-a[0],tz=b[1]-a[1];const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
+      this.near(x,z,0,(v,k)=>{
+        if(v===w||v.tun||v._br||rank(v)<=rank(w)) return;
+        const r=TN.seg(v,k,x,z);if(Math.abs(r.tx*tx+r.tz*tz)<0.8) return;
+        if(r.d>Math.max(1,(TN.width(v)+TN.width(w))/2-1.5)) return;
+        const vh=v._hs?v._hs[k]+(v._hs[k+1]-v._hs[k])*r.u:0;
+        if(vh<w._hs[j]-0.3&&vh<cap[j]){cap[j]=vh;any=true;}
+      });
+    }
+    if(!any) continue;
+    for(let j=1;j<n;j++) cap[j]=Math.min(cap[j],cap[j-1]+0.06*(w.cum[j]-w.cum[j-1]));
+    for(let j=n-2;j>=0;j--) cap[j]=Math.min(cap[j],cap[j+1]+0.06*(w.cum[j+1]-w.cum[j]));
+    for(let j=0;j<n;j++) if(cap[j]<w._hs[j]) w._hs[j]=cap[j];
+  }
+  const gnd=ways.filter(w=>!w._br);
+  /* 3. lanes side by side that are joined rise together (a lane merging into or splitting from a raised road) */
+  for(let pass=0;pass<3;pass++){
+    const RG=new Map();
+    {let yv=0;for(const v of ways){if(++yv%120===0) yield;
+      if(v.tun||!v._hs) continue;
+      const Q=v.pts,pad=TN.width(v)/2+2;
+      for(let k=0;k<Q.length-1;k++){
+        if(v._hs[k]<0.05&&v._hs[k+1]<0.05) continue;
+        const a=Q[k],b=Q[k+1];
+        for(let gx=Math.floor((Math.min(a[0],b[0])-pad)/20);gx<=Math.floor((Math.max(a[0],b[0])+pad)/20);gx++)
+          for(let gz=Math.floor((Math.min(a[1],b[1])-pad)/20);gz<=Math.floor((Math.max(a[1],b[1])+pad)/20);gz++){
+            const key=gx*1e6+gz;let l=RG.get(key);if(!l){l=[];RG.set(key,l);}l.push(v,k);}
+      }
+    }}
+    let changed=false,nw=0;
+    for(const w of gnd){
+      if(++nw%150===0) yield;
+      const P=w.pts;
+      for(let j=0;j<P.length;j++){
+        const x=P[j][0],z=P[j][1],l=RG.get(Math.floor(x/20)*1e6+Math.floor(z/20));if(!l) continue;
+        const cur=w._hs?w._hs[j]:0;
+        const a=P[Math.max(0,j-1)],b=P[Math.min(P.length-1,j+1)];let tx=b[0]-a[0],tz=b[1]-a[1];const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
+        let bestH=cur;
+        for(let n=0;n<l.length;n+=2){
+          const v=l[n],k=l[n+1];if(v===w) continue;
+          if(!w._ks) w._ks=new Set(w.keys);
+          if(!v.keys.some(q=>w._ks.has(q))) continue;
+          if(v.ramp&&!w.ramp) continue;
+          const r=TN.seg(v,k,x,z),h=v._hs[k]+(v._hs[k+1]-v._hs[k])*r.u;
+          if(h<=bestH+0.05||h>16) continue;
+          if(Math.abs(r.tx*tx+r.tz*tz)<0.85) continue;
+          if(r.d-(w.w+TN.width(v))/2>1.0) continue;
+          bestH=h;
+        }
+        if(bestH>cur+0.05){if(!w._hs) w._hs=w.cum.map(()=>0);w._hs[j]=bestH;changed=true;}
+      }
+    }
+    {let nv=0;for(const w of gnd){if(++nv%80===0) yield;if(w._hs) TN.slope(w,SL);}}
+    if(!changed) break;
+  }
+  /* 4. pieces meeting at a point have the same height there (decks included: a deck end sitting lower than the road
+     it meets is lifted and sloped), repeated until nothing changes */
+  for(let pass=0;pass<12;pass++){
+    let changed=false,nk=0;
+    for(const l of this.keys.values()){
+      if(++nk%1500===0) yield;
+      if(l.length<2) continue;
+      let m=0;for(const [w,i] of l){if(w.tun) continue;const h=bh(w,i);if(h>m) m=h;}
+      if(m<0.05) continue;
+      for(const [w,i] of l){
+        if(w.tun) continue;
+        if(!w._hs) w._hs=w.cum.map(()=>0);
+        if(w._hs[i]<m-0.05){w._hs[i]=m;changed=true;}
+      }
+    }
+    yield;
+    {let nv=0;for(const w of gnd){if(++nv%60===0) yield;if(w._hs&&this.valleyAcross(w)) changed=true;}}
+    {let nv=0;for(const w of ways){if(++nv%80===0) yield;if(w._hs) TN.slope(w,SL);}}
+    if(!changed) break;
+  }
+  for(const w of ways) if(w._hs&&!w._br&&!w._hs.some(h=>h>0.05)) w._hs=null;
+};
+
 /* heights v2, the safety limit: an ordinary road can only be raised near a real bridge deck. Around each deck (sampled
    every 15 m), the allowed height fades from the deck's height to zero over the normal climb length, in straight-line
    distance (never shorter than along the road, so true approach ramps are untouched). Heights that spread farther,
@@ -688,8 +998,8 @@ TN.Net.prototype.valleyAcross=function(w){
   }
   return ch;
 };
-TN.slope=function(w){
-  const hs=w._hs,c=w.cum,k=0.06;
+TN.slope=function(w,k){
+  const hs=w._hs,c=w.cum;k=k||0.06;
   /* no dips between two raised parts less than 200 m apart (the road stays up, like an embankment) */
   for(let j=0;j<hs.length;j++){
     let l=0,r=0;
