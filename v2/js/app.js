@@ -2,7 +2,9 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=100;
+TN.APPBUILD=101;
+/* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
+TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -271,7 +273,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       document.body.appendChild(d);requestAnimationFrame(()=>{d.style.opacity='1';});
     }
     /* a snapshot of the map just before reloading, shown faded behind the progress bar on the new page */
-    let gone=false;const go=()=>{if(gone) return;gone=true;location.replace(location.pathname+'?r='+Date.now());};
+    let gone=false;const go=()=>{if(gone) return;gone=true;location.replace(location.pathname+TN.keepQuery('r='+Date.now()));};
     try{
       map.once('render',()=>{
         try{const c=map.getCanvas(),t=document.createElement('canvas'),k=Math.min(1,1000/Math.max(1,c.width));
@@ -338,7 +340,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     try{sessionStorage.setItem('tn2_tries',String(tries+1));}catch(e){}
     let left=20;
     const tick=()=>{panel('Finishing the update… GitHub is still publishing the new files.<br><small>Trying again in '+left+' s (try '+(tries+1)+' of 8)</small>',[['Cancel',()=>{try{sessionStorage.removeItem('tn2_target');}catch(e){}hide();clearInterval(iv2);}]]);
-      if(left--<=0){clearInterval(iv2);location.replace(location.pathname+'?r='+Date.now());}};
+      if(left--<=0){clearInterval(iv2);location.replace(location.pathname+TN.keepQuery('r='+Date.now()));}};
     const iv2=setInterval(tick,1000);setTimeout(tick,500);
   })();
   /* every 2 minutes, a quiet check: the Version button turns into "Update ready" (it never reloads by itself) */
