@@ -108,6 +108,11 @@ TN.Net.prototype.addPackJob=function*(key,P){
   rec.mk=new Set();this.marks=this.marks||new Map();
   for(const m of P.n||[]){if(++n%200===0) yield;const k=m[0]+','+m[1]+','+m[2];rec.mk.add(k);if(this.marks.has(k)) continue;
     const q=TN.toLocal(m[0],m[1]);this.marks.set(k,{x:q[0],z:q[1],kind:m[2],dir:m[3]||'',key:TN.vkey(m[0],m[1])});}
+  /* highway exits (road tiles v10), for the green exit signs: [node id, lng, lat, exit number, destinations, route
+     numbers, exit name], at the point where the exit ramp leaves the highway (a point shared with the road) */
+  rec.x=new Set();this.exits=this.exits||new Map();
+  for(const r of P.x||[]){rec.x.add(r[0]);if(this.exits.has(r[0])) continue;const q=TN.toLocal(r[1],r[2]);
+    this.exits.set(r[0],{id:r[0],x:q[0],z:q[1],key:TN.vkey(r[1],r[2]),ref:r[3]||'',dest:r[4]||'',refs:r[5]||'',name:r[6]||''});this.exitVer=(this.exitVer||0)+1;}
   this.packs.set(key,rec);(this.changed=this.changed||[]).push(key);
 };
 /* new tiles and the network rebuild after them, as one sliced job */
@@ -120,6 +125,7 @@ TN.Net.prototype.dropPack=function(key,later){
   this.packs.delete(key);(this.changed=this.changed||[]).push(key);
   const keep=new Set();for(const r of this.packs.values()) for(const id of r.ids) keep.add(id);
   for(const id of rec.ids) if(!keep.has(id)) this.ways.delete(id);
+  if(rec.x&&this.exits){const kx=new Set();for(const r of this.packs.values()) if(r.x) for(const id of r.x) kx.add(id);for(const id of rec.x) if(!kx.has(id)){this.exits.delete(id);this.exitVer=(this.exitVer||0)+1;}}
   if(rec.sc&&this.schools){const ks=new Set();for(const r of this.packs.values()) if(r.sc) for(const id of r.sc) ks.add(id);for(const id of rec.sc) if(!ks.has(id)) this.schools.delete(id);}
   if(rec.rm&&this.rem){const kr=new Set();for(const r of this.packs.values()) if(r.rm) for(const id of r.rm) kr.add(id);
     for(const id of rec.rm) if(!kr.has(id)){this.rem.delete(id);this.remVer=(this.remVer||0)+1;}}

@@ -50,6 +50,10 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .a{width:44px;display:flex;justify-content:center}#tn-bar.jvon .a{width:116px;height:116px;flex-shrink:0;border-radius:10px;overflow:hidden;border:2px solid #378ADD}'+
    '#tn-bar .t{flex:1;min-width:0}#tn-bar .dist{font:600 26px system-ui,sans-serif}'+
    '#tn-bar .ins{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+   /* Rocco next to the distance when your exit is coming up (Rocco theme), with a short "Your exit!" bubble */
+   '#tn-bar .rk{display:none;align-items:center;gap:6px;margin-left:10px;flex:none}#tn-bar .rk.on{display:inline-flex}'+
+   '#tn-bar .rk .bub{background:#fff;color:#1d2b3a;border:1px solid #d6dbe1;border-radius:12px;padding:2px 10px;font:600 13px system-ui,sans-serif;white-space:nowrap;transition:opacity .6s}'+
+   '#tn-bar .rk .bub.off{opacity:0}#tn-bar .rk svg{display:block}'+
    '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:var(--tn-sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
    '#tn-bar .dline{display:flex;align-items:center;gap:14px}#tn-bar .lanes{display:flex;gap:3px}#tn-bar .lanes:empty{display:none}#tn-bar .lanes span{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:var(--tn-line)}#tn-bar .lanes span.on{background:rgba(59,130,246,.35)}'+
    '#tn-bar .pb{position:absolute;left:18px;right:18px;bottom:9px;height:6px;border-radius:3px;background:#2a3444}'+
@@ -1022,6 +1026,15 @@ TN.Nav.prototype.update=function(dt){
   /* the exit number as a green highway exit sign (where the map has one) */
   const exn=(nx.type==='off ramp'||nx.type==='fork')&&nx.exits?String(nx.exits).split(';')[0]:'';
   this.bar.querySelector('.ins').innerHTML=(exn?'<span class="exit">EXIT '+TN.esc(exn)+'</span>':'')+TN.esc(I.t+(I.where?' \u00b7 '+I.where:''));
+  /* Rocco peeks out next to the distance from about 1 km before the highway exit your route takes, says "Your exit!"
+     for a few seconds, and leaves once you're past it (only with the Rocco theme) */
+  {const dl=this.bar.querySelector('.dline');let rk=this.bar.querySelector('.rk');
+   if(dl&&!rk&&TN.roccoSVG){rk=document.createElement('span');rk.className='rk';rk.innerHTML='<span class="bub">Your exit!</span>'+TN.roccoSVG(34);dl.appendChild(rk);}
+   if(rk){const th=TN.settings&&TN.settings.theme,rocco=!th||th==='rocco';
+     const hwExit=(nx.type==='off ramp'||(nx.type==='fork'&&(nx.exits||nx.dest)))&&dNext<1000;
+     const on=rocco&&hwExit;if(on!==rk.classList.contains('on')) rk.classList.toggle('on',on);
+     if(on&&this.rkStep!==nx.at){this.rkStep=nx.at;this.rkT=Date.now();}
+     const bub=rk.querySelector('.bub');if(bub){const off=!on||Date.now()-(this.rkT||0)>5000;if(off!==bub.classList.contains('off')) bub.classList.toggle('off',off);}}}
   /* lane arrows for the next turn (where the directions include lanes), from 1 km before it */
   {const le=this.bar.querySelector('.lanes');let html='';
    if(nx.lanes&&nx.lanes.length&&dNext<1000){

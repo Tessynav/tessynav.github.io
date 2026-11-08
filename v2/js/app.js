@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=101;
+TN.APPBUILD=102;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -34,6 +34,8 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   TN.shadows=TN.Shadows?new TN.Shadows(scene):null;
   const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,net:net,getCar:()=>track.car,following:()=>follow,roadsBase:'https://tessynav.github.io/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
   /* Superchargers on the map (and other fast chargers, if chosen) */
+  /* green highway exit signs along the highway ahead (with or without a route) */
+  const signs=TN.Signs?new TN.Signs({net:net,scene:scene,track:track,nav:nav}):null;TN.signs=signs;
   const chargers=TN.Chargers?new TN.Chargers({map:map,nav:nav,getCar:()=>track.car,following:()=>follow}):null;TN.chargers=chargers;
   TN.incidentsObj=incidents;
   TN.fb=TN.Feedback?new TN.Feedback({map:map,nav:nav,getCar:()=>track.car,gps:()=>track.last}):null;   /* (Send feedback, on the main screen) */
@@ -446,6 +448,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       /* live traffic lines when browsing the map or looking at a route overview (not while following the car) */
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
       if(chargers) try{chargers.update();}catch(e){}
+      if(signs) try{signs.update();}catch(e){}
       if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}
       {const cc=track.car,lv=track.last;TN.carOffRoad=!!(cc&&cc.x!=null&&!cc.snapped&&(!lv||(lv.v||0)<2.5));}   /* (not on a road, and slow: the x-ray bubble) */   /* (tunnel mode: the tunnel you're in, and the view dims) */
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
