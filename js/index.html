@@ -1,0 +1,203 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script>/* private until launch: a device that hasn't been unlocked with the owner's private link goes to the Coming soon page, and nothing else loads (no map, no API keys used): the rest of the page becomes plain text, so no other script runs, while the move to Coming soon goes ahead (stopping the page instead also cancelled that move: a white screen) */(function(){var ok=false;try{ok=localStorage.getItem('tn2_access')==='a292d7af1555f35512cac2a92b967747c92a9b77177e0bd85b7c9063b8edfbfc';}catch(e){}if(!ok){location.replace('/soon.html');document.write('<style>html{display:none}</style><plaintext style="display:none">');}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TessyNav</title>
+<!-- the map (MapLibre) and 3D (three.js) libraries: from jsDelivr, with unpkg as a backup if jsDelivr doesn't answer
+     (an outage of a single library site used to leave the app without its map) -->
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" onerror="this.onerror=null;this.href='https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script>window.THREE||document.write('<script src="https://unpkg.com/three@0.158.0/build/three.min.js"><\/script>')</script>
+<style>
+html,body,#map{margin:0;height:100%;background:#e9ece6}
+:root{--tn-panel-rgb:43 45 49;--tn-text:#f3f1ec;--tn-sub:#b9b6ae;--tn-tip:#f2b55a;--tn-link:#f2b55a;--tn-accent:#e8913a;--tn-on-accent:#2b1a08;--tn-btn:#45474d;--tn-off:#55575d;--tn-line:rgba(255,255,255,.09);--tn-joke:#f2b55a;--tn-danger:#ff8a80}
+.hud{position:absolute;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-text);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;border-radius:16px;padding:10px 16px;z-index:5;transition:opacity .6s;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+body.tn-intro .hud:not(#panel){opacity:0;pointer-events:none}
+/* see-through panels (Settings -> Map and view): the top bar, status, search and buttons let the sky and buildings show
+   through, without blur (a blur would be recalculated every frame over the moving 3D view); a soft outline keeps the text
+   readable. The light theme stays more solid, with a light glow instead of a shadow. Lists, the route overview and forms
+   stay solid. */
+body.tn-glass{--tn-gA:.5}
+html[data-theme="teslaDay"] body.tn-glass{--tn-gA:.74}
+body.tn-glass :is(#status,#speed,#tn-bar,#tn-search,#rec,#trips,#btn,#zin,#zout,#tn-fbbtn,#tn-report,#tn-end){background:rgb(var(--tn-panel-rgb) / var(--tn-gA))!important;border:1px solid rgba(255,255,255,.15);text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.55)}
+html[data-theme="teslaDay"] body.tn-glass :is(#status,#speed,#tn-bar,#tn-search,#rec,#trips,#btn,#zin,#zout,#tn-fbbtn,#tn-report,#tn-end){border-color:rgba(0,0,0,.1);text-shadow:0 0 4px rgba(255,255,255,.95),0 0 8px rgba(255,255,255,.6)}
+body.tn-glass #tn-search input{text-shadow:inherit}
+/* the opening ("Headlights on"): drawn by the page itself, so it starts the moment the page appears, before any
+   library has downloaded; the light wave then reveals the real city (intro.js) */
+@property --tnr{syntax:'<length>';inherits:false;initial-value:0px}
+#tn-boot{position:absolute;left:0;top:0;width:100%;height:100%;background:radial-gradient(ellipse at 50% 80%,#141c2c 0%,#080e1a 60%);z-index:49;overflow:hidden;
+  -webkit-mask:radial-gradient(circle at 50% 76%,transparent var(--tnr),#000 calc(var(--tnr) + 70px));mask:radial-gradient(circle at 50% 76%,transparent var(--tnr),#000 calc(var(--tnr) + 70px))}
+#tn-boot.reveal{animation:tnRev 1.9s cubic-bezier(.45,0,.2,1) forwards}
+@keyframes tnRev{to{--tnr:160vmax}}
+#tn-boot .nm{position:absolute;left:0;right:0;top:30%;text-align:center;font:700 clamp(40px,7vw,76px) system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#f3f1ec;letter-spacing:-.01em;opacity:0;animation:tnNm .7s ease .15s forwards}
+#tn-boot .nm b{color:#e8913a}
+#tn-boot .sub{position:absolute;left:0;right:0;top:calc(30% + clamp(52px,9vw,96px));text-align:center;font:500 clamp(13px,1.8vw,18px) system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#8d96a3;opacity:0;animation:tnNm .7s ease .45s forwards}
+@keyframes tnNm{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#tn-boot .road{position:absolute;left:50%;bottom:0;width:70vmin;height:24%;transform:translateX(-50%);background:linear-gradient(transparent,rgba(120,140,170,.10));clip-path:polygon(47% 0,53% 0,100% 100%,0 100%)}
+#tn-boot .hl{position:absolute;top:76%;width:clamp(26px,3.4vw,40px);height:clamp(14px,1.8vw,20px);margin-top:-10px;border-radius:50%;background:radial-gradient(ellipse,#fffbe9 0%,#ffe9b0 45%,rgba(255,220,150,0) 72%);opacity:0;
+  box-shadow:0 0 30px 10px rgba(255,236,190,.35);animation:tnHl 1.5s linear .3s forwards,tnBr 2.4s ease-in-out 1.8s infinite}
+#tn-boot .hl.l{left:calc(50% - clamp(46px,6vw,70px))}#tn-boot .hl.r{left:calc(50% + clamp(20px,2.6vw,30px))}
+#tn-boot .beam{position:absolute;left:50%;top:76%;width:46vmin;height:30vmin;transform:translate(-50%,-100%);background:radial-gradient(ellipse at 50% 100%,rgba(255,240,205,.28),rgba(255,240,205,0) 70%);opacity:0;animation:tnHl 1.5s linear .3s forwards,tnBr 2.4s ease-in-out 1.8s infinite}
+@keyframes tnHl{0%{opacity:0}10%{opacity:1}24%{opacity:.15}38%{opacity:1}52%{opacity:.2}70%,100%{opacity:.9}}
+@keyframes tnBr{0%,100%{opacity:.9}50%{opacity:.6}}
+#tn-ring{position:absolute;left:50%;top:76%;width:0;height:0;border-radius:50%;transform:translate(-50%,-50%);z-index:50;pointer-events:none;
+  box-shadow:0 0 0 4px rgba(232,145,58,.95),0 0 34px 14px rgba(232,145,58,.55),inset 0 0 26px 6px rgba(232,145,58,.35);animation:tnRing 1.9s cubic-bezier(.45,0,.2,1) forwards}
+@keyframes tnRing{0%{width:0;height:0;opacity:1}85%{opacity:.9}100%{width:320vmax;height:320vmax;opacity:0}}
+#tn-hi{position:absolute;left:50%;bottom:19%;transform:translateX(-50%) scale(.6);z-index:48;display:flex;align-items:center;gap:12px;padding:10px 18px 10px 12px;border-radius:18px;background:rgb(var(--tn-panel-rgb) / .97);color:var(--tn-text);font:700 20px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);opacity:0;pointer-events:none;animation:tnHi 2.6s ease forwards}
+@keyframes tnHi{0%{opacity:0;transform:translateX(-50%) translateY(20px) scale(.6)}14%{opacity:1;transform:translateX(-50%) translateY(-4px) scale(1.05)}20%,82%{opacity:1;transform:translateX(-50%) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(10px) scale(.9)}}
+@media (prefers-reduced-motion:reduce){#tn-boot .hl,#tn-boot .beam{animation:none;opacity:.9}}
+#tn-upd{position:absolute;left:0;top:0;width:100%;height:100%;z-index:60;background:rgba(8,14,26,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:sans-serif;color:var(--tn-text);transition:opacity .4s}
+#tn-upd .shot{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:.6}
+#tn-upd .t,#tn-upd .bar,#tn-upd .s{position:relative}
+#tn-upd .t{font-size:22px;letter-spacing:.5px}#tn-upd .s{font-size:14px;color:var(--tn-tip);min-height:18px}
+/* with the opening playing: no title or background, just a slim progress line low on the screen, under the headlights */
+body.tn-intro #tn-upd{background:transparent;justify-content:flex-end;padding-bottom:6vh;box-sizing:border-box;gap:8px;pointer-events:none}
+body.tn-intro #tn-upd .t,body.tn-intro #tn-upd .shot{display:none}
+body.tn-intro #tn-upd .bar{width:min(40vw,320px)!important;height:3px!important;opacity:.7}
+body.tn-intro #tn-upd .s{font-size:12px;opacity:.75}
+#tn-upd .bar{width:min(70%,420px);height:8px;border-radius:4px;background:rgba(120,220,255,.18);overflow:hidden}
+#tn-upd .fill{height:100%;width:0;background:#78dcff;border-radius:4px;transition:width .35s}
+button.hud{border:0;cursor:pointer}
+#status{top:16px;left:16px;font-size:16px;max-width:42vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#status .g{color:var(--tn-sub);font-size:14px}
+#tag{display:none}
+#speed{bottom:24px;left:16px;font-size:40px;font-weight:600;padding:10px 18px;line-height:1}
+#speed small{font-size:15px;font-weight:normal;opacity:.7}
+#btn{bottom:102px;right:20px;width:56px;height:56px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center}
+#btn.free{color:var(--tn-accent)}#btn.free svg{animation:tnPulse 1.6s ease-in-out 2}
+@keyframes tnPulse{50%{transform:scale(1.15)}}
+.zb{right:16px;font-size:26px;width:56px;height:56px;padding:0;line-height:56px;text-align:center}
+#zin{bottom:234px}
+#zout{bottom:170px}
+#rec{top:70px;left:16px;font-size:14px;padding:8px 14px;font-variant-numeric:tabular-nums;min-width:108px;text-align:left}
+#trips{top:70px;left:132px;font-size:14px;padding:8px 14px}
+#ver{bottom:24px;left:50%;transform:translateX(-50%);font-size:13px;opacity:.85}
+#panel{display:none;top:50%;left:50%;transform:translate(-50%,-50%);font-size:17px;text-align:center;max-width:80vw;z-index:30}
+.pbtn{font-size:16px;padding:10px 18px;border:0;border-radius:10px;background:var(--tn-accent);color:var(--tn-on-accent);cursor:pointer}
+</style>
+</head>
+<body>
+<div id="tn-boot"><div class="road"></div><div class="beam"></div><div class="hl l"></div><div class="hl r"></div><div class="nm">Tessy<b>Nav</b></div><div class="sub">Navigation for Tesla</div></div>
+<script>
+window.TN_T0=performance.now();
+/* the opening animation starts dark from the first moment (no blank screen); skipped after an update or with ?intro=0 */
+/* after an update (reload): a faded "Updating TessyNav" screen with a progress bar instead of a blank page */
+window.TN_PROGRESS=function(){};
+(function(){let upd=false;try{upd=/[?&]r=\d/.test(location.search)||!!sessionStorage.getItem('tn2_target');}catch(e){}
+  if(!upd) return;
+  const d=document.createElement('div');d.id='tn-upd';
+  d.innerHTML='<div class="t">Updating TessyNav</div><div class="bar"><div class="fill"></div></div><div class="s">Loading the new version… 0%</div>';
+  /* the map as it looked just before the update, faded behind the progress bar */
+  try{const shot=sessionStorage.getItem('tn2_shot');if(shot){const im=document.createElement('img');im.className='shot';im.src=shot;d.insertBefore(im,d.firstChild);
+    d.style.background='rgba(8,14,26,.45)';sessionStorage.removeItem('tn2_shot');}}catch(e){}
+  document.body.appendChild(d);
+  let cur=0;
+  window.TN_PROGRESS=function(p,label){p=Math.max(cur,Math.min(100,Math.round(p)));cur=p;
+    d.querySelector('.fill').style.width=p+'%';d.querySelector('.s').textContent=(label||'Loading the new version…')+' '+p+'%';
+    if(p>=100){setTimeout(()=>{d.style.opacity='0';setTimeout(()=>{if(d.parentNode) d.parentNode.removeChild(d);},450);},250);}};
+  window.TN_PROGRESS(5,'Loading the new version…');
+  /* never stay on this screen if something goes wrong */
+  setTimeout(()=>window.TN_PROGRESS(100,'Ready'),12000);
+})();
+(function(){let on=true;try{if(/[?&]intro=0/.test(location.search)||(/[?&]r=\d/.test(location.search)&&!/[?&]intro=1/.test(location.search))||sessionStorage.getItem('tn2_target')) on=false;
+  const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');if(st&&st.intro===false) on=false;}catch(e){}
+  const b=document.getElementById('tn-boot');
+  if(!on){b.parentNode.removeChild(b);return;}
+  document.body.classList.add('tn-intro');
+  /* safety: never stay dark for long if anything goes wrong */
+  setTimeout(()=>{const x=document.getElementById('tn-boot');if(x) x.parentNode.removeChild(x);document.body.classList.remove('tn-intro');},9000);
+})();
+</script>
+<div id="map"></div>
+<div id="status" class="hud">Finding Tessy…</div>
+<div id="tag" class="hud">TessyNav v2 · test</div>
+<button id="rec" class="hud">● Record</button>
+<button id="trips" class="hud">Trips</button>
+<div id="speed" class="hud">0 <small>km/h</small></div>
+<button id="ver" class="hud">Version</button>
+<button id="btn" class="hud free" aria-label="Recenter" title="Recenter"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 5.2l3.3 8.3L12 11.8l-3.3 1.7z" fill="currentColor"/><path d="M12 18.8l-1.6-4 1.6.8 1.6-.8z" opacity=".5" fill="currentColor"/></svg></button>
+<button id="zin" class="hud zb">+</button>
+<button id="zout" class="hud zb">−</button>
+<div id="panel" class="hud"></div>
+<!-- the app's files (read by the loader below; also what the Version button compares) -->
+<template id="tn-files">
+<script src="js/roads.js?v=43"></script>
+<script src="js/store.js?v=1"></script>
+<script src="js/i18n.js?v=13"></script>
+<script src="js/rocco.js?v=1"></script>
+<script src="js/track.js?v=21"></script>
+<script src="js/scene.js?v=40"></script>
+<script src="js/shadows.js?v=4"></script>
+<script src="js/trees.js?v=8"></script>
+<script src="js/buildings.js?v=18"></script>
+<script src="js/intro.js?v=8"></script>
+<script src="js/rem.js?v=10"></script>
+<script src="js/season.js?v=4"></script>
+<script src="js/ground.js?v=1"></script>
+<script src="js/water.js?v=1"></script>
+<script src="js/weather.js?v=2"></script>
+<script src="js/settings.js?v=29"></script>
+<script src="js/voice.js?v=2"></script>
+<script src="js/nav.js?v=67"></script>
+<script src="js/incidents.js?v=18"></script>
+<script src="js/chargers.js?v=3"></script>
+<script src="js/tesla.js?v=5"></script>
+<script src="js/bridges.js?v=5"></script>
+<script src="js/tunnel.js?v=3"></script>
+<script src="js/feedback.js?v=7"></script>
+<script src="js/rec.js?v=4"></script>
+<script src="js/app.js?v=101"></script>
+</template>
+<script>
+/* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
+   newest commit), so an upload is live within seconds instead of waiting for the website copy (up to 10 min).
+   If that is slow (over 3.5 s) or fails, the website's own copy is used, exactly as before.
+   ?local=1 in the address always uses the website copy. */
+/* safeguard: if one of the app's files comes back as a web page instead of code (a broken saved copy, or a file
+   caught while GitHub was still publishing it), reload once with fresh copies that skip the browser's saved files */
+window.addEventListener('error',function(e){
+  try{const m=String(e&&e.message||''),f=String(e&&e.filename||'');
+    if(!/Unexpected token '<'|expected expression, got '<'|Unexpected token <|Syntax error/i.test(m)) return;
+    if(/^https?:/.test(f)&&!/\/js\/[a-z0-9]+\.js/.test(f)) return;   /* (another site's file: not ours to fix) */
+    if(sessionStorage.getItem('tn2_bust')) return;sessionStorage.setItem('tn2_bust','1');
+    location.replace(location.pathname+'?local=1&bust='+Date.now());}catch(x){}
+},true);
+(function(){
+  const parse=h=>[...h.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
+  /* fresh copies, skipping the browser's saved files: after a safeguard reload (bust=), and whenever the page is
+     opened with ?r= (after an update, or by hand to refresh), so an old file saved under a new version name can't stay */
+  const bust=/[?&](bust|r)=\d/.test(location.search)?String(Date.now()):'';
+  const localList=parse(document.getElementById('tn-files').innerHTML);
+  const load=(base,list)=>{
+    window.TN_FILES=list;window.TN_BASE=base;let i=0;
+    const next=()=>{if(i>=list.length){setTimeout(()=>{try{sessionStorage.removeItem('tn2_bust');}catch(e){}},8000);return;}
+      const s=document.createElement('script');const f=list[i++];s.src=base+f+(bust?(f.indexOf('?')>=0?'&':'?')+'b='+bust:'');s.async=false;
+      s.onload=()=>{try{window.TN_PROGRESS(10+60*i/list.length,'Loading the new version…');}catch(e){}next();};
+      s.onerror=()=>{if(base){location.replace(location.pathname+'?local=1&r='+Date.now());}else next();};
+      document.body.appendChild(s);};
+    next();
+  };
+  if(/[?&]local=1/.test(location.search)){load('',localList);return;}
+  let done=false;const finish=(b,l)=>{if(done) return;done=true;load(b,l);};
+  setTimeout(()=>finish('',localList),3500);
+  (async()=>{
+    try{
+      const h={'Accept':'application/vnd.github+json'};let tok='';try{tok=localStorage.getItem('up:token')||'';}catch(e){}
+      let r=tok?await fetch('https://api.github.com/repos/Tessynav/tessynav.github.io/commits/main',{headers:Object.assign({'Authorization':'Bearer '+tok},h),cache:'no-store'}):null;
+      if(!r||!r.ok) r=await fetch('https://api.github.com/repos/Tessynav/tessynav.github.io/commits/main',{headers:h,cache:'no-store'});
+      if(!r.ok) throw 0;
+      const sha=(await r.json()).sha;if(!/^[0-9a-f]{40}$/.test(sha)) throw 0;
+      const base='https://cdn.jsdelivr.net/gh/Tessynav/tessynav.github.io@'+sha+'/v2/';
+      const ih=await fetch(base+'index.html',{cache:'no-store'});if(!ih.ok) throw 0;
+      const list=parse(await ih.text());if(!list.length) throw 0;
+      finish(base,list);
+    }catch(e){finish('',localList);}
+  })();
+})();
+</script>
+</body>
+</html>
