@@ -468,6 +468,7 @@ TN.Nav.prototype.plan=async function(reroute){
   }
 };
 TN.Nav.prototype.setRoute=function(rt){
+  try{if(TN.prefetchRoute&&rt&&rt.geometry) TN.prefetchRoute(rt.geometry.coordinates);}catch(e){}   /* (the map data along the route, saved in advance) */
   /* a new route starts from scratch: where the car is along it, its lane, the release timers (a leftover position
      from a previous route made the car look for itself in the wrong part of the new one, for the whole trip) */
   this.pi=0;this.ps=null;this.latS=null;this.laneI=null;this.latF=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;

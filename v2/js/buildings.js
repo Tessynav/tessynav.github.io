@@ -222,7 +222,7 @@ TN.BTILES='https://tessynav.github.io/tessynav-buildings/';
 TN.Buildings.prototype.tilesIndex=function(){
   if(this.tidx||this.tidxLoading||Date.now()-(this.tidxT||0)<600000) return this.tidx;
   this.tidxLoading=true;this.tidxT=Date.now();
-  fetch(TN.BTILES+'index.json?d='+new Date().toISOString().slice(0,10)).then(r=>r.ok?r.json():null).then(j=>{this.tidxLoading=false;if(j&&j.v===1&&j.regions) this.tidx=j;}).catch(()=>{this.tidxLoading=false;});
+  fetch(TN.BTILES+'index.json?d='+new Date().toISOString().slice(0,10)).then(r=>r.ok?r.json():null).then(j=>{this.tidxLoading=false;if(j&&j.v===1&&j.regions){this.tidx=j;if(TN.Store) TN.Store.use('bld',j.date);}}).catch(()=>{this.tidxLoading=false;});
   return null;
 };
 TN.Buildings.prototype.covered=function(lng,lat){const I=this.tilesIndex();return !!(I&&I.regions.some(r=>lng>=r.bbox[0]&&lng<r.bbox[2]&&lat>=r.bbox[1]&&lat<r.bbox[3]));};
@@ -254,7 +254,8 @@ TN.Buildings.prototype.loadPack=function(key){
   const T=this.tp;T.set(key,{st:'loading'});
   /* keep the 40 most recently used tiles */
   if(T.size>40){let old=null,ot=1e18;for(const [k,v] of T){if(v.st!=='loading'&&(v.used||0)<ot){ot=v.used||0;old=k;}}if(old) T.delete(old);}
-  fetch(TN.BTILES+'b/'+key+'.json').then(r=>{if(r.status===404) return 'none';return r.ok?r.json():null;}).then(j=>{
+  /* (from Tessy's storage when already saved; downloaded and saved otherwise) */
+  (TN.Store?TN.Store.json('bld',TN.BTILES+'b/'+key+'.json').then(j=>j&&j.missing?'none':j):fetch(TN.BTILES+'b/'+key+'.json').then(r=>{if(r.status===404) return 'none';return r.ok?r.json():null;})).then(j=>{
     if(j==='none'){T.set(key,{st:'none',used:Date.now()});return;}
     if(!j||!j.b){T.delete(key);return;}
     /* grouped by area (by each building's first corner), decoded later when the area is built */

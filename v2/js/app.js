@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=95;
+TN.APPBUILD=96;
 
 (function(){
   const $=id=>document.getElementById(id);
@@ -68,7 +68,19 @@ TN.APPBUILD=95;
   /* ---------- road tiles: the packs around the car (about 5 x 7 km), loaded in the background ---------- */
   const ROADS='https://tessynav.github.io/tessynav-roads/';
   let idx=null,loading=new Set(),pending=[],covered=true;
-  fetch(ROADS+'index.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).then(j=>{idx=j;}).catch(()=>{});
+  fetch(ROADS+'index.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).then(j=>{idx=j;if(j&&TN.Store) TN.Store.use('roads',j.built||j.v);}).catch(()=>{});
+  /* the packs along a planned route, saved in advance (roads and buildings), so nothing waits for data on the way */
+  TN.prefetchRoute=function(coords){
+    if(!idx||!TN.Store||!coords||!coords.length) return;
+    const rk=new Set(),bk=new Set(),C=TN.CELL;
+    for(let i=0;i<coords.length;i+=Math.max(1,Math.floor(coords.length/600))){const [lng,lat]=coords[i];
+      const px=Math.floor(Math.floor(lng/idx.r3t)/idx.pack),py=Math.floor(Math.floor(lat/idx.r3t)/idx.pack);
+      for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++) rk.add((px+dx)+'_'+(py+dy));
+      const cx=Math.floor(lng/C),cy=Math.floor(lat/C);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++) bk.add(Math.floor((cx+dx*4)/4)+'_'+Math.floor((cy+dy*4)/4));}
+    TN.Store.prefetch('roads',[...rk].map(k=>ROADS+'p/'+k+'.json'));
+    if(TN.BTILES) TN.Store.prefetch('bld',[...bk].map(k=>TN.BTILES+'b/'+k+'.json'));
+    if(TN.fb) TN.fb.note('prefetch',{roads:rk.size,buildings:bk.size});
+  };
   function wantPacks(lng,lat){
     if(!idx) return;
     const tx=Math.floor(lng/idx.r3t),ty=Math.floor(lat/idx.r3t),px=Math.floor(tx/idx.pack),py=Math.floor(ty/idx.pack);
@@ -78,7 +90,9 @@ TN.APPBUILD=95;
       /* (not again if it's already here, on its way, waiting to be added, or being added right now) */
       if(net.packs.has(k)||loading.has(k)||pending.some(q=>q[0]===k)||(net.inAdd&&net.inAdd.has(k))) continue;
       loading.add(k);
-      fetch(ROADS+'p/'+k+'.json').then(r=>r.status===404?{w:[],b:[]}:(r.ok?r.json():null)).then(P=>{
+      /* (from Tessy's storage when already saved; downloaded and saved otherwise) */
+      (TN.Store?TN.Store.json('roads',ROADS+'p/'+k+'.json'):fetch(ROADS+'p/'+k+'.json').then(r=>r.status===404?{missing:true}:(r.ok?r.json():null))).then(P=>{
+        if(P&&P.missing) P={w:[],b:[]};
         loading.delete(k);if(P) pending.push([k,P]);
       }).catch(()=>loading.delete(k));
     }
