@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>TessyNav · Coming soon</title>
+<!-- TessyNav is private until launch: visitors see this page. The owner unlocks a device once with the private link
+     (/soon.html?unlock=KEY): the key is checked against its fingerprint (SHA-256), never stored in this code, and the
+     device is remembered. /soon.html?lock=1 locks this device again. -->
+<style>
+:root{color-scheme:dark}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(ellipse at 50% 85%,#1b2434 0%,#0a0f18 60%);color:#f3f1ec;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+.w{padding:24px;max-width:560px}
+.r{width:110px;height:110px;margin:0 auto 18px;animation:bob 3.2s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-6px)}}
+h1{margin:0;font-size:clamp(40px,8vw,64px);font-weight:700;letter-spacing:-.01em}
+h1 b{color:#e8913a}
+.s{margin:10px 0 26px;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#8d96a3}
+.c{display:inline-block;padding:10px 22px;border-radius:999px;background:rgba(232,145,58,.14);color:#f2b55a;font-weight:600;font-size:17px;border:1px solid rgba(232,145,58,.35)}
+.t{margin-top:22px;color:#b9b6ae;font-size:16px;line-height:1.5}
+.f{margin-top:6px;color:#8d96a3;font-size:14px}
+.hl{position:fixed;left:50%;bottom:9vh;width:120px;height:26px;transform:translateX(-50%);display:flex;justify-content:space-between;pointer-events:none}
+.hl i{width:30px;height:16px;border-radius:50%;background:radial-gradient(ellipse,#fffbe9,#ffe9b0 45%,rgba(255,220,150,0) 72%);box-shadow:0 0 26px 8px rgba(255,236,190,.28);animation:glow 3s ease-in-out infinite}
+@keyframes glow{50%{opacity:.55}}
+.msg{margin-top:18px;font-size:14px;color:#f2b55a;min-height:18px}
+</style>
+</head>
+<body>
+<div class="w">
+  <svg class="r" viewBox="0 0 200 200" aria-hidden="true"><path d="M46 62 L54 18 L86 50 Z" fill="#888780"/><path d="M154 62 L146 18 L114 50 Z" fill="#888780"/><path d="M52 56 L57 30 L76 49 Z" fill="#d3d1c7"/><path d="M148 56 L143 30 L124 49 Z" fill="#d3d1c7"/><circle cx="100" cy="100" r="62" fill="#b4b2a9"/><path d="M38 92 Q100 62 162 92 L162 114 Q100 90 38 114 Z" fill="#2c2c2a"/><circle cx="76" cy="101" r="11" fill="#f1efe8"/><circle cx="124" cy="101" r="11" fill="#f1efe8"/><circle cx="78" cy="102" r="5.5" fill="#2c2c2a"/><circle cx="122" cy="102" r="5.5" fill="#2c2c2a"/><ellipse cx="100" cy="132" rx="26" ry="20" fill="#f1efe8"/><ellipse cx="100" cy="123" rx="9" ry="6.5" fill="#2c2c2a"/><path d="M87 137 Q100 147 113 137" stroke="#2c2c2a" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>
+  <h1>Tessy<b>Nav</b></h1>
+  <div class="s">Navigation for Tesla</div>
+  <div class="c">Coming soon</div>
+  <div class="t">Rocco is getting the roads ready.<br>Made in Québec, for your Tesla.</div>
+  <div class="f">Bientôt disponible · Rocco prépare les routes.</div>
+  <div class="msg" id="msg"></div>
+</div>
+<div class="hl"><i></i><i></i></div>
+<script>
+(async function(){
+  const H='a292d7af1555f35512cac2a92b967747c92a9b77177e0bd85b7c9063b8edfbfc',p=new URLSearchParams(location.search),msg=document.getElementById('msg');
+  try{
+    if(p.get('lock')){localStorage.removeItem('tn2_access');msg.textContent='This device is locked again.';history.replaceState(null,'','/soon.html');return;}
+    const k=p.get('unlock');
+    if(k){
+      history.replaceState(null,'','/soon.html');   /* (the key doesn't stay in the address bar or the history) */
+      const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(k));
+      const hex=[...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('');
+      if(hex===H){localStorage.setItem('tn2_access',H);msg.textContent='Unlocked. Opening TessyNav…';setTimeout(()=>location.replace('/v2/?r='+Date.now()),700);}
+      else msg.textContent='That link didn’t work.';
+      return;
+    }
+    if(localStorage.getItem('tn2_access')===H){location.replace('/v2/');}
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
