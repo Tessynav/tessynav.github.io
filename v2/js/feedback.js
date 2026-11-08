@@ -21,6 +21,7 @@ TN.Feedback=function(api){
   setInterval(()=>{const c=me.api.getCar&&me.api.getCar();if(c&&c.x!=null&&TN.fromLocal){const ll=TN.fromLocal(c.x,c.z);
     me.gps.push([Date.now(),+ll[1].toFixed(5),+ll[0].toFixed(5)]);if(me.gps.length>1200) me.gps.shift();}},3000);
   setInterval(()=>me.flush(),60000);setTimeout(()=>me.flush(),15000);
+  document.addEventListener('visibilitychange',()=>{me.visT=Date.now();});   /* (coming back from the background is not a freeze) */
   window.addEventListener('error',e=>me.err(String(e.message||e.error||'error'),(e.filename||'').split('/').pop()+':'+(e.lineno||'')),true);
   window.addEventListener('unhandledrejection',e=>me.err('promise: '+String((e.reason&&e.reason.message)||e.reason||'')));
   this.button();
@@ -32,7 +33,8 @@ TN.Feedback.prototype.second=function(fps,worst){
   const g=this.api.gps&&this.api.gps(),c=this.api.getCar&&this.api.getCar();
   this.sec.push([Date.now(),fps,Math.round(worst||0),g?Math.round((g.v||0)*3.6):null,c&&c.snapped?1:0]);
   while(this.sec.length>3600) this.sec.shift();
-  if(worst>1500) this.snap('freeze '+Math.round(worst)+' ms');
+  /* (a real freeze: the app visible and stuck 1.5 to 5 s; longer gaps are the screen asleep or the browser hidden) */
+  if(worst>1500&&worst<5000&&document.visibilityState!=='hidden'&&Date.now()-(this.visT||0)>3000) this.snap('freeze '+Math.round(worst)+' ms');
 };
 /* a quiet screenshot when something goes wrong: at most 3 kept, one a minute at most */
 TN.Feedback.prototype.snap=function(why){

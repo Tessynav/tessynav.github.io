@@ -37,7 +37,7 @@ TN.Scene.prototype.layer=function(){
         S.updateSky(TN.CUTU.cutCam.value);
         const c=S.car3d;
         if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=4.5;
-          TN.CUTU.cutBub.value+=((TN.carOffRoad?24:0)-TN.CUTU.cutBub.value)*0.06;}   /* (the bubble grows and shrinks smoothly) */
+          TN.CUTU.cutBub.value+=((TN.carOffRoad?24:(TN.tunnel&&TN.tunnel.k>0.3?60:0))-TN.CUTU.cutBub.value)*0.06;}   /* (in a tunnel: the buildings above fade away, 60 m around) */   /* (the bubble grows and shrinks smoothly) */
         else TN.CUTU.cutR.value=0;
       }catch(e){}
       T.renderer.resetState();
@@ -408,7 +408,7 @@ TN.BEAMGLSL=[
 TN.Scene.prototype.beamPatch=function(mat){
   mat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,TN.BEAMU);
     sh.vertexShader='varying vec3 vBeamW;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\nvBeamW=(modelMatrix*vec4(transformed,1.0)).xyz;');
-    sh.fragmentShader=TN.BEAMGLSL+'\n'+sh.fragmentShader.replace('#include <dithering_fragment>','#include <dithering_fragment>\n  gl_FragColor.rgb=mix(gl_FragColor.rgb,vec3(1.0,0.99,0.96),clamp(beamAt()*1.6,0.0,1.0));');};
+    sh.fragmentShader=TN.BEAMGLSL+'\n'+sh.fragmentShader.replace('#include <dithering_fragment>','#include <dithering_fragment>\n  gl_FragColor.rgb=mix(gl_FragColor.rgb,vec3(1.0,0.99,0.96),clamp(beamAt()*1.05,0.0,0.85));');};
   mat.needsUpdate=true;
 };
 TN.Scene.prototype.beamPath=function(car){
@@ -448,7 +448,7 @@ TN.Scene.prototype.updateBeam=function(car){
     /* a grid along the path (16 rows) and across it (-4 m .. +8 m); brightness fixed by the low-beam pattern */
     const N=TN.BEAMN,xs=[];for(let x=-4;x<=8;x+=1) xs.push(x);this.beamXs=xs;
     const pos=new Float32Array(N*xs.length*3),col=[],idx=[];
-    for(let k=0;k<N;k++) for(let c=0;c<xs.length;c++){const v=TN.beamLit(1.5+k*TN.BEAMSTEP,xs[c])*0.5;col.push(v,v*0.97,v*0.91);}
+    for(let k=0;k<N;k++) for(let c=0;c<xs.length;c++){const v=TN.beamLit(1.5+k*TN.BEAMSTEP,xs[c])*0.3;col.push(v,v*0.96,v*0.88);}   /* (0.3, was 0.5: with the lamp pools it saturated to a white patch over the lane lines) */
     for(let k=0;k<N-1;k++) for(let c=0;c<xs.length-1;c++){const a=k*xs.length+c,b=a+xs.length;idx.push(a,b,b+1,a,b+1,a+1);}
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setIndex(idx);
     this.beamMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-12});

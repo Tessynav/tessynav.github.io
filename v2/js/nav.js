@@ -38,7 +38,7 @@ TN.Nav.prototype.build=function(){
    '#tn-res .hd{font-size:12px;letter-spacing:.06em;color:#7d8da3;padding:10px 12px 2px}#tn-res .del{display:flex;padding:8px;margin:-8px -4px -8px 4px;border-radius:8px}#tn-res .del:active{background:rgba(255,255,255,.1)}'+
    '#tn-ov .save{background:var(--tn-btn);color:var(--tn-joke);display:inline-flex;align-items:center;gap:6px}'+
    '#tn-savemenu{position:fixed;z-index:12;padding:6px;min-width:230px}#tn-savemenu .r{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;font-size:16px}#tn-savemenu .r:active{background:var(--tn-line)}'+
-   '#tn-ov{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:18px;padding:14px 18px;font-size:16px}'+
+   '#tn-ov{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:18px;padding:14px 18px;font-size:16px;z-index:8}'+
    '#tn-ov small{color:var(--tn-sub);font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
    '#tn-ov .go{background:var(--tn-accent);color:var(--tn-on-accent)}#tn-ov .cancel,#tn-ov .stop{background:var(--tn-btn);color:var(--tn-text)}'+
    '#tn-ov{flex-wrap:wrap;max-width:min(94vw,640px)}#tn-ov .btns{display:flex;gap:10px;align-items:center}#tn-ov.tripbox{flex-direction:column;align-items:stretch}'+
@@ -532,25 +532,31 @@ TN.Nav.prototype.fitRange=function(i0,i1){
     const f0=R.fit[i];if(f0&&(!f0.miss||f0.ver===net.ver)) continue;
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     const prev=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1].h:null;
+    /* (the road the previous point was laid on: staying on it is preferred, so the line doesn't hop between roads side by
+       side, like a ramp next to a street, which made it wiggle across the lanes) */
+    const prevW=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1].w:null;
     let best=null;
     net.near(p[0],p[1],15,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,p[0],p[1]);if(r.d>TN.width(w)/2+7) return;
       if(w.ow&&(r.tx*ux+r.tz*uz)<0.3) return;   /* (the other carriageway of a divided road, or a one-way going the other way) */
       const h0=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
-      const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20+(prev==null?0:Math.abs(h0-prev)*4);
-      if(!best||sc<best.sc) best={sc:sc,h:h0,lane:w.ow?0:Math.max(1.2,TN.width(w)/4),dx:r.qx-p[0],dz:r.qz-p[1],hw:TN.width(w)/2,ow:!!w.ow};});
+      const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20+(prev==null?0:Math.abs(h0-prev)*4)+(prevW!=null&&w.id!==prevW?6:0);
+      if(!best||sc<best.sc) best={sc:sc,h:h0,lane:w.ow?0:Math.max(1.2,TN.width(w)/4),dx:r.qx-p[0],dz:r.qz-p[1],hw:TN.width(w)/2,ow:!!w.ow,w:w.id};});
     /* turning here (direction changes over 20 degrees within about 10 m): keep the arc, no snapping */
     let turnHere=false;{const a=R.pts[Math.max(0,i-15)],b=R.pts[i],c2=R.pts[Math.min(R.pts.length-1,i+15)];
       const h1=Math.atan2(b[0]-a[0],-(b[1]-a[1])),h2=Math.atan2(c2[0]-b[0],-(c2[1]-b[1]));let dh=Math.abs(h2-h1)*180/Math.PI;if(dh>180) dh=360-dh;turnHere=dh>20;}
-    if(best&&turnHere){best.dx=0;best.dz=0;}
+    /* (through a turn the shift fades to half of the previous one instead of dropping to zero: the sudden 0 then back to
+       6-10 m made the line weave right after turns, like at the Ville-Marie tunnel exit) */
+    if(best&&turnHere){const pp=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1]:null;best.dx=pp?pp.dx*0.5:0;best.dz=pp?pp.dz*0.5:0;}
     const pf=i>0&&R.fit[i-1]&&!turnHere&&R.cum[i]-R.cum[i-1]<25?R.fit[i-1]:null;
-    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,miss:false}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:pf?pf.lane:0,dx:pf?pf.dx:0,dz:pf?pf.dz:0,miss:true,ver:net.ver};
+    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,w:best.w,miss:false}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:pf?pf.lane:0,dx:pf?pf.dx:0,dz:pf?pf.dz:0,miss:true,ver:net.ver};
   }
   /* smoothed values for drawing and placing the car (lane and shift change gradually, over about 40 m) */
   R.sm=R.sm||{};const sm=R.sm;
-  for(let i=i0;i<=i1;i++){let ln=0,dx=0,dz=0,n=0;
-    for(let k=i;k>=i0&&R.cum[i]-R.cum[k]<40;k--){const f=R.fit[k];ln+=f.lane;dx+=f.dx;dz+=f.dz;n++;}
-    for(let k=i+1;k<=i1&&R.cum[k]-R.cum[i]<40;k++){const f=R.fit[k];ln+=f.lane;dx+=f.dx;dz+=f.dz;n++;}
-    sm[i]=[ln/n,dx/n,dz/n,R.fit[i].h];}
+  /* (the shift is averaged over 70 m, weighted toward the middle; the lane over 40 m as before) */
+  for(let i=i0;i<=i1;i++){let ln=0,nl=0,dx=0,dz=0,wt=0;
+    for(let k=i;k>=i0&&R.cum[i]-R.cum[k]<70;k--){const f=R.fit[k],d=R.cum[i]-R.cum[k],q=1-d/70;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+    for(let k=i+1;k<=i1&&R.cum[k]-R.cum[i]<70;k++){const f=R.fit[k],d=R.cum[k]-R.cum[i],q=1-d/70;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+    sm[i]=[ln/Math.max(1,nl),dx/(wt||1),dz/(wt||1),R.fit[i].h];}
 };
 TN.Nav.prototype.heights=function(){};
 TN.Nav.prototype.draw=function(from){
@@ -1216,3 +1222,4 @@ TN.Nav.prototype.roccoArriveShow=function(text,charging){
   document.body.appendChild(el);
   clearTimeout(this.rarrT);this.rarrT=setTimeout(()=>{try{el.remove();}catch(e){}},9400);
 };
+

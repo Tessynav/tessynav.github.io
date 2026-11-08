@@ -34,11 +34,18 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
   if(acc!=null&&acc>60){
     /* the car's own estimate while the GPS signal is weak (under overpasses, in tunnels) is still good: use it,
        with less trust, as long as we had a precise fix recently */
-    if(!this.goodT||t-this.goodT>30000||speed==null){this.rough={t:t,acc:acc};return this.last;}
+    /* is that estimate consistent? it should move at the speed the car reports (Tesla keeps it going from the wheels
+       in a tunnel); a consistent estimate is trusted for up to 5 minutes, not just 30 s (the Ville-Marie tunnel: after
+       30 s the car was left behind and crept to a stop, then jumped 550 m when the GPS came back) */
+    if(this.rp&&speed!=null){const dt=(t-this.rp.t)/1000,d=Math.hypot(x-this.rp.x,z-this.rp.z),exp=speed*dt;
+      if(dt>0.05&&dt<6) this.rpOk=Math.abs(d-exp)<Math.max(6,exp*0.45)?(this.rpOk||0)+1:0;}
+    this.rp={t:t,x:x,z:z};
+    const lost=this.goodT?t-this.goodT:1e12,trust=lost<30000||(lost<300000&&(this.rpOk||0)>=3);
+    if(!this.goodT||!trust||speed==null){this.rough={t:t,acc:acc};return this.last;}
     /* (trusted almost like a good fix for the first seconds: on a loop ramp under an overpass it follows the curve
-       well, and the old 15 m made the car lag outside the loop; less and less after that, for long tunnels) */
-    const lost=t-this.goodT;acc=lost<10000?4:lost<20000?8:15;
-  }else this.goodT=t;
+       well, and the old 15 m made the car lag outside the loop; a little less after that, for long tunnels) */
+    acc=lost<10000?4:lost<20000?8:12;
+  }else{this.goodT=t;this.rp=null;this.rpOk=0;}
   this.rough=null;
   if(!this.kf||t-this.kfT>5000){
     this.kf={x:{p:x,v:0,P:[[25,0],[0,25]]},z:{p:z,v:0,P:[[25,0],[0,25]]}};
@@ -323,7 +330,7 @@ TN.Track.prototype.frame=function(now,dt){
       if(r.d<20){s0=r.s;lat0=r.lat*dir;}
     }
     car={w:w,dir:dir,s:s0,lat:lat0,v:car?car.v:L.v,cv:car&&car.cv||0,x:car?car.x:null,z:car?car.z:null,hd:car?car.hd:h.hd,y:car?car.y:0,gl:lat0,
-      ease:{lat0:lat0,s0:s0,len:car&&car.hd!=null&&TN.angDiff(car.hd,h.hd)>45?12:35}};
+      ease:{lat0:lat0,s0:s0,len:car&&car.hd!=null&&TN.angDiff(car.hd,h.hd)>45?12:Math.max(35,(L.v||0)*3)}};   /* (about 3 s of driving: at 90 km/h a switch is a lane change, not a 13-degree swerve) */
     this.lane.idx=null;
   }
   /* the car reached the end of its road piece before the matching moved on: continue on the best connected piece */
@@ -382,7 +389,12 @@ TN.Track.prototype.frame=function(now,dt){
     else car.laneT=0;
     car.laneW=w.id;car.laneN=n;target=Math.max(-(W/2-1.0),Math.min(W/2-1.0,cen(car.laneK)));
   }else{car.laneK=null;}
-  if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2) car.ease.lat0=Math.sign(car.ease.lat0)*W/2;
+  /* splits and long merges on highways (the A-10 toward DIX30): two branches separate slowly and you drive between their
+     centrelines. When the precise GPS stays clearly beside the centreline at speed, the car follows it sideways, up to
+     3 m past the road's edge, instead of riding a branch's centreline 7 m away from you. City streets stay steady. */
+  if(car.laneK==null&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&L.v>12&&(L.acc||9)<=6&&Math.abs(car.gl)>W/2*0.75){
+    const lim=W/2+3;target=Math.sign(car.gl)*Math.min(Math.abs(car.gl),lim);}
+  if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2+3) car.ease.lat0=Math.sign(car.ease.lat0)*(W/2+3);
   if(car.ease){
     /* after moving onto another road piece (a split, a merge, a turn), the car glides to its new place over the
        next 35 m of driving, like steering, instead of sliding sideways on the spot */

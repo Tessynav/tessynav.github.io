@@ -283,17 +283,20 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
       this.vx=(this.vx||0)+(vx-(this.vx||0))*k;this.vy=(this.vy||0)+(vy-(this.vy||0))*k;this.mv={lng:lng,lat:lat,t:now};}}
     else this.mv={lng:lng,lat:lat,t:now};}
   const mps=Math.hypot((this.vx||0)*TN.CELL*78000,(this.vy||0)*TN.CELL*111000);   /* (metres per second, roughly) */
-  const moving=mps>8&&R>=2;   /* (about 30 km/h and up, and only while the screen keeps up) */
+  const moving=mps>8&&R>=2;   /* (about 30 km/h and up: build what's ahead first; only the order changes) */
+  /* the extra reach ahead only at highway speed (about 55 km/h and up), where the direction is steady: downtown, with
+     turns and GPS noise, it dropped and rebuilt the same areas over and over (749 builds in 5 minutes instead of 60) */
+  const fast=mps>15&&R>=2;
   const sp=Math.hypot(this.vx||0,this.vy||0)||1,ux=(this.vx||0)/sp,uy=(this.vy||0)/sp;
   /* the point you'll reach in about 30 s (at most ~1.5 km ahead): areas are built closest to it first */
   const look=moving?Math.min(3.2,sp*30):0,ax=cx+0.5+ux*look,ay=cy+0.5+uy*look;
   /* ahead at speed: up to 2 extra areas beyond the usual range, in front of you only */
-  const ahead=(dx,dy)=>{if(!moving) return false;const d=Math.hypot(dx,dy);return d<=R+2.6&&(dx*ux+dy*uy)>0.55*d;};
+  const ahead=(dx,dy)=>{if(!fast) return false;const d=Math.hypot(dx,dy);return d<=R+2.6&&(dx*ux+dy*uy)>0.55*d;};
   this.aheadInfo={moving:moving,mps:Math.round(mps),look:+look.toFixed(1)};
   for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number),dx=x-cx,dy=y-cy,m=Math.max(Math.abs(dx),Math.abs(dy));
-    /* (behind you at speed: dropped as soon as it's out of the usual range, to keep the total about the same) */
-    const behind=moving&&(dx*ux+dy*uy)<-0.2*Math.hypot(dx,dy)&&m>R-1;
-    if(((m>R+1)&&!ahead(dx,dy))||behind) this.free(k);}
+    /* (dropped only when well out of range: at highway speed, areas up to 3 away are kept, so a change of direction
+       never drops something just built) */
+    if(m>R+1&&!(fast&&m<=R+3)) this.free(k);}
   /* keep building the current area: a few hundred buildings per frame */
   if(this.job){
     const t0=performance.now(),J=this.job;
