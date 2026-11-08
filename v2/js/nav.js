@@ -809,7 +809,7 @@ TN.Nav.prototype.junctionSvg=function(nx){
 TN.Nav.prototype.go=function(){
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
-  this.ov.style.display='none';this.active=true;this.saidArrive=false;this.parkT=0;document.body.classList.add('tn-routing');
+  this.ov.style.display='none';this.active=true;TN.navActive=true;this.saidArrive=false;this.parkT=0;document.body.classList.add('tn-routing');
   if(TN.voice&&this.route){TN.voice.say('Starting route to '+(this.dest?this.dest.name:'your destination'),true);}
   if(this.route) this.note('go',{dest:this.dest&&this.dest.name,km:+(this.route.L/1000).toFixed(2),pts:this.route.pts.length},true);
   this.bar.style.display='flex';this.endBtn.style.display='block';this.roadName.style.display='block';
@@ -817,6 +817,7 @@ TN.Nav.prototype.go=function(){
   try{this.roccoGo();}catch(e){}
 };
 TN.Nav.prototype.end=function(why){
+  TN.navActive=false;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);

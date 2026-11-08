@@ -257,6 +257,14 @@ TN.Track.prototype.pointOn=function(w,s,lat,dir){
   const rx=-tz*dir,rz=tx*dir;
   return {x:x+rx*lat,z:z+rz*lat,hd:(Math.atan2(tx*dir,-tz*dir)/TN.R+360)%360};
 };
+/* is there another highway branch alongside, going the same way (within 30 m of the GPS)? checked once a second */
+TN.Track.prototype.besideBranch=function(w,L){
+  const now=L.t||0;if(this._bb&&this._bb.w===w&&now-this._bb.t<1000) return this._bb.v;
+  let v=false;const bw=(()=>{const P=w.pts;let best=1e9,b=0;for(let i=0;i<P.length-1;i++){const a=P[i],c=P[i+1],d=Math.hypot((a[0]+c[0])/2-L.x,(a[1]+c[1])/2-L.z);if(d<best){best=d;b=Math.atan2(c[0]-a[0],-(c[1]-a[1]));}}return b;})();
+  if(this.net&&this.net.near) this.net.near(L.x,L.z,30,(o,i)=>{if(o===w||!o.ow||!/^(motorway|trunk)/.test(o.cls||'')) return;const a=o.pts[i],c=o.pts[i+1];if(!a||!c) return;
+    const ob=Math.atan2(c[0]-a[0],-(c[1]-a[1])),dd=Math.abs(((ob-bw)*180/Math.PI+540)%360-180);if(dd<20){v=true;return true;}});
+  this._bb={w:w,t:now,v:v};return v;
+};
 TN.Track.prototype.frame=function(now,dt){
   const L=this.last;if(!L) return null;
   /* (a quiet GPS, e.g. in a tunnel, keeps the car moving along its road at the last speed, as before) */
@@ -392,7 +400,10 @@ TN.Track.prototype.frame=function(now,dt){
   /* splits and long merges on highways (the A-10 toward DIX30): two branches separate slowly and you drive between their
      centrelines. When the precise GPS stays clearly beside the centreline at speed, the car follows it sideways, up to
      3 m past the road's edge, instead of riding a branch's centreline 7 m away from you. City streets stay steady. */
-  if(car.laneK==null&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&L.v>12&&(L.acc||9)<=6&&Math.abs(car.gl)>W/2*0.75){
+  /* (only without a route, and only at a real split: another highway branch alongside, going the same way. With a route,
+     the car stays on the blue line, which already follows the right branch: on the Champlain Bridge, following the lane
+     put the car beside the line) */
+  if(car.laneK==null&&!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&L.v>12&&(L.acc||9)<=6&&Math.abs(car.gl)>W/2*0.75&&this.besideBranch(w,L)){
     const lim=W/2+3;target=Math.sign(car.gl)*Math.min(Math.abs(car.gl),lim);}
   if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2+3) car.ease.lat0=Math.sign(car.ease.lat0)*(W/2+3);
   if(car.ease){

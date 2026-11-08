@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=98;
+TN.APPBUILD=99;
 
 (function(){
   const $=id=>document.getElementById(id);
