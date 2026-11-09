@@ -13,13 +13,26 @@ TN.Season=function(scene,trees){
     ((m===9&&d>=15)||m===10||m===11)?'leaves':(m===12||m<=3)?'snow':null;
   this.calMode=this.mode;this.t=0;this.night=0;
 };
+/* Canadian maple leaves: each falling leaf is the same single flat piece as before, now cut to a maple leaf's shape by a
+   small picture (drawn once), so it costs the same */
+TN.MAPLE=[[0,-1],[0.12,-0.76],[0.27,-0.84],[0.21,-0.42],[0.42,-0.62],[0.47,-0.5],[0.7,-0.55],[0.63,-0.3],[0.75,-0.26],[0.47,-0.02],[0.53,0.12],[0.06,0.06],[0.07,0.48],[-0.07,0.48],[-0.06,0.06],[-0.53,0.12],[-0.47,-0.02],[-0.75,-0.26],[-0.63,-0.3],[-0.7,-0.55],[-0.47,-0.5],[-0.42,-0.62],[-0.21,-0.42],[-0.27,-0.84],[-0.12,-0.76]];
+TN.mapleCanvas=function(doc){
+  const S=64,cv=doc.createElement('canvas');cv.width=S;cv.height=S;const g=cv.getContext('2d');
+  g.clearRect(0,0,S,S);g.fillStyle='#ffffff';g.beginPath();
+  TN.MAPLE.forEach((p,i)=>{const x=S/2+p[0]*S*0.46,y=S*0.52+p[1]*S*0.46;if(i) g.lineTo(x,y);else g.moveTo(x,y);});g.closePath();g.fill();
+  /* a darker centre vein, so it reads as a leaf */
+  g.strokeStyle='rgba(0,0,0,0.18)';g.lineWidth=2;g.beginPath();g.moveTo(S/2,S*0.52+0.48*S*0.46);g.lineTo(S/2,S*0.52-0.8*S*0.46);g.stroke();
+  return cv;
+};
 TN.Season.prototype.build=function(){
   if(this.mesh||!this.mode||!this.scene.three) return;
   const snow=this.mode==='snow',N=this.max;
-  const geo=snow?new THREE.PlaneGeometry(0.07,0.07):new THREE.PlaneGeometry(0.16,0.1);
-  this.mat=new THREE.MeshBasicMaterial({side:THREE.DoubleSide,color:0xffffff});
+  const geo=snow?new THREE.PlaneGeometry(0.07,0.07):new THREE.PlaneGeometry(0.2,0.2);
+  let map=null;if(!snow&&typeof document!=='undefined'){try{map=new THREE.CanvasTexture(TN.mapleCanvas(document));if(THREE.SRGBColorSpace) map.colorSpace=THREE.SRGBColorSpace;}catch(e){map=null;}}
+  this.mat=map?new THREE.MeshBasicMaterial({side:THREE.DoubleSide,color:0xffffff,map:map,alphaTest:0.5})
+    :new THREE.MeshBasicMaterial({side:THREE.DoubleSide,color:0xffffff});
   this.mesh=new THREE.InstancedMesh(geo,this.mat,N);this.mesh.frustumCulled=false;
-  const cols=snow?['#ffffff','#f2f6fb','#e8eef6']:['#e8a33a','#d9622b','#c9b13a','#b8452a','#d98a2b','#8fae3c'];
+  const cols=snow?['#ffffff','#f2f6fb','#e8eef6']:['#c8301e','#d9622b','#e8a33a','#b8452a','#d4a02a','#9e2a1c','#e07a2a'];
   const c=new THREE.Color();
   for(let i=0;i<N;i++){
     c.set(cols[i%cols.length]);this.mesh.setColorAt(i,c);
