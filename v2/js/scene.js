@@ -267,7 +267,7 @@ TN.asphaltCanvas=function(doc){
   const big=layer(4),mid=layer(16);
   for(let y=0;y<S;y++) for(let x=0;x<S;x++){
     /* R: the asphalt brightness (around 1 = the road's own colour); G: wear for the markings */
-    let l=0.93+0.10*big(x,y)+0.06*mid(x,y)+(rnd()-0.5)*0.14;
+    let l=0.86+0.20*big(x,y)+0.12*mid(x,y)+(rnd()-0.5)*0.26;   /* (stronger than the first version, which was too faint to see) */
     const i=(y*S+x)*4;D[i]=Math.max(0,Math.min(255,l*200));D[i+1]=Math.floor(255*Math.min(1,Math.max(0,(mid(x*3%S,y*3%S)-0.35)*1.6+(rnd()-0.5)*0.5)));D[i+2]=0;D[i+3]=255;
   }
   g.putImageData(im,0,0);
@@ -283,10 +283,10 @@ TN.texPatch=function(mat,kind){
   mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);sh.uniforms.tnAsph={value:TN.asphaltTex};
     const road=kind==='road';
     sh.fragmentShader='uniform sampler2D tnAsph;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n'+
-      '  {float tnD=distance(cameraPosition.xz,vCutW.xz),tnF=1.0-smoothstep(70.0,190.0,tnD);\n'+
+      '  {float tnD=distance(cameraPosition.xz,vCutW.xz),tnF=1.0-smoothstep(90.0,220.0,tnD);\n'+
       '   vec4 tnA=texture2D(tnAsph,vCutW.xz/7.0),tnB=texture2D(tnAsph,vCutW.xz/53.0+0.37);\n'+
-      (road?'   float tnL=(tnA.r*1.275)*(0.92+0.16*tnB.r*1.275-0.08);diffuseColor.rgb*=mix(1.0,tnL,tnF);}\n'
-           :'   float tnW=tnA.g*tnB.r*1.275;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*0.62,clamp(tnW,0.0,1.0)*0.55*tnF);}\n'));};
+      (road?'   float tnL=(tnA.r*1.275)*(0.84+0.32*tnB.r*1.275-0.16);diffuseColor.rgb*=mix(1.0,tnL,tnF);}\n'
+           :'   float tnW=tnA.g*tnB.r*1.275;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*0.55,clamp(tnW,0.0,1.0)*0.8*tnF);}\n'));};
   mat.customProgramCacheKey=()=>(pk?pk():'')+'|asph'+kind;mat.needsUpdate=true;
 };
 TN.cutPatch=function(mat,opts){
