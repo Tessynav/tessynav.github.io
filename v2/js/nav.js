@@ -576,9 +576,15 @@ TN.Nav.prototype.draw=function(from){
   this.fitRange(Math.max(0,a0-40),a1);this.drawVer=this.api.net.ver;
   for(let i=a0;i<=a1;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
-    const m=R.sm[i]||[0,0,0,0],y=m[3]+0.22;let lo=m[0];
+    const m=R.sm[i]||[0,0,0,0];let y=m[3]+0.22;let lo=m[0];
     if(this.latS!=null&&this.ps!=null){const ah=R.cum[i]-this.ps;if(ah<500){const t=Math.max(0,ah-400)/100,k=t*t*(3-2*t);lo=this.latS+(m[0]-this.latS)*k;}}
     const cx=p[0]+m[1]-uz*lo,cz=p[1]+m[2]+ux*lo;
+    /* never under the road it lies on: where the line is moved over to your lane it can land on the piece beside
+       (a lane joining on a climb, a few dozen cm higher), which hid it on the Champlain approach. Roads more than
+       2.5 m above it are bridges passing over, not the road it's on. */
+    try{let top=-1e9;this.api.net.near(cx,cz,3,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,cx,cz);if(r.d>TN.width(w)/2) return;
+      const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);if(h<y+2.5&&h>top) top=h;});
+      if(top+0.22>y) y=top+0.22;}catch(e){}
     CL.push([cx,y,cz,R.cum[i]]);
     pos.push(cx-uz*hw,y,cz+ux*hw,cx+uz*hw,y,cz-ux*hw);
     tc.set(TN.TRAFFIC_COL[R.cong?R.cong[i]:'unknown']||'#3b82f6');col.push(tc.r,tc.g,tc.b,tc.r,tc.g,tc.b);
@@ -594,7 +600,7 @@ TN.Nav.prototype.draw=function(from){
   try{const net=this.api.net,bad=[];let chk=0;
     for(let q=0;q<CL.length;q+=5){const [x,y,z]=CL[q];let top=-1e9;chk++;
       net.near(x,z,4,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,x,z);if(r.d>TN.width(w)/2) return;const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);if(h>top) top=h;});
-      if(top>-1e8&&y<top-0.1&&bad.length<6){const ll=TN.fromLocal(x,z);bad.push([+ll[1].toFixed(5),+ll[0].toFixed(5),+y.toFixed(1),+top.toFixed(1),Math.round(CL[q][3]-(this.ps||0))]);}}
+      if(top>-1e8&&y<top-0.1&&top-y<2.5&&bad.length<6){const ll=TN.fromLocal(x,z);bad.push([+ll[1].toFixed(5),+ll[0].toFixed(5),+y.toFixed(1),+top.toFixed(1),Math.round(CL[q][3]-(this.ps||0))]);}}
     if(bad.length) this.note('line under road',{checked:chk,places:bad});}catch(e){}
   this.drawArrows(CL);
 };
@@ -1038,7 +1044,7 @@ TN.Nav.prototype.update=function(dt){
   {const dl=this.bar.querySelector('.dline');let rk=this.bar.querySelector('.rk');
    if(dl&&!rk&&TN.roccoSVG){rk=document.createElement('span');rk.className='rk';rk.innerHTML='<span class="bub">Your exit!</span>'+TN.roccoSVG(34);dl.appendChild(rk);}
    if(!rk&&!this.rkMiss){this.rkMiss=1;this.note('rocco',{missing:!dl?'bar':'drawing'});}
-   if(rk){const th=TN.settings&&TN.settings.theme,rocco=!th||th==='rocco';
+   if(rk){const th=TN.settings&&TN.settings.theme,rocco=true;   /* (every theme: Rocco is TessyNav's) */
      const hwExit=(nx.type==='off ramp'||(nx.type==='fork'&&(nx.exits||nx.dest)))&&dNext<1000;
      const on=rocco&&hwExit;if(on!==rk.classList.contains('on')) rk.classList.toggle('on',on);
      if(on&&this.rkStep!==nx.at){this.rkStep=nx.at;this.rkT=Date.now();}
