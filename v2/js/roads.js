@@ -199,12 +199,12 @@ TN.width=function(w){return w.br?(w.W||w.w):w.w;};
 TN.smooth=function(t){t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
 /* heights v2: realistic overpass heights and shorter climbs, so a viaduct's climb doesn't spread hundreds of metres into
    ordinary streets (downtown: René-Lévesque was lifted up to 15 m by the Bonaventure and Ville-Marie viaducts) */
-/* new heights while testing: ?heights=v2 (or ?height=v2) turns them on and Tessy remembers it (so it survives the reload after an
-   update); ?heights=old goes back to the current heights */
+/* the new heights are on for everyone (sloped decks, codriver-style); ?heights=old goes back to the previous heights
+   and Tessy remembers it, ?heights=v2 (or ?height=v2) switches the new ones back on */
 TN.HV2=(function(){try{if(typeof location==='undefined') return false;const q=location.search;
-  if(/[?&]heights?=v2/i.test(q)){try{localStorage.setItem('tn2_heights','v2');}catch(e){}return true;}
-  if(/[?&]heights?=(old|current)/i.test(q)){try{localStorage.removeItem('tn2_heights');}catch(e){}return false;}
-  try{return localStorage.getItem('tn2_heights')==='v2';}catch(e){return false;}}catch(e){return false;}})();   /* (in progress: only with ?heights=v2 until sloped decks are done) */
+  if(/[?&]heights?=v2/i.test(q)){try{localStorage.removeItem('tn2_heights');}catch(e){}return true;}
+  if(/[?&]heights?=(old|current)/i.test(q)){try{localStorage.setItem('tn2_heights','old');}catch(e){}return false;}
+  try{return localStorage.getItem('tn2_heights')!=='old';}catch(e){return true;}}catch(e){return true;}})();   /* (in progress: only with ?heights=v2 until sloped decks are done) */
 TN.rampLen=function(H){return TN.HV2?Math.max(50,Math.min(160,H*14)):Math.max(60,Math.min(350,H*20));};
 
 /* ---------- Codriver-style heights ----------
