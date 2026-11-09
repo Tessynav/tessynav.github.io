@@ -280,6 +280,18 @@ TN.Track.prototype.besideBranch=function(w,L){
     const ob=Math.atan2(c[0]-a[0],-(c[1]-a[1])),dd=Math.abs(((ob-bw)*180/Math.PI+540)%360-180);if(dd<20){v=true;return true;}});
   this._bb={w:w,t:now,v:v};return v;
 };
+/* a split at the end of this road piece, within D metres ahead: which sides its branches go off to (-1 / +1, the
+   same sideways sign the car's lane uses), or null */
+TN.Track.prototype.splitAhead=function(w,dir,s,D){
+  const rem=dir>0?w.L-s:s;if(rem>D||rem<-5) return null;
+  const key=(this._spk=this._spk||new Map()),ck=w.id+':'+dir;if(key.has(ck)) return key.get(ck);
+  const endI=dir>0?w.pts.length-1:0,endKey=w.keys[endI],segI=dir>0?w.pts.length-2:0;let n=0;const sides=new Set();
+  for(const [v,vi] of (this.net.keys.get(endKey)||[])){if(v===w||v.tun) continue;
+    for(const sd of [1,-1]){if(!((sd>0&&vi===0)||(sd<0&&vi===v.pts.length-1))) continue;if(v.ow===1&&sd<0||v.ow===-1&&sd>0) continue;
+      n++;const q=this.pointOn(v,sd>0?Math.min(v.L,40):Math.max(0,v.L-40),0,sd),r=TN.seg(w,segI,q.x,q.z),lat=r.lat*dir;
+      if(Math.abs(lat)>2) sides.add(Math.sign(lat));}}
+  const out=n>=2&&sides.size?sides:null;key.set(ck,out);if(key.size>400) key.clear();return out;
+};
 TN.Track.prototype.frame=function(now,dt){
   const L=this.last;if(!L) return null;
   /* (a quiet GPS, e.g. in a tunnel, keeps the car moving along its road at the last speed, as before) */
@@ -424,6 +436,13 @@ TN.Track.prototype.frame=function(now,dt){
      put the car beside the line) */
   if(car.laneK==null&&!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&L.v>12&&(L.acc||9)<=6&&Math.abs(car.gl)>W/2*0.75&&this.besideBranch(w,L)){
     const lim=W/2+3;target=Math.sign(car.gl)*Math.min(Math.abs(car.gl),lim);}
+  /* splits drawn late (all roads, without a route): the map often puts the split at the end of the painted gore,
+     100-150 m after the lanes really part (the Taschereau exit off the A-10). When a split is coming up within 180 m
+     and the precise GPS is clearly over on the side of one of its branches, the car moves over with you (up to 8 m past
+     the road's edge), so it's already beside the branch when the map splits, instead of riding the middle */
+  {const sp=car.laneK==null&&!TN.navActive&&(L.acc||9)<=6&&L.v>3?this.splitAhead(w,dir,car.s,180):null;
+   car.gf=car.gf==null?gl:car.gf+(gl-car.gf)*(1-Math.exp(-dt/0.5));
+   if(sp&&sp.has(Math.sign(car.gf))&&Math.abs(car.gf)>Math.max(2,W/4)){const lim=W/2+8;target=Math.sign(car.gf)*Math.min(Math.abs(car.gf),lim);}}
   if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2+3) car.ease.lat0=Math.sign(car.ease.lat0)*(W/2+3);
   if(car.ease){
     /* after moving onto another road piece (a split, a merge, a turn), the car glides to its new place over the
