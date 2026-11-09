@@ -1057,8 +1057,8 @@ TN.Nav.prototype.update=function(dt){
    if(dl&&!rk&&TN.roccoSVG){rk=document.createElement('span');rk.className='rk';rk.innerHTML='<span class="bub">Your exit!</span>'+TN.roccoSVG(34);dl.appendChild(rk);}
    if(!rk&&!this.rkMiss){this.rkMiss=1;this.note('rocco',{missing:!dl?'bar':'drawing'});}
    if(rk){const th=TN.settings&&TN.settings.theme,rocco=true;   /* (every theme: Rocco is TessyNav's) */
-     const hwExit=(nx.type==='off ramp'||(nx.type==='fork'&&(nx.exits||nx.dest)))&&dNext<1000;
-     const on=rocco&&hwExit;if(on!==rk.classList.contains('on')) rk.classList.toggle('on',on);
+     const hwExit=!!((nx.type==='off ramp'||(nx.type==='fork'&&(nx.exits||nx.dest)))&&dNext<1000);   /* (a true/false: an empty exit name made it '' and the note below was written every frame) */
+     const on=!!(rocco&&hwExit);if(on!==rk.classList.contains('on')) rk.classList.toggle('on',on);
      if(on&&this.rkStep!==nx.at){this.rkStep=nx.at;this.rkT=Date.now();}
      /* (for the trip recording: the next turn's kind as it comes up, and when Rocco shows or hides) */
      if(dNext<1200&&this.rkNote!==nx.at){this.rkNote=nx.at;this.note('next turn',{type:nx.type,mod:nx.mod,exit:nx.exits||'',dest:nx.dest||'',d:Math.round(dNext),theme:th||'rocco'});}
