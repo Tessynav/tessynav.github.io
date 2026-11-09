@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=107;
+TN.APPBUILD=108;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -15,6 +15,20 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     fadeDuration:0,pixelRatio:1,
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
+  /* the background road builder: builds the 3D road areas on its own thread (the screen never waits for it); it gets
+     the same road packs and the heights worked out here. Off with ?rw=0, and it switches itself off if it fails. */
+  TN.RW=null;
+  if(typeof Worker!=='undefined'&&!/[?&]rw=0/.test(location.search)){try{
+    const rs=document.querySelector('script[src*="roads.js"]'),rv=rs&&(rs.getAttribute('src').match(/v=(\d+)/)||[])[1]||'1';
+    const W=new Worker('js/roadworker.js?v=1&r='+rv),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
+    const failAll=()=>{RW.failed=true;net.mirror=false;for(const cb of RW.pend.values()){try{cb(null,'stopped');}catch(e){}}RW.pend.clear();};
+    W.onmessage=e=>{const m=e.data;
+      if(m.t==='ready') RW.ready=true;
+      else if(m.t==='synced') RW.ver=m.ver;
+      else if(m.t==='cell'||m.t==='error'){const cb=RW.pend.get(m.id);RW.pend.delete(m.id);if(cb) cb(m.t==='cell'?m.L:null,m.t==='error'?m.msg:null);
+        if(m.t==='error'&&TN.fb) try{TN.fb.note('road builder error',{msg:m.msg});}catch(e){}}};
+    W.onerror=()=>failAll();
+    net.mirror=true;TN.RW=RW;}catch(e){TN.RW=null;}}
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
@@ -441,6 +455,12 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     if(dt>=0.25&&pnow-(frameBody.prev||pnow)>3000){dX=null;dispHd=null;camHd=null;if(nav){nav.ps=null;nav.relT=0;nav.offT=0;}track.hdRate=0;}
     frameBody.prev=pnow;
     if(net.job){const tn=performance.now();net.step(Math.max(2,Math.min(6,TN.workLeft())));TN.prof('network',performance.now()-tn);}
+    /* after a network rebuild: the background road builder gets the new packs and heights (worked out in slices) */
+    {const RW=TN.RW;if(RW&&RW.ready&&!RW.failed&&!net.job&&RW.syncVer!==net.ver){const tn=performance.now();
+      if(!RW.sj){RW.sj=net.workerSyncJob();RW.sjVer=net.ver;}
+      let r;do{r=RW.sj.next();}while(!r.done&&performance.now()-tn<Math.max(1,Math.min(3,TN.workLeft())));
+      if(r.done){RW.sj=null;if(RW.sjVer===net.ver){try{RW.w.postMessage(r.value.msg,r.value.transfer);RW.syncVer=net.ver;}catch(e){RW.failed=true;net.mirror=false;}}}
+      TN.prof('network',performance.now()-tn);}}
     const t0=performance.now();
     let car=track.frame(Date.now(),dt);
     TN.prof('track',performance.now()-t0);

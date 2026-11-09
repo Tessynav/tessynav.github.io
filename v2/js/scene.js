@@ -111,6 +111,14 @@ TN.Scene.prototype.update=function(lng,lat){
        for(const m of e.grp.children) if(m.tnGlow) m.visible=lit&&near;}}}
   const t0=performance.now();
   /* keep building the current area, a few milliseconds per frame (no stutter) */
+  /* an area being built by the background road builder: when it's back, it becomes 3D shapes (a slice per frame);
+     if it doesn't come back (the background builder stopped), the area is built here as before */
+  if(this.job&&this.job.wait){
+    const J=this.job;
+    if(J.res){this.job=null;const L=J.res;this.fin={k:J.k,L:L,layers:['lot','curb','road','mark','glow'].filter(q=>L[q]&&L[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};}
+    else if(J.fail||performance.now()-J.t>10000){if(!J.fail&&TN.RW){TN.RW.failed=true;net.mirror=false;}this.job={k:J.k,g:net.buildCellJob(J.x,J.y)};}
+    return;
+  }
   if(this.job){
     const bud=Math.min(5,TN.workLeft?TN.workLeft():5);if(bud<0.5) return;   /* this frame's budget is used up */
     let r;net._sg=this.job.sg||null;
@@ -128,7 +136,9 @@ TN.Scene.prototype.update=function(lng,lat){
     const bud=Math.min(5,TN.workLeft?TN.workLeft():5);if(bud<0.5) return;
     const F=this.fin,SL=40000;
     while(F.li<F.layers.length&&performance.now()-t0<bud){
-      const k=F.layers[F.li],G=F.L[k],src=F.st===0?G.p:F.st===1?G.c:G.i;
+      const k=F.layers[F.li],G=F.L[k];
+      if(F.st===0&&G.p instanceof Float32Array){F.typed={0:G.p,1:G.c,2:G.i};F.st=3;}   /* (from the background builder: already number arrays) */
+      const src=F.st===0?G.p:F.st===1?G.c:G.i;
       if(F.st<3){
         if(!F.arr) F.arr=F.st===2?(G.p.length/3>65535?new Uint32Array(src.length):new Uint16Array(src.length)):new Float32Array(src.length);
         const end=Math.min(src.length,F.off+SL);for(let q=F.off;q<end;q++) F.arr[q]=src[q];F.off=end;
@@ -162,6 +172,17 @@ TN.Scene.prototype.update=function(lng,lat){
   if(!best||!net.ways.size) return;
   const e=this.cells.get(best.k);if(e) e.old=false;   /* (an old area stays visible until its new version is ready) */
   if(e) e.old=false;
+  /* built in the background when the background road builder is running and up to date with the network; it waits
+     a moment while it catches up; built here as before when there's none (or it stopped) */
+  const RW=TN.RW;
+  if(RW&&!RW.failed){
+    if(!RW.ready){if(performance.now()-RW.t0>6000){RW.failed=true;net.mirror=false;}else return;}
+    else if(RW.ver!==net.ver) return;
+    else{const id=++RW.id,J={k:best.k,wait:true,t:performance.now(),x:best.x,y:best.y};this.job=J;
+      RW.pend.set(id,(L,err)=>{if(err||!L) J.fail=true;else J.res=L;});
+      try{RW.w.postMessage({t:'cell',x:best.x,y:best.y,k:best.k,id:id});}catch(e){J.fail=true;}
+      TN.prof('roads',performance.now()-t0);return;}
+  }
   this.job={k:best.k,g:net.buildCellJob(best.x,best.y)};
   TN.prof('roads',performance.now()-t0);
 };

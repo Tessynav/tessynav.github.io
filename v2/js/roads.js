@@ -66,6 +66,7 @@ TN.Net.prototype.addPack=function(key,P,later){
 /* adding a tile in small slices (a few milliseconds each), so it never stalls a frame */
 TN.Net.prototype.addPackJob=function*(key,P){
   if(this.packs.has(key)) return;
+  if(this.mirror){(this._wAdd=this._wAdd||[]).push([key,P]);}   /* (the background road builder gets the same pack) */
   const rec={ids:new Set()};let n=0;
   for(const r of P.w||[]){rec.ids.add(r[0]);if(!this.ways.has(r[0])){const w=this.makeWay(r,false);if(w) this.ways.set(w.id,w);}if(++n%12===0) yield;}
   for(const r of P.b||[]){if(++n%12===0) yield;
@@ -122,6 +123,7 @@ TN.Net.prototype.startAdd=function(list){
 };
 TN.Net.prototype.dropPack=function(key,later){
   const rec=this.packs.get(key);if(!rec) return;
+  if(this.mirror){if(this._wAdd) this._wAdd=this._wAdd.filter(q=>q[0]!==key);(this._wDrop=this._wDrop||[]).push(key);}
   this.packs.delete(key);(this.changed=this.changed||[]).push(key);
   const keep=new Set();for(const r of this.packs.values()) for(const id of r.ids) keep.add(id);
   for(const id of rec.ids) if(!keep.has(id)) this.ways.delete(id);
@@ -153,6 +155,23 @@ TN.Net.prototype.rebuildJob=function*(){
   yield;
   yield* this.clearanceJob();
   this.ver++;
+};
+/* what the background road builder needs after a network rebuild: the packs added and dropped since last time, and
+   the heights of the road pieces that changed (packed into number arrays, cheap to send) */
+TN.Net.prototype.workerSyncJob=function*(){
+  const ids=[],meta=[],hsl=[];let nh=0,nn=0;
+  for(const w of this.ways.values()){
+    if(++nn%300===0) yield;   /* (in small slices, so it never stalls a frame) */
+    const hs=w.hs;let sum=0;if(hs) for(let i=0;i<hs.length;i++) sum+=hs[i]*(i%7+1);
+    const sig=(w.br?1:0)+'|'+(w.H||0)+'|'+(w.W==null?'-':w.W)+'|'+(hs?hs.length+':'+sum.toFixed(3):'0');
+    if(w._ws===sig) continue;w._ws=sig;
+    ids.push(w.id);meta.push(w.br?1:0,w.H||0,w.W==null?NaN:w.W,hs?hs.length:0);if(hs){hsl.push(hs);nh+=hs.length;}
+  }
+  const H={ids:new Float64Array(ids),meta:new Float32Array(meta),hs:new Float32Array(nh)};
+  let o=0;for(const a of hsl){H.hs.set(a,o);o+=a.length;}
+  const msg={t:'sync',ver:this.ver,remVer:this.remVer||0,add:this._wAdd||[],drop:this._wDrop||[],h:H};
+  this._wAdd=[];this._wDrop=[];
+  return {msg:msg,transfer:[H.ids.buffer,H.meta.buffer,H.hs.buffer]};
 };
 TN.Net.prototype.rebuildIndex=function(){const j=this.rebuildJob();while(!j.next().done);};
 TN.Net.prototype.startRebuild=function(){this.job=this.rebuildJob();};
