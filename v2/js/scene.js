@@ -65,6 +65,7 @@ TN.Scene.prototype.mat=function(k){
     polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
   if(k==='mark') this.beamPatch(m);   /* lane markings light up in the headlights */
   TN.cutPatch(m,{high:true});   /* a bridge or overpass right above the car is cut away so the car stays visible */
+  if(k==='road'||k==='mark') TN.texPatch(m,k);   /* asphalt texture on roads, a little wear on the markings */
   if(TN.snowPatch&&(k==='road'||k==='curb')) TN.snowPatch(m,k==='road'?0.3:0.85);   /* (snow on the ground: sidewalks white, roads lighter) */
   this.tintMat(k,m);this.mats[k]=m;return m;
 };
@@ -254,6 +255,40 @@ TN.CUTGLSL=[
   'bool tnCut(){return tnCutK()>0.5;}'].join('\n');
 TN.CUTVERT='\n#ifdef USE_INSTANCING\nvCutW=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;\n#else\nvCutW=(modelMatrix*vec4(transformed,1.0)).xyz;\n#endif\n';
 /* add the circle to a built-in material (trees) */
+/* asphalt: a fine grain with lighter and darker patches, and specks of stone, drawn once (256 px, repeating);
+   painted onto the roads by their position in the world (every 7 m), with a second, larger pass so the repeat doesn't
+   show, and fading to the plain colour in the distance so it never shimmers. Lane markings get a little wear. */
+TN.asphaltCanvas=function(doc){
+  const S=256,cv=doc.createElement('canvas');cv.width=S;cv.height=S;const g=cv.getContext('2d'),im=g.createImageData(S,S),D=im.data;
+  let a=1234567;const rnd=()=>{a^=a<<13;a>>>=0;a^=a>>17;a^=a<<5;a>>>=0;return a/4294967296;};
+  const layer=P=>{const v=[];for(let i=0;i<P*P;i++) v.push(rnd());return (x,y)=>{const fx=x/S*P,fy=y/S*P,ix=Math.floor(fx),iy=Math.floor(fy),tx=fx-ix,ty=fy-iy,
+    sx=tx*tx*(3-2*tx),sy=ty*ty*(3-2*ty),G=(i,j)=>v[((j%P+P)%P)*P+((i%P+P)%P)];
+    const p=G(ix,iy)+(G(ix+1,iy)-G(ix,iy))*sx,q=G(ix,iy+1)+(G(ix+1,iy+1)-G(ix,iy+1))*sx;return p+(q-p)*sy;};};
+  const big=layer(4),mid=layer(16);
+  for(let y=0;y<S;y++) for(let x=0;x<S;x++){
+    /* R: the asphalt brightness (around 1 = the road's own colour); G: wear for the markings */
+    let l=0.93+0.10*big(x,y)+0.06*mid(x,y)+(rnd()-0.5)*0.14;
+    const i=(y*S+x)*4;D[i]=Math.max(0,Math.min(255,l*200));D[i+1]=Math.floor(255*Math.min(1,Math.max(0,(mid(x*3%S,y*3%S)-0.35)*1.6+(rnd()-0.5)*0.5)));D[i+2]=0;D[i+3]=255;
+  }
+  g.putImageData(im,0,0);
+  /* light and dark specks of stone */
+  for(let k=0;k<900;k++){const x=rnd()*S,y=rnd()*S,c=rnd()<0.5?240:160;g.fillStyle='rgb('+c+',128,0)';g.fillRect(x,y,1,1);}
+  return cv;
+};
+TN.asphaltTex=null;
+TN.texPatch=function(mat,kind){
+  if(typeof document==='undefined') return;
+  try{if(!TN.asphaltTex){const t=new THREE.CanvasTexture(TN.asphaltCanvas(document));t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=4;TN.asphaltTex=t;}}catch(e){return;}
+  const prev=mat.onBeforeCompile,pk=mat.customProgramCacheKey?mat.customProgramCacheKey.bind(mat):null;
+  mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);sh.uniforms.tnAsph={value:TN.asphaltTex};
+    const road=kind==='road';
+    sh.fragmentShader='uniform sampler2D tnAsph;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n'+
+      '  {float tnD=distance(cameraPosition.xz,vCutW.xz),tnF=1.0-smoothstep(70.0,190.0,tnD);\n'+
+      '   vec4 tnA=texture2D(tnAsph,vCutW.xz/7.0),tnB=texture2D(tnAsph,vCutW.xz/53.0+0.37);\n'+
+      (road?'   float tnL=(tnA.r*1.275)*(0.92+0.16*tnB.r*1.275-0.08);diffuseColor.rgb*=mix(1.0,tnL,tnF);}\n'
+           :'   float tnW=tnA.g*tnB.r*1.275;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*0.62,clamp(tnW,0.0,1.0)*0.55*tnF);}\n'));};
+  mat.customProgramCacheKey=()=>(pk?pk():'')+'|asph'+kind;mat.needsUpdate=true;
+};
 TN.cutPatch=function(mat,opts){
   opts=opts||{};const prev=mat.onBeforeCompile;
   mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);Object.assign(sh.uniforms,TN.CUTU);
