@@ -292,6 +292,16 @@ TN.Track.prototype.splitAhead=function(w,dir,s,D){
       if(Math.abs(lat)>2) sides.add(Math.sign(lat));}}
   const out=n>=2&&sides.size?sides:null;key.set(ck,out);if(key.size>400) key.clear();return out;
 };
+/* the height of the road under a point (the matched road first, else the nearest road piece within its width);
+   null when there's none */
+TN.Track.prototype.heightNear=function(x,z,h,y0){
+  if(h&&h.w&&!h.w.tun){let bj=-1,bd=1e9;const w=h.w,lo=Math.max(0,(h.i||0)-6),hi=Math.min(w.pts.length-2,(h.i||0)+6);
+    for(let j=lo;j<=hi;j++){const r=TN.seg(w,j,x,z);if(r.d<bd){bd=r.d;bj=j;}}
+    if(bj>=0&&bd<=TN.width(w)/2+3) return TN.heightAt(w,TN.seg(w,bj,x,z).s);}
+  let best=null,bd2=1e9;if(this.net&&this.net.near) this.net.near(x,z,10,(v,k)=>{if(v.tun) return;const r=TN.seg(v,k,x,z);if(r.d>=TN.width(v)/2+2) return;const hh=TN.heightAt(v,r.s),sc=r.d+Math.abs(hh-(y0||0))*2;if(sc<bd2){bd2=sc;best=hh;}});
+  /* (of the roads there, the one nearest the car's current height: never a bridge overhead or a road below) */
+  return best;
+};
 TN.Track.prototype.frame=function(now,dt){
   const L=this.last;if(!L) return null;
   /* (a quiet GPS, e.g. in a tunnel, keeps the car moving along its road at the last speed, as before) */
@@ -342,6 +352,9 @@ TN.Track.prototype.frame=function(now,dt){
     else car={x:car.x,z:car.z,hd:car.hd,v:L.v,y:car.y||0};
     const k=1-Math.exp(-dt*3);car.x+=(tx-car.x)*k;car.z+=(tz-car.z)*k;
     car.hd=(car.hd+TN.angDiff2(hd,car.hd)*Math.min(1,dt*4)+360)%360;
+    /* height while turning: the road the car is going onto (on a ramp coming down off a bridge the height was held,
+       then dropped in steps when the car got back on a road piece) */
+    {const yT=this.heightNear(car.x,car.z,h,car.y);if(yT!=null) car.y+=(yT-car.y)*Math.min(1,dt*4);}
     car.w=null;car.snapped=true;car.turning=true;car.cls=h.w.cls;this.car=car;return car;
   }
   if(!snapped){
@@ -353,7 +366,9 @@ TN.Track.prototype.frame=function(now,dt){
     car.hd=(car.hd+TN.angDiff2(hd,car.hd)*Math.min(1,dt*3)+360)%360;
     /* off the network: keep the height a few seconds (short gaps at junctions on overpasses), then go down */
     if(!car.offT) car.offT=now;
-    if(now-car.offT>3000) car.y+=(0-car.y)*Math.min(1,dt*2);
+    {const yT=this.heightNear(car.x,car.z,h,car.y);
+     if(yT!=null) car.y+=(yT-car.y)*Math.min(1,dt*4);
+     else if(now-car.offT>3000) car.y+=(0-car.y)*Math.min(1,dt*2);}
     car.w=null;car.snapped=false;this.car=car;return car;
   }
   const w=h.w,dir=h.dir;
