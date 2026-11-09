@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=105;
+TN.APPBUILD=106;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -178,11 +178,29 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   /* touching the map (finger or mouse) pauses following right away, so you can drag, pinch, rotate and tilt freely;
      Recenter brings the following back. (Waiting for the map's own gesture events did not work while the camera was
      being moved every frame.) The + and - buttons keep following. */
-  const pauseFollow=()=>{if(follow){follow=false;$('btn').classList.add('free');}};
+  let lastTouchT=0,ringShown=-1;
+  const pauseFollow=()=>{lastTouchT=performance.now();if(follow){follow=false;$('btn').classList.add('free');}};
   const cv=map.getCanvasContainer();
   cv.addEventListener('pointerdown',pauseFollow,{passive:true});
   cv.addEventListener('touchstart',pauseFollow,{passive:true});
   cv.addEventListener('wheel',pauseFollow,{passive:true});
+  /* (still touching or dragging the map counts as using it) */
+  cv.addEventListener('pointermove',e=>{if(e.buttons||e.pointerType==='touch') lastTouchT=performance.now();},{passive:true});
+  /* back to the car by itself after a touch: 8 s after the last touch while driving, 30 s when stopped or parked,
+     with or without navigation; a ring around the Recenter button fills up as it's about to come back. Not while a
+     search, its results or a route overview is open. */
+  const autoRecenter=()=>{
+    const btn=$('btn');if(!btn) return;
+    let k=0;
+    if(!follow&&lastTouchT&&track.car&&track.car.x!=null){
+      const busy=(nav&&((nav.res&&nav.res.style.display!=='none'&&nav.res.childElementCount)||(nav.ov&&nav.ov.style.display!=='none')))||
+        (document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName));
+      if(busy) lastTouchT=performance.now();
+      else{const v=track.last?track.last.v:0,lim=v>2?8000:30000,el=performance.now()-lastTouchT;
+        if(el>=lim){lastTouchT=0;startFollow();}else k=Math.max(0,(el-(lim-4000))/4000);}
+    }
+    const q=Math.round(k*20)/20;if(q!==ringShown){ringShown=q;btn.style.setProperty('--tnRing',q);btn.classList.toggle('ring',q>0);}
+  };
   map.on('rotatestart',e=>{if(e.originalEvent) follow=false;});
   map.on('pitchstart',e=>{if(e.originalEvent) follow=false;});
 
@@ -216,20 +234,49 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   }
   async function showTrips(){
     let L=[];try{L=JSON.parse(localStorage.getItem('tn2_trips')||'[]');}catch(e){}
-    const mine=new Set(L.map(x=>x.n));
-    const render=(more)=>{
+    let more=null;const shaOf={};
+    /* deleting a trip: from this car's list and from the trips repository (so it's gone everywhere) */
+    const delTrip=async(n,row)=>{
+      L=L.filter(x=>x.n!==n);try{localStorage.setItem('tn2_trips',JSON.stringify(L));}catch(e){}
+      if(more) more=more.filter(m=>m!==n);
+      let ok=true;
+      try{const tok=TN.up.get('token');
+        if(tok){const h={'Accept':'application/vnd.github+json','Authorization':'Bearer '+tok};
+          let sha=shaOf[n];
+          if(!sha){const r=await fetch('https://api.github.com/repos/Tessynav/tessynav-trips/contents/trips/'+n+'.json?t='+Date.now(),{headers:h,cache:'no-store'});if(r.ok) sha=(await r.json()).sha;}
+          if(sha){const r=await fetch('https://api.github.com/repos/Tessynav/tessynav-trips/contents/trips/'+n+'.json',{method:'DELETE',headers:h,body:JSON.stringify({message:'Delete '+n,sha:sha})});ok=r.ok;}}}
+      catch(e){ok=false;}
+      render();
+      if(!ok) panel('Removed from this car\'s list.<br><small>It couldn\'t be removed from the trips repository right now (no connection?). Try again later.</small>',[['Back',showTrips],['Close',hide]]);
+    };
+    const render=()=>{
+      const mine=new Set(L.map(x=>x.n));
       const rows=L.map(x=>({n:x.n,sub:tripLabel(x.n)+(x.d?' \u00b7 '+x.d+' min':'')+' \u00b7 this car'})).concat((more||[]).filter(n=>!mine.has(n)).map(n=>({n:n,sub:tripLabel(n)})));
       if(!rows.length){panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:6px">'+TN.roccoSVG(64)+'</div>':'')+'No recordings yet.<br><small>Use Record on a drive, then they show up here. Rocco is waiting for your first one.</small>',[['Close',hide]]);return;}
+      const bin='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
       panel('<b>Recordings</b><div id="tn-trips" style="max-height:50vh;overflow:auto;margin-top:10px;text-align:left">'+
-        rows.slice(0,30).map((r,i)=>'<div data-i="'+i+'" style="padding:12px 10px;border-radius:10px;cursor:pointer;border-bottom:1px solid var(--tn-line)">'+r.n+'<br><small style="color:var(--tn-sub)">'+r.sub+'</small></div>').join('')+'</div>',[['Close',hide]]);
+        rows.slice(0,30).map((r,i)=>'<div data-row="'+i+'" style="display:flex;align-items:center;gap:8px;padding:8px 6px 8px 10px;border-bottom:1px solid var(--tn-line)">'+
+          '<div data-i="'+i+'" style="flex:1;min-width:0;padding:4px 0;cursor:pointer">'+r.n+'<br><small style="color:var(--tn-sub)">'+r.sub+'</small></div>'+
+          '<button data-del="'+i+'" aria-label="Delete trip" style="flex:none;width:48px;height:48px;border:none;border-radius:10px;background:transparent;color:#e5534b;display:flex;align-items:center;justify-content:center;cursor:pointer">'+bin+'</button></div>').join('')+'</div>',[['Close',hide]]);
       document.querySelectorAll('#tn-trips [data-i]').forEach(el=>el.onclick=()=>showTrip(rows[+el.dataset.i].n));
+      /* the trash button asks first, right in that row */
+      document.querySelectorAll('#tn-trips [data-del]').forEach(el=>el.onclick=()=>{
+        const i=+el.dataset.del,row=document.querySelector('#tn-trips [data-row="'+i+'"]');if(!row) return;
+        row.style.background='rgba(229,83,75,.12)';
+        row.innerHTML='<div style="flex:1;min-width:0;padding:4px 0;color:#e5534b">Delete '+rows[i].n+'?<br><small>This can\'t be undone.</small></div>'+
+          '<button data-no style="flex:none;height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--tn-line);background:transparent;color:inherit;cursor:pointer">Cancel</button>'+
+          '<button data-yes style="flex:none;height:44px;padding:0 14px;border-radius:10px;border:1px solid #e5534b;background:transparent;color:#e5534b;cursor:pointer">Delete</button>';
+        row.querySelector('[data-no]').onclick=render;
+        row.querySelector('[data-yes]').onclick=()=>{row.style.opacity='.5';delTrip(rows[i].n,row);};
+      });
     };
-    render(null);
+    render();
     /* also the latest ones in the trips repo (recordings from other devices) */
     try{const tok=TN.up.get('token'),h={'Accept':'application/vnd.github+json'};if(tok) h.Authorization='Bearer '+tok;
       const r=await fetch('https://api.github.com/repos/Tessynav/tessynav-trips/contents/trips?t='+Date.now(),{headers:h,cache:'no-store'});
-      if(r.ok){const j=await r.json();const names=j.map(f=>f.name.replace(/\.json$/,'')).filter(n=>/^trip-/.test(n)).sort().reverse().slice(0,30);
-        if($('tn-trips')) render(names);}}catch(e){}
+      if(r.ok){const j=await r.json();for(const f of j) shaOf[f.name.replace(/\.json$/,'')]=f.sha;
+        more=j.map(f=>f.name.replace(/\.json$/,'')).filter(n=>/^trip-/.test(n)).sort().reverse().slice(0,30);
+        if($('tn-trips')) render();}}catch(e){}
   }
   if($('trips')) $('trips').onclick=showTrips;
   const saved=rec.saved();
@@ -449,6 +496,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
       if(chargers) try{chargers.update();}catch(e){}
       if(signs) try{signs.update();}catch(e){}
+      try{autoRecenter();}catch(e){}
       if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}
       {const cc=track.car,lv=track.last;TN.carOffRoad=!!(cc&&cc.x!=null&&!cc.snapped&&(!lv||(lv.v||0)<2.5));}   /* (not on a road, and slow: the x-ray bubble) */   /* (tunnel mode: the tunnel you're in, and the view dims) */
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
