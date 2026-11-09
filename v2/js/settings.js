@@ -1,4 +1,4 @@
-/* TessyNav v2 — settings.js (v2: test update for the update dot)
+/* TessyNav v2 — settings.js (v2: test update for the update dot; v30: the update dot explained at the top of Settings)
    The settings menu (gear button): switch looks on and off, choose the time of day (auto, day, night), set how dark
    night gets, the opening animation, the Record button, and the version/update check.
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
@@ -107,6 +107,12 @@ TN.Settings.prototype.build=function(){
   const show=id=>{
     if(!id){const fun=!(TN.settings&&TN.settings.fun===false);
       p.innerHTML='<div class="ttlrow">'+(TN.roccoSVG?TN.roccoSVG(44):'')+'<div><div class="ttl">Settings</div>'+(fun&&TN.roccoTip?'<div class="tip">Tip: '+TN.roccoTip()+'</div>':'')+'</div></div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
+      /* the red dot on Rocco means an update is ready: say so at the top, with a button */
+      {const g=document.getElementById('tn-gear');if(g&&g.classList.contains('upd')){
+        const tr=p.querySelector('.ttlrow');if(tr) tr.insertAdjacentHTML('afterend','<div id="tn-setupd" style="display:flex;align-items:center;gap:10px;margin:8px 0 10px;padding:10px 12px;border-radius:12px;background:rgba(95,224,176,.14);border:1px solid rgba(95,224,176,.45)">'+
+          '<span style="width:10px;height:10px;border-radius:50%;background:#ff5a4f;flex:none"></span><div style="flex:1"><div style="font-weight:600">A new update is ready</div><div class="sub">That\u2019s what the red dot on Rocco means. Takes a few seconds.</div></div>'+
+          '<button class="updnow" style="flex:none;border:0;border-radius:10px;padding:9px 14px;font:600 14px system-ui,sans-serif;background:var(--tn-accent);color:var(--tn-on-accent);cursor:pointer">Update now</button></div>');
+        const ub=p.querySelector('#tn-setupd .updnow');if(ub) ub.onclick=()=>{p.style.display='none';if(TN.doUpdate) TN.doUpdate();else{const v=document.getElementById('ver');if(v) v.click();}};}}
       p.querySelectorAll('.cat').forEach(e=>e.onclick=()=>show(e.dataset.c));p.scrollTop=0;return;}
     const c=CATS.find(x=>x.id===id);
     p.innerHTML='<div class="back">\u2039 <span>'+c.t+'</span></div>'+c.html();p.scrollTop=0;

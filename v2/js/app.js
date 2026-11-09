@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=106;
+TN.APPBUILD=107;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -372,7 +372,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
      const L=track.last,stopped=!follow||!L||L.v<1.4;
      bar.style.display=stopped?'flex':'none';pill.style.display=stopped?'none':'block';
    };
-   setInterval(tick,2000);window.TN_updTick=tick;}catch(e){}
+   setInterval(tick,2000);window.TN_updTick=tick;
+   TN.doUpdate=()=>{if(pendingUpd) update(pendingUpd);};   /* (the Update now button in Settings) */}catch(e){}
   /* after "Update now": did the new files arrive? */
   (function(){
     let target=null,tries=0,prev=null;
