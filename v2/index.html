@@ -69,6 +69,7 @@ button.hud{border:0;cursor:pointer}
 #speed small{font-size:15px;font-weight:normal;opacity:.7}
 #btn{bottom:102px;right:20px;width:56px;height:56px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center}
 #btn.free{color:var(--tn-accent)}#btn.free svg{animation:tnPulse 1.6s ease-in-out 2}
+#btn.ring::after{content:"";position:absolute;inset:-4px;border-radius:50%;pointer-events:none;background:conic-gradient(var(--tn-accent) calc(var(--tnRing,0) * 1turn),transparent 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}
 @keyframes tnPulse{50%{transform:scale(1.15)}}
 .zb{right:16px;font-size:26px;width:56px;height:56px;padding:0;line-height:56px;text-align:center}
 #zin{bottom:234px}
@@ -151,7 +152,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/tunnel.js?v=3"></script>
 <script src="js/feedback.js?v=7"></script>
 <script src="js/rec.js?v=4"></script>
-<script src="js/app.js?v=105"></script>
+<script src="js/app.js?v=106"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
