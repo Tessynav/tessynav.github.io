@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=103;
+TN.APPBUILD=104;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -501,11 +501,18 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       }
       /* roads and trees are built around the car while following, and around what you look at when you browse */
       const ac=follow?{lng:ll[0],lat:ll[1]}:map.getCenter();
+      /* building ahead: while driving, the areas in the direction you're going are built first (roads), and trees,
+         buildings and water are centred up to 200 m ahead, so what you're about to see is ready before you get there */
+      let ahead=ac;
+      {const v=track.last?track.last.v:0;
+       if(follow&&car&&car.hd!=null&&v>4){const hr=car.hd*TN.R;TN.aheadDir=[Math.sin(hr),Math.cos(hr)];   /* (east, north) */
+         const d=Math.min(200,v*8),q=TN.fromLocal(car.x+Math.sin(hr)*d,car.z-Math.cos(hr)*d);ahead={lng:q[0],lat:q[1]};}
+       else TN.aheadDir=null;}
       scene.update(ac.lng,ac.lat);
-      if(trees){try{trees.update(ac.lng,ac.lat,lastFps);}catch(e){}}
-      if(buildings){try{buildings.update(ac.lng,ac.lat,lastFps);}catch(e){}}
+      if(trees){try{trees.update(ahead.lng,ahead.lat,lastFps);}catch(e){}}
+      if(buildings){try{buildings.update(ahead.lng,ahead.lat,lastFps);}catch(e){}}
       if(rem){try{const tr0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);TN.prof('rem',performance.now()-tr0);}catch(e){}}
-      if(water){try{water.update(dt,ac.lng,ac.lat);}catch(e){}}
+      if(water){try{water.update(dt,ahead.lng,ahead.lat);}catch(e){}}
       if(season){try{if(follow&&car&&car.x!=null) season.update(dt,car.x,car.y||0,car.z,lastFps);else{const q=TN.toLocal(ac.lng,ac.lat);season.update(dt,q[0],0,q[1],lastFps);}}catch(e){}}
       /* brake lights: on while slowing down clearly, and while stopped after driving (like a held brake) */
       {const L=track.last;if(L&&L.t!==brk.t){

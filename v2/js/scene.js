@@ -116,10 +116,35 @@ TN.Scene.prototype.update=function(lng,lat){
     do{r=this.job.g.next();}while(!r.done&&performance.now()-t0<bud);
     net._sg=null;
     if(r.done){
-      const J=this.job;this.job=null;
-      const grp=this.meshOf(r.value);this.freeCell(J.k);
+      /* turning the finished area into 3D shapes is done a slice per frame too (it was done all at once: a quarter
+         of a second for a big area, a visible stutter) */
+      const J=this.job;this.job=null;this.fin={k:J.k,L:r.value,layers:['lot','curb','road','mark','glow'].filter(q=>r.value[q]&&r.value[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};
+    }
+    TN.prof('roads',performance.now()-t0);
+    return;
+  }
+  if(this.fin){
+    const bud=Math.min(5,TN.workLeft?TN.workLeft():5);if(bud<0.5) return;
+    const F=this.fin,SL=40000;
+    while(F.li<F.layers.length&&performance.now()-t0<bud){
+      const k=F.layers[F.li],G=F.L[k],src=F.st===0?G.p:F.st===1?G.c:G.i;
+      if(F.st<3){
+        if(!F.arr) F.arr=F.st===2?(G.p.length/3>65535?new Uint32Array(src.length):new Uint16Array(src.length)):new Float32Array(src.length);
+        const end=Math.min(src.length,F.off+SL);for(let q=F.off;q<end;q++) F.arr[q]=src[q];F.off=end;
+        if(F.off>=src.length){(F.typed=F.typed||{})[F.st]=F.arr;F.arr=null;F.off=0;F.st++;}
+        continue;
+      }
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.BufferAttribute(F.typed[0],3));g.setAttribute('color',new THREE.BufferAttribute(F.typed[1],3));
+      g.setIndex(new THREE.BufferAttribute(F.typed[2],1));
+      const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,mark:3,glow:4}[k];
+      if(k==='glow'){mesh.tnGlow=true;mesh.visible=(this.glowOp||0)>0.01;}
+      F.grp.add(mesh);F.li++;F.st=0;F.typed=null;
+    }
+    if(F.li>=F.layers.length){
+      this.fin=null;const grp=F.grp.children.length?F.grp:null;this.freeCell(F.k);
       if(grp) this.three.scene.add(grp);
-      this.cells.set(J.k,{grp:grp,lamps:r.value.lamps||[]});this.glowKey=null;   /* (refresh which light pools are shown) */
+      this.cells.set(F.k,{grp:grp,lamps:F.L.lamps||[]});this.glowKey=null;   /* (refresh which light pools are shown) */
     }
     TN.prof('roads',performance.now()-t0);
     return;
@@ -129,7 +154,9 @@ TN.Scene.prototype.update=function(lng,lat){
   for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){
     const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k);
     if(e&&!e.old) continue;
-    const d=dx*dx+dy*dy;if(!best||d<best.d) best={k:k,x:cx+dx,y:cy+dy,d:d};
+    /* the areas ahead of the car come first (along the route or the road you're driving), the ones behind last */
+    let d=dx*dx+dy*dy;const A=TN.aheadDir;if(A&&(dx||dy)){const dl=Math.sqrt(dx*dx+dy*dy),dot=(dx*A[0]+dy*A[1])/dl;d-=1.6*dot*dl;}
+    if(!best||d<best.d) best={k:k,x:cx+dx,y:cy+dy,d:d};
   }
   if(!best||!net.ways.size) return;
   const e=this.cells.get(best.k);if(e) e.old=false;   /* (an old area stays visible until its new version is ready) */
