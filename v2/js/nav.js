@@ -861,7 +861,19 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   const R=this.route;if(!R||!this.active||!L||!base||base.x==null) return null;
   /* where the GPS is along the route (searching around the last place) */
   let bi=this.pi||this.idx||0,bd=1e18;
-  for(let i=Math.max(0,bi-60);i<Math.min(R.pts.length,bi+200);i++){const d=(R.pts[i][0]-L.x)**2+(R.pts[i][1]-L.z)**2;if(d<bd){bd=d;bi=i;}}
+  /* where the route passes close to itself (a loop ramp: you enter it beside where you'll come out), the nearest
+     point can be the wrong pass, further along the route: the car then raced ahead around the loop (the A-10 Est
+     loop in Brossard). So a point far from where you are along the route, or pointing another way than you're
+     going, only wins if it's much closer. */
+  const gh0=L.hd!=null&&L.v>3?L.hd:null,ps0=this.ps;
+  const cost=i=>{let c=(R.pts[i][0]-L.x)**2+(R.pts[i][1]-L.z)**2;
+    if(ps0!=null){const ex=Math.abs(R.cum[i]-ps0)-60;if(ex>0) c+=ex*ex*0.3;}
+    if(gh0!=null){const P0=R.pts[Math.max(0,i-1)],P1=R.pts[Math.min(R.pts.length-1,i+1)];
+      const rh=(Math.atan2(P1[0]-P0[0],-(P1[1]-P0[1]))*180/Math.PI+360)%360,off=Math.abs(((gh0-rh+540)%360)-180);if(off>70) c+=900;}
+    return c;};
+  let bc=1e18;
+  for(let i=Math.max(0,bi-60);i<Math.min(R.pts.length,bi+200);i++){const c=cost(i);if(c<bc){bc=c;bi=i;}}
+  bd=(R.pts[bi][0]-L.x)**2+(R.pts[bi][1]-L.z)**2;
   /* not found near where expected (more than 18 m away): look along the whole route, at most once a second */
   if(bd>324&&now-(this.fullT||0)>1000){this.fullT=now;for(let i=0;i<R.pts.length;i++){const d=(R.pts[i][0]-L.x)**2+(R.pts[i][1]-L.z)**2;if(d<bd){bd=d;bi=i;}}}
   if(bi>R.pts.length-1) bi=R.pts.length-1;

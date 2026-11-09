@@ -130,6 +130,11 @@ TN.Rem.prototype.buildStation=function(name,b){
 /* floating name labels: always facing you, readable from about 1.5 km */
 TN.Rem.prototype.updateLabels=function(cx,cz){
   if(typeof document==='undefined') return;
+  /* the station name labels are moved 30 times a second, not 60 (each move costs the page some work), and not at
+     all when no station is within reach */
+  this.lblF=(this.lblF||0)+1;if(this.lblF%2) return;
+  if(this.labels&&this.stations.size){let near=false;for(const st of this.stations.values()) if(Math.abs(st.x-cx)<1700&&Math.abs(st.z-cz)<1700){near=true;break;}
+    if(!near){if(!this.lblHid){this.lblHid=true;for(const el of this.labels.values()) if(el._k!=='h'){el.style.display='none';el._k='h';}}return;}this.lblHid=false;}
   if(!this.labels){this.labels=new Map();
     const st=document.createElement('style');st.textContent='.tn-rem{position:absolute;left:0;top:0;z-index:3;pointer-events:none;will-change:transform;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:rgba(255,255,255,.95);color:#1c2430;font:600 18px sans-serif;white-space:nowrap;transform-origin:50% 100%}.tn-rem b{background:#1fa596;color:#fff;font:700 11px sans-serif;padding:4px 7px;border-radius:7px}.tn-rem.n{background:rgba(16,24,38,.92);color:#e8f1fa}';
     document.head.appendChild(st);}

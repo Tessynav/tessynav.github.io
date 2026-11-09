@@ -1252,8 +1252,16 @@ TN.Net.prototype.remBridgeGaps=function(){
 };
 /* guideway height at each point: level with a road bridge it runs beside (the Champlain Bridge carries it in the
    middle), otherwise 9 m; coming down to the ground over 150 m where the elevated part ends */
+/* the REM track heights follow the road heights beside them, but are worked out again at most every 10 s while new
+   map data keeps arriving (they were redone after every new piece of map, a stutter each time); new REM track
+   pieces count at once */
+TN.Net.prototype.remKey=function(){
+  const now=Date.now();
+  if(this._rkV!==this.ver&&(now-(this._rkT||0)>10000||this._rkV==null)){this._rkV=this.ver;this._rkT=now;}
+  return this._rkV+':'+(this.remVer||0);
+};
 TN.Net.prototype.remHeights=function(w){
-  const v=this.ver+':'+(this.remVer||0);if(w.hv===v&&w.rh) return w.rh;
+  const v=this.remKey();if(w.hv===v&&w.rh) return w.rh;
   /* each end meets its neighbours at the same height: blend over the last 80 m towards the average there */
   const raw=this.remRaw(w).slice(),links=this.remLinks(),P=w.pts;
   for(const [end,dir] of [[0,1],[P.length-1,-1]]){
@@ -1265,7 +1273,7 @@ TN.Net.prototype.remHeights=function(w){
   w.rh=raw;w.hv=v;return raw;
 };
 TN.Net.prototype.remRaw=function(w){
-  const v=this.ver+':'+(this.remVer||0);if(w.rv===v&&w.rr) return w.rr;
+  const v=this.remKey();if(w.rv===v&&w.rr) return w.rr;
   const links=this.remLinks(),P=w.pts,hs=[];
   if(w.ground){w.rr=P.map(()=>0);w.rv=v;return w.rr;}
   if(w.joiner){
