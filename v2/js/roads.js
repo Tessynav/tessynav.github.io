@@ -521,6 +521,11 @@ TN.Net.prototype.heightsV2=function*(){
     /* a short city-street bridge in the street grid with no room to climb (an intersection right before it, the road
        below right after): the road below is in a trench (Ville-Marie, Berri under Sherbrooke, Decarie), so the street
        stays at street level */
+    /* a city-street bridge over no road (over rail tracks or a canal) with an intersection right at its ends, in the
+       street grid: it can't really climb, the tracks are below street level (René-Lévesque over the tracks into
+       Central Station), so it stays at street level */
+    if(g.cross!==true&&g.m.every(b=>isCity(b))&&exs.length&&exs.some(x=>walk(x,60).E<30)){
+      for(const b of g.m){b._T=0;b._H=0;b._br=false;b._grp=null;}g.H=0;g.flat=true;continue;}
     if(g.m.every(b=>isCity(b))&&g.L<150){
       const need=1.25*6.5/MAXG;
       if(exs.some(x=>x.dO<Infinity&&walk(x,need).E+x.dO<0.5*need)){
@@ -690,7 +695,6 @@ TN.Net.prototype.heightsV2=function*(){
   }
   for(const w of ways) if(w._hs&&!w._br&&!w._hs.some(h=>h>0.05)) w._hs=null;
 };
-
 /* heights v2, the safety limit: an ordinary road can only be raised near a real bridge deck. Around each deck (sampled
    every 15 m), the allowed height fades from the deck's height to zero over the normal climb length, in straight-line
    distance (never shorter than along the road, so true approach ramps are untouched). Heights that spread farther,

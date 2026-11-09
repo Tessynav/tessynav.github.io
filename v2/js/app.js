@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=102;
+TN.APPBUILD=103;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -293,7 +293,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(now.join('|')!==mine.join('|')){
         const changed=now.filter(x=>mine.indexOf(x)<0).map(label).join(', ');
         panel('Update available: <b>'+changed+'</b><br><br>Running now:'+table(mine),[['Update now',()=>update(now)],['Later',hide]]);
-      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(64)+'</div>':'')+'<b>TessyNav</b> · build '+TN.APPBUILD+table(mine)+'<br>You have the latest version.',[['Close',hide]]);
+      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(64)+'</div>':'')+'<b>TessyNav</b> · build '+TN.APPBUILD+'<br><span style="font-size:14px">Heights: '+(TN.HV2?'new':'current')+'</span>'+table(mine)+'<br>You have the latest version.',[['Close',hide]]);
     }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
   /* the app checks for updates by itself (20 s after opening, then every 10 minutes); a found update shows a dot on

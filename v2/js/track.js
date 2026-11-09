@@ -35,12 +35,13 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
     /* the car's own estimate while the GPS signal is weak (under overpasses, in tunnels) is still good: use it,
        with less trust, as long as we had a precise fix recently */
     /* is that estimate consistent? it should move at the speed the car reports (Tesla keeps it going from the wheels
-       in a tunnel); a consistent estimate is trusted for up to 5 minutes, not just 30 s (the Ville-Marie tunnel: after
-       30 s the car was left behind and crept to a stop, then jumped 550 m when the GPS came back) */
+       in a tunnel); a consistent estimate is trusted for as long as it stays consistent, however long the tunnel or the
+       traffic jam in it, until a precise GPS fix comes back (it was 30 s, then 5 minutes: in the Ville-Marie tunnel
+       after 30 s the car was left behind and crept to a stop, then jumped 550 m when the GPS came back) */
     if(this.rp&&speed!=null){const dt=(t-this.rp.t)/1000,d=Math.hypot(x-this.rp.x,z-this.rp.z),exp=speed*dt;
       if(dt>0.05&&dt<6) this.rpOk=Math.abs(d-exp)<Math.max(6,exp*0.45)?(this.rpOk||0)+1:0;}
     this.rp={t:t,x:x,z:z};
-    const lost=this.goodT?t-this.goodT:1e12,trust=lost<30000||(lost<300000&&(this.rpOk||0)>=3);
+    const lost=this.goodT?t-this.goodT:1e12,trust=lost<30000||(this.rpOk||0)>=3;
     if(!this.goodT||!trust||speed==null){this.rough={t:t,acc:acc};return this.last;}
     /* (trusted almost like a good fix for the first seconds: on a loop ramp under an overpass it follows the curve
        well, and the old 15 m made the car lag outside the loop; a little less after that, for long tunnels) */
@@ -215,7 +216,10 @@ TN.Track.prototype.match=function(){
   let hs=[...by.values()].sort((a,b)=>a.cost-b.cost);
   const best=hs[0];
   const nearJ=h=>h.jx!=null&&Math.hypot(L.x-h.jx,L.z-h.jz)<30;
-  hs=hs.filter(h=>(h.cost<best.cost+25||nearJ(h))&&h.r.d<35).slice(0,14);
+  /* in a tunnel the car's GPS is its own estimate, often 10 m or more off the tunnel's curves: tunnel roads stay
+     candidates further from it */
+  const tunHold=h=>h&&h.w.tun&&L.acc>4.5;
+  hs=hs.filter(h=>(h.cost<best.cost+25||nearJ(h))&&h.r.d<(tunHold(h)?60:35)).slice(0,14);
   this.hyps=hs;
   /* keep the current road unless another clearly fits better for a while */
   const cur=this.cur&&hs.find(h=>h.w===this.cur.w&&h.dir===this.cur.dir);
@@ -228,18 +232,19 @@ TN.Track.prototype.match=function(){
       if(sc<ks){ks=sc;kid=h;}}
     this.cur=(kid&&kid.cost<best.cost+6)?kid:best;
   }
-  else if(best!==cur&&best.cost<cur.cost-2.5){this.cur=best;}
+  /* (in a tunnel, a street above it or beside it has to fit much better: the car stays in the tunnel) */
+  else if(best!==cur&&best.cost<cur.cost-(tunHold(cur)&&!best.w.tun?14:2.5)){this.cur=best;}
   else this.cur=cur;
   /* turning at a junction: once the driving direction clearly leaves the current road and another road nearby
      matches it, follow that road right away (no driving on past the corner, then jumping) */
-  if(this.cur&&this.hd!=null&&L.v>2&&TN.angDiff(this.cur.hd,this.hd)>35){
+  if(this.cur&&this.hd!=null&&L.v>2&&TN.angDiff(this.cur.hd,this.hd)>35&&!tunHold(this.cur)){
     let alt=null;
     for(const h of hs){if(h===this.cur) continue;const a=TN.angDiff(h.hd,this.hd);
       if(a<25&&(h.side!=null?h.side:h.r.d)<TN.width(h.w)/2+6&&(!alt||a<TN.angDiff(alt.hd,this.hd))) alt=h;}
     if(alt) this.cur=alt;
   }
   /* lost: every road is far away -> look again around the GPS */
-  if(!this.cur||this.cur.r.d>TN.width(this.cur.w)/2+12){
+  if(!this.cur||this.cur.r.d>TN.width(this.cur.w)/2+(tunHold(this.cur)?40:12)){
     this.lost++;
     if(this.lost>=5){this.lost=0;this.acquire();}
   }else this.lost=0;
@@ -291,13 +296,17 @@ TN.Track.prototype.frame=function(now,dt){
   }
   const h=this.cur;
   const age=Math.min(1,Math.max(0,(now-L.t)/1000));
-  const snapped=!!h&&(h.side!=null?h.side:h.r.d)<=TN.width(h.w)/2+6;
+  /* in a tunnel (the car's own GPS estimate, a few metres to 10+ m off on the curves) the car stays on the tunnel
+     road and follows its curves, instead of leaving it to follow the estimate (the Ville-Marie curve: the car swung
+     between the road and the GPS, its heading jumping 40 degrees) */
+  const inTun=!!h&&h.w.tun&&L.acc>4.5;
+  const snapped=!!h&&(h.side!=null?h.side:h.r.d)<=TN.width(h.w)/2+(inTun?30:6);
   let car=this.car;
   /* turning at an intersection: when the car is near a junction and its real direction (filtered GPS) differs
      from the street's by more than 15 degrees, follow the actual path through the corner instead of the street;
      back on the new street, it settles onto it with the usual glide */
   let turning=false;
-  if(snapped&&L.v>1.5&&this.hd!=null){
+  if(snapped&&L.v>1.5&&this.hd!=null&&!inTun){
     const w0=h.w,dEnd=h.dir>0?w0.L-h.r.s:h.r.s,dBack=h.dir>0?h.r.s:w0.L-h.r.s;
     const deg=k=>(this.net.keys.get(k)||[]).length;
     const endK=h.dir>0?w0.keys[w0.keys.length-1]:w0.keys[0],backK=h.dir>0?w0.keys[0]:w0.keys[w0.keys.length-1];

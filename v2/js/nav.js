@@ -589,6 +589,13 @@ TN.Nav.prototype.draw=function(from){
   if(this.mesh){S.three.scene.remove(this.mesh);this.mesh.geometry.dispose();}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setAttribute('rd',new THREE.Float32BufferAttribute(rd,1));g.setIndex(idx);
   this.mesh=new THREE.Mesh(g,TN.settings&&TN.settings.rainbow?this.rainbowMat():this.mat);this.mesh.frustumCulled=false;this.mesh.renderOrder=4;S.three.scene.add(this.mesh);this.drawn=a0;
+  /* (for the trip recording: places where the drawn line ends up under the road surface, which hides it; checked
+     every 25 m along the drawn part, so a cut line can be traced to its cause) */
+  try{const net=this.api.net,bad=[];let chk=0;
+    for(let q=0;q<CL.length;q+=5){const [x,y,z]=CL[q];let top=-1e9;chk++;
+      net.near(x,z,4,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,x,z);if(r.d>TN.width(w)/2) return;const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);if(h>top) top=h;});
+      if(top>-1e8&&y<top-0.1&&bad.length<6){const ll=TN.fromLocal(x,z);bad.push([+ll[1].toFixed(5),+ll[0].toFixed(5),+y.toFixed(1),+top.toFixed(1),Math.round(CL[q][3]-(this.ps||0))]);}}
+    if(bad.length) this.note('line under road',{checked:chk,places:bad});}catch(e){}
   this.drawArrows(CL);
 };
 /* turn arrows painted on the route line: three chevrons before your next turn, and a bent arrow at the turn whose stem
@@ -1030,10 +1037,14 @@ TN.Nav.prototype.update=function(dt){
      for a few seconds, and leaves once you're past it (only with the Rocco theme) */
   {const dl=this.bar.querySelector('.dline');let rk=this.bar.querySelector('.rk');
    if(dl&&!rk&&TN.roccoSVG){rk=document.createElement('span');rk.className='rk';rk.innerHTML='<span class="bub">Your exit!</span>'+TN.roccoSVG(34);dl.appendChild(rk);}
+   if(!rk&&!this.rkMiss){this.rkMiss=1;this.note('rocco',{missing:!dl?'bar':'drawing'});}
    if(rk){const th=TN.settings&&TN.settings.theme,rocco=!th||th==='rocco';
      const hwExit=(nx.type==='off ramp'||(nx.type==='fork'&&(nx.exits||nx.dest)))&&dNext<1000;
      const on=rocco&&hwExit;if(on!==rk.classList.contains('on')) rk.classList.toggle('on',on);
      if(on&&this.rkStep!==nx.at){this.rkStep=nx.at;this.rkT=Date.now();}
+     /* (for the trip recording: the next turn's kind as it comes up, and when Rocco shows or hides) */
+     if(dNext<1200&&this.rkNote!==nx.at){this.rkNote=nx.at;this.note('next turn',{type:nx.type,mod:nx.mod,exit:nx.exits||'',dest:nx.dest||'',d:Math.round(dNext),theme:th||'rocco'});}
+     if(on!==!!this.rkOn){this.rkOn=on;this.note('rocco',{on:on});}
      const bub=rk.querySelector('.bub');if(bub){const off=!on||Date.now()-(this.rkT||0)>5000;if(off!==bub.classList.contains('off')) bub.classList.toggle('off',off);}}}
   /* lane arrows for the next turn (where the directions include lanes), from 1 km before it */
   {const le=this.bar.querySelector('.lanes');let html='';
