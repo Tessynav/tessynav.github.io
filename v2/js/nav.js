@@ -450,7 +450,10 @@ TN.Nav.prototype.fetchRouteOnce=async function(from,to){
     const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60'+';'.repeat(via.length+1):'';
     const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+[from[0].toFixed(6)+','+from[1].toFixed(6)].concat(via,[to[0].toFixed(6)+','+to[1].toFixed(6)]).join(';')+
       '?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language='+(TN.LANG||'en')+'&voice_instructions=true&voice_units=metric'+brg+TN.avoidParam()+'&access_token='+TN.MBX;
-    const r=await fetch(u);if(r.ok){const j=await r.json();if(j.routes&&j.routes[0]){j.routes[0].traffic=true;return j.routes[0];}}
+    const r=await fetch(u+(this.wantAlts&&!via.length?'&alternatives=true':''));if(r.ok){const j=await r.json();if(j.routes&&j.routes[0]){
+      for(const q of j.routes) q.traffic=true;
+      if(this.wantAlts&&!via.length){this.alts=j.routes.slice(0,3);this.wantAlts=false;}
+      return j.routes[0];}}
   }catch(e){}}
   return this.fetchRouteFree(from,to);
 };
@@ -463,8 +466,12 @@ TN.Nav.prototype.fetchRouteFree=async function(from,to){
 TN.Nav.prototype.plan=async function(reroute){
   const from=this.here(),to=TN.routeTo(this.dest);
   if(!reroute){this.ov.style.display='flex';this.ov.innerHTML='<div>Calculating the route\u2026</div>';}
+  /* a new route (not a reroute, no stops): ask for the other good ways too, so Rocco can compare them */
+  this.alts=null;this.wantAlts=!reroute&&!(this.stops&&this.stops.length);if(!reroute) this.altSaid=false;
   try{
-    const rt=await this.fetchRoute(from,to);this.setRoute(rt);
+    const rt=await this.fetchRoute(from,to);this.wantAlts=false;
+    if(this.alts&&this.alts.length>1&&rt.adjusted) this.alts=null;   /* (the route's end was corrected: compare nothing) */
+    this.setRoute(rt);this.curRt=rt;
     if(!reroute) this.overview();
   }catch(e){
     this.note('route failed',{reroute:!!reroute,err:String(e&&e.message||e)},true);
@@ -713,6 +720,7 @@ TN.Nav.prototype.overview=function(){
   {const ts=this.ov.querySelector('.tsend');if(ts) ts.onclick=async ev=>{ev.stopPropagation();ts.disabled=true;const r=await TN.tesla.send(this.dest,this);ts.disabled=false;
     this.note('tesla send',{ok:!!(r&&r.ok),why:r&&r.why,detail:r&&r.detail?String(r.detail).slice(0,120):undefined},true);};}
   {const bt=this.ov.querySelector('.btns'),rl=this.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
+  this.showAlts();
   if(TN.bridges) TN.bridges.checkRoute(this).catch(()=>{});   /* (a slow or partly closed bridge on the route: Rocco says so) */
   this.tripButtons(this.ov);
 };
@@ -824,6 +832,7 @@ TN.Nav.prototype.junctionSvg=function(nx){
     '<path d="'+path+'" stroke="#378ADD" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+arrow+sign+'</svg>';
 };
 TN.Nav.prototype.go=function(){
+  this.clearAlts();
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
   this.ov.style.display='none';this.active=true;TN.navActive=true;{const self=this;TN.routeNear=(x,z)=>self.routeDist(x,z);}this.saidArrive=false;this.parkT=0;document.body.classList.add('tn-routing');
@@ -843,7 +852,7 @@ TN.Nav.prototype.routeDist=function(x,z){
   return Math.sqrt(m);
 };
 TN.Nav.prototype.end=function(why){
-  TN.navActive=false;TN.routeNear=null;
+  TN.navActive=false;TN.routeNear=null;try{this.clearAlts();}catch(e){}this.alts=null;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
@@ -1186,6 +1195,54 @@ TN.Nav.prototype.roccoCss=function(){
     '#tn-rbub .b{background:rgb(var(--tn-panel-rgb,43 45 49)/.97);color:var(--tn-text,#f3f1ec);border-radius:14px;padding:9px 13px;font:15px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35)}'+
     '#tn-rbub.amber .b{color:#fcd34d}#tn-rbub.red .b{color:#fca5a5}#tn-rbub.green .b{color:#86efac}';
   document.head.appendChild(st);
+};
+/* other ways to go (before Go): the other routes are drawn on the map in grey with their times, and Rocco says
+   which one is best right now, from the live traffic (rush hour included): the fastest, how much it saves, and when
+   the others are jammed or traffic is heavier than usual. A tap on a route (on the map or below Rocco) picks it. */
+TN.Nav.prototype.altInfo=function(rt){
+  const lg=rt.legs&&rt.legs[0]||{},sum=(lg.summary||'').split(',').map(x=>x.trim()).filter(Boolean).slice(0,2).join(' and ');
+  let heavy=0,n=0;for(const l of rt.legs||[]) for(const c of (l.annotation&&l.annotation.congestion)||[]){n++;if(c==='heavy'||c==='severe') heavy++;}
+  return {min:Math.max(1,Math.round(rt.duration/60)),via:sum,heavy:n?heavy/n:0,busy:rt.duration_typical?rt.duration/rt.duration_typical:1,km:rt.distance/1000};
+};
+TN.Nav.prototype.clearAlts=function(){
+  const map=this.api.map;
+  try{if(map.getLayer('tn-alts')) map.removeLayer('tn-alts');if(map.getSource('tn-alts')) map.removeSource('tn-alts');}catch(e){}
+  for(const m of this.altMarks||[]){try{m.remove();}catch(e){}}this.altMarks=[];
+};
+TN.Nav.prototype.showAlts=function(){
+  this.clearAlts();
+  const A=this.alts;if(!A||A.length<2||this.active||(this.stops&&this.stops.length)) return;
+  const map=this.api.map,cur=this.curRt,fr=TN.LANG==='fr';
+  const info=A.map(r=>this.altInfo(r));let best=0;for(let i=1;i<A.length;i++) if(A[i].duration<A[best].duration) best=i;
+  const sel=Math.max(0,A.indexOf(cur));
+  /* Rocco's advice */
+  const others=info.filter((x,i)=>i!==best),gap=Math.min(...others.map(x=>x.min))-info[best].min;
+  let tip;const via=info[best].via?(fr?' par '+info[best].via:' via '+info[best].via):'';
+  if(gap<2) tip=fr?'Ces trajets prennent à peu près le même temps — choisis celui que tu préfères.':'These routes take about the same time right now — pick the one you like.';
+  else{tip=(fr?'Prends le trajet':'Take the route')+via+(fr?' : il te fait gagner '+gap+' min':' — it saves you '+gap+' min');
+    if(others.some(x=>x.heavy>0.15)) tip+=others.length>1?(fr?', un autre trajet est très chargé en ce moment.':', another way has heavy traffic right now.'):(fr?', l’autre est très chargé en ce moment.':', the other way has heavy traffic right now.');else tip+='.';}
+  if(info[best].busy>1.15) tip+=fr?' La circulation est plus dense que d’habitude.':' Traffic is heavier than usual right now.';
+  const chips=A.map((r,i)=>'<button class="altc" data-a="'+i+'" style="border:'+(i===sel?'2px solid #3b82f6':'1px solid var(--tn-line,rgba(255,255,255,.2))')+';border-radius:10px;padding:8px 12px;background:transparent;color:inherit;font:600 14px system-ui,sans-serif;text-align:left;cursor:pointer">'+
+    info[i].min+' min'+(i===best&&gap>=2?' <span style="color:#3b82f6">\u2605</span>':'')+'<br><small style="font-weight:400;color:var(--tn-sub,#b9b6ae)">'+TN.esc(info[i].via||fmtDist(r.distance))+'</small></button>').join('');
+  const html='<div class="tn-alts notr" style="margin:8px 0;display:flex;flex-direction:column;gap:8px">'+
+    '<div style="display:flex;gap:10px;align-items:center">'+(TN.roccoSVG?'<span style="flex:none">'+TN.roccoSVG(36)+'</span>':'')+'<span style="font-size:14px;line-height:1.4">'+TN.esc(tip)+'</span></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+chips+'</div></div>';
+  const bt=this.ov.querySelector('.btns');if(bt) bt.insertAdjacentHTML('beforebegin',html);
+  /* (Rocco says it once per search, if the voice is on) */
+  if(!this.altSaid){this.altSaid=true;try{if(TN.voice&&TN.voice.say) TN.voice.say(tip);}catch(e){}}
+  const pickAlt=i=>{if(!A[i]||A[i]===this.curRt) return;this.setRoute(A[i]);this.curRt=A[i];this.drawRoute&&this.drawRoute();this.overview();};
+  this.ov.querySelectorAll('.altc').forEach(b=>b.onclick=ev=>{ev.stopPropagation();pickAlt(+b.dataset.a);});
+  /* the other routes on the map, in grey, under the chosen one; their times as small labels */
+  try{
+    const feats=A.map((r,i)=>i===sel?null:{type:'Feature',properties:{i:i},geometry:r.geometry}).filter(Boolean);
+    map.addSource('tn-alts',{type:'geojson',data:{type:'FeatureCollection',features:feats}});
+    map.addLayer({id:'tn-alts',type:'line',source:'tn-alts',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#9aa0a6','line-width':7,'line-opacity':0.9}},map.getLayer('tn-route-casing')?'tn-route-casing':undefined);
+    if(!this.altClick){this.altClick=true;map.on('click','tn-alts',e=>{const f=e.features&&e.features[0];if(f&&this.alts) pickAlt(+f.properties.i);});}
+    if(typeof maplibregl!=='undefined') A.forEach((r,i)=>{const C=r.geometry.coordinates,m=C[Math.floor(C.length*(0.4+0.1*i))];
+      const el=document.createElement('div');el.style.cssText='padding:3px 8px;border-radius:8px;font:600 13px system-ui,sans-serif;cursor:pointer;'+(i===sel?'background:#3b82f6;color:#fff':'background:#fff;color:#333;border:1px solid #9aa0a6');
+      el.textContent=info[i].min+' min';el.onclick=ev=>{ev.stopPropagation();pickAlt(i);};
+      this.altMarks.push(new maplibregl.Marker({element:el}).setLngLat(m).addTo(map));});
+  }catch(e){}
 };
 TN.Nav.prototype.roccoHtml=function(){
   const p=this.roccoPlan();if(!p) return '';this.roccoCss();
