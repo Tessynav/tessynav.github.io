@@ -454,7 +454,8 @@ TN.Track.prototype.frame=function(now,dt){
   /* highways: the car keeps its line from one road piece to the next instead of re-centring on each one. Where lanes
      are added or dropped, each piece's middle shifts by a lane or two, and re-centring swung the car left and right
      (a zigzag on the A-15 and A-10). It only comes back inside the edges (1.8 m in) when a piece is narrower. */
-  if(w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&car.lat!=null){const edge=Math.max(0,W/2-1.8),drift=Math.sign(car.lat)*Math.min(Math.abs(car.lat),0.25*dt);target=Math.max(-edge,Math.min(edge,car.lat-drift));}   /* (and drifts back to the middle very slowly, 25 cm a second) */
+  /* (not while navigating: the blue route line runs down the middle, and the car is drawn on it) */
+  if(!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&car.lat!=null){const edge=Math.max(0,W/2-1.8),drift=Math.sign(car.lat)*Math.min(Math.abs(car.lat),0.25*dt);target=Math.max(-edge,Math.min(edge,car.lat-drift));}   /* (and drifts back to the middle very slowly, 25 cm a second) */
   /* optional (Settings -> Follow my lane on wide roads, off by default): on one-way roads with 3 lanes or more, the
      car takes the lane the GPS has clearly been in, whole lanes only, changing after 2 s near another lane's centre.
      Closer to your real lane on wide highways and bridges, but it moves sideways more than the steady middle. */
