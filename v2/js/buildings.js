@@ -210,6 +210,17 @@ TN.Buildings.prototype.finish=function(G){
   if(TN.shadows&&G.s){const sm=TN.shadows.mesh(G.s);if(sm) m.add(sm);}
   return m;
 };
+/* the shapes built in the background: already number arrays, straight onto the graphics card */
+TN.Buildings.prototype.finishTyped=function(R){
+  if(!R||!R.cnt) return null;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(R.p,3));g.setAttribute('normal',new THREE.BufferAttribute(R.nm,3));
+  g.setAttribute('color',new THREE.BufferAttribute(R.c,3));g.setAttribute('wuv',new THREE.BufferAttribute(R.w,3));
+  g.setIndex(new THREE.BufferAttribute(R.i,1));
+  const m=new THREE.Mesh(g,this.material());m.frustumCulled=false;
+  if(TN.shadows&&R.s&&R.s.cnt){const sm=TN.shadows.mesh({p:R.s.p,h:R.s.h,i:Array.from(R.s.i),cnt:R.s.cnt});if(sm) m.add(sm);}
+  return m;
+};
 TN.Buildings.prototype.free=function(k){
   const e=this.cells.get(k);if(!e) return;
   if(e.mesh){this.scene.three.scene.remove(e.mesh);e.mesh.geometry.dispose();
@@ -298,6 +309,15 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     /* (dropped only when well out of range: at highway speed, areas up to 3 away are kept, so a change of direction
        never drops something just built) */
     if(m>R+1&&!(fast&&m<=R+3)) this.free(k);}
+  /* an area being built in the background: when it's back it goes on screen at once (the shapes arrive ready); if it
+     doesn't come back, it's built here as before */
+  if(this.job&&this.job.wait){
+    const J=this.job;
+    if(J.res){const t0=performance.now();this.job=null;const mesh=this.finishTyped(J.res);if(mesh) this.scene.three.scene.add(mesh);
+      this.cells.set(J.k,{mesh:mesh,n:J.res.n,t:now,tries:J.tries,ids:[]});TN.prof('buildings',performance.now()-t0);}
+    else if(J.fail||now-J.t>10000){this.job=null;this.bgOff=true;}
+    return;
+  }
   /* keep building the current area: a few hundred buildings per frame */
   if(this.job){
     const t0=performance.now(),J=this.job;
@@ -330,6 +350,17 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   if(!best) return;
   /* inside the area covered by our own building tiles (Overture), the buildings come from there; elsewhere (or if
      the tiles can't be reached) from the map, as before */
+  /* our building tiles, with the background builder running: the area is decoded and built there */
+  {const RW=TN.RW;if(RW&&RW.ready&&!RW.failed&&!this.bgOff&&this.covered(lng,lat)){
+    const [cx,cy]=best.k.split(',').map(Number),key=Math.floor(cx/4)+'_'+Math.floor(cy/4),P=(this.tp||(this.tp=new Map())).get(key);
+    if(!P){this.loadPack(key);this.lastStart=now;return;}
+    if(P.st==='loading'){this.lastStart=now;return;}
+    if(P.st==='ok'){const raw=P.raw.get(best.k);P.used=Date.now();
+      if(raw&&!raw.done&&raw.recs&&raw.recs.length){this.lastStart=now;
+        const id=++RW.id,J={k:best.k,wait:true,t:now,tries:best.tries};this.job=J;
+        RW.pend.set(id,(R,err)=>{if(err||!R) J.fail=true;else J.res=R;});
+        try{RW.w.postMessage({t:'bld',k:best.k,id:id,o:P.o,recs:raw.recs,shadows:!!TN.shadows});}catch(e){J.fail=true;}
+        return;}}}}
   const tl=this.tileList(best.k,lng,lat);
   if(tl===null){this.lastStart=now;return;}   /* (that tile is still on its way: try again shortly) */
   this.lastStart=now;const t0=performance.now(),list=tl||this.collect(best.k);

@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=110;
+TN.APPBUILD=111;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -19,8 +19,8 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
      the same road packs and the heights worked out here. Off with ?rw=0, and it switches itself off if it fails. */
   TN.RW=null;
   if(typeof Worker!=='undefined'&&!/[?&]rw=0/.test(location.search)){try{
-    const rs=document.querySelector('script[src*="roads.js"]'),rv=rs&&(rs.getAttribute('src').match(/v=(\d+)/)||[])[1]||'1';
-    const W=new Worker('js/roadworker.js?v=2&r='+rv),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
+    const sv=n=>{const e=document.querySelector('script[src*="'+n+'.js"]');return e&&(e.getAttribute('src').match(/v=(\d+)/)||[])[1]||'1';},rv=sv('roads');
+    const W=new Worker('js/roadworker.js?v=3&r='+rv+'&b='+sv('buildings')+'&s='+sv('shadows')),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
     /* if it stops: everything is done here again as before, heights included (a full rebuild) */
     const failAll=()=>{if(RW.failed&&!net.remoteHeights) return;RW.failed=true;net.mirror=false;
       if(net.remoteHeights){net.remoteHeights=false;if(!net.job) net.startRebuild();else net._dirty=true;}
@@ -30,7 +30,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
       if(m.t==='ready') RW.ready=true;
       else if(m.t==='heights'){const t0=performance.now();net.applyHeights(m.h);net.hVer=(net.hVer||0)+1;TN.prof('network',performance.now()-t0);}
       else if(m.t==='synced') RW.ver=m.ver;
-      else if(m.t==='cell'||m.t==='error'){const cb=RW.pend.get(m.id);RW.pend.delete(m.id);if(cb) cb(m.t==='cell'?m.L:null,m.t==='error'?m.msg:null);
+      else if(m.t==='cell'||m.t==='bld'||m.t==='error'){const cb=RW.pend.get(m.id);RW.pend.delete(m.id);if(cb) cb(m.t==='cell'?m.L:m.t==='bld'?m.R:null,m.t==='error'?m.msg:null);
         if(m.t==='error'&&TN.fb) try{TN.fb.note('road builder error',{msg:m.msg});}catch(e){}}};
     W.onerror=()=>failAll();
     net.mirror=true;net.remoteHeights=true;TN.RW=RW;}catch(e){TN.RW=null;}}   /* (round 2: the heights are worked out in the background too) */
