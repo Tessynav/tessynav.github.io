@@ -234,12 +234,13 @@ TN.Nav.prototype.pick=async function(it){
       const j=await r.json(),f=j.features&&j.features[0];if(f){it.lng=f.geometry.coordinates[0];it.lat=f.geometry.coordinates[1];
         /* where cars actually reach the place (an entrance or drop-off point), when Mapbox knows it */
         const rp=f.properties&&f.properties.coordinates&&f.properties.coordinates.routable_points;
-        if(rp&&rp.length){const d=rp.find(p=>p.name==='default')||rp[0];if(d&&d.latitude!=null){it.rlng=d.longitude;it.rlat=d.latitude;}}}}catch(e){}
+        if(rp&&rp.length){const d=rp.find(p=>p.name==='default')||rp[0];if(d&&d.latitude!=null){it.rlng=d.longitude;it.rlat=d.latitude;}}
+        try{it.biz=this.bizFrom(f.properties||{});}catch(e){}}}catch(e){}
     this.sess=null;   /* a new search session next time */
     if(it.lng==null){this.ov.style.display='flex';this.ov.innerHTML='<div>Could not open that place</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};return;}
   }
   {const old=this.recent.find(r=>r.name===it.name&&Math.abs(r.lat-it.lat)<1e-4);if(old&&old.ub&&it.ub==null) it.ub=true;}   /* (your choice for this place, remembered) */
-  this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat,ub:it.ub}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
+  this.recent=[{name:it.name,sub:it.sub,lng:it.lng,lat:it.lat,rlng:it.rlng,rlat:it.rlat,ub:it.ub,biz:it.biz||undefined}].concat(this.recent.filter(r=>r.name!==it.name||Math.abs(r.lat-it.lat)>1e-4)).slice(0,6);
   try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}
   if(this.setting){const k=this.setting;this.setting=null;this.places[k]=this.slim(it);this.savePlaces();
     this.input.value='';this.input.placeholder='Search a place or address';this.syncX();this.res.style.display='none';this.input.blur();
@@ -693,6 +694,54 @@ TN.Nav.prototype.clearMapLine=function(){
   const map=this.api.map;try{if(map.getLayer('tn-route-line')) map.removeLayer('tn-route-line');if(map.getLayer('tn-route-casing')) map.removeLayer('tn-route-casing');if(map.getSource('tn-route')) map.removeSource('tn-route');}catch(e){}
   if(this.pin){try{this.pin.remove();}catch(e){}this.pin=null;}
 };
+/* business details (from Mapbox, when the place is a business): photo, rating, hours, phone, website */
+TN.Nav.prototype.bizFrom=function(P){
+  const m=P.metadata||{},str=v=>typeof v==='string'&&v.trim()?v.trim():null;
+  let photo=m.primary_photo;if(Array.isArray(photo)) photo=photo[0];if(photo&&typeof photo==='object') photo=photo.url;photo=str(photo);
+  const per=m.open_hours&&Array.isArray(m.open_hours.periods)?m.open_hours.periods.filter(q=>q&&q.open&&q.close).map(q=>[q.open.day,q.open.time,q.close.day,q.close.time]):null;
+  const cat=Array.isArray(P.poi_category)?P.poi_category[0]:null;
+  const b={photo:photo,phone:str(m.phone),web:str(m.website),rating:typeof m.rating==='number'?m.rating:null,reviews:typeof m.review_count==='number'?m.review_count:null,hours:per&&per.length?per:null,cat:str(cat)};
+  return (b.photo||b.phone||b.web||b.rating!=null||b.hours)?b:null;
+};
+/* open or closed at a time, and until when (periods: [day (0 = Monday), "HHMM", day, "HHMM"]) */
+TN.bizOpenAt=function(hours,t){
+  if(!hours) return null;
+  const d=new Date(t),wd=(d.getDay()+6)%7,mins=wd*1440+d.getHours()*60+d.getMinutes(),W=10080;
+  const tm=(day,hm)=>day*1440+Math.floor(+hm/100)*60+(+hm%100);
+  let nextOpen=null;
+  for(const [od,ot,cd,ct] of hours){let a=tm(od,ot),b=tm(cd,ct);if(b<=a) b+=W;
+    for(const off of [0,-W,W]){if(mins>=a+off&&mins<b+off) return {open:true,until:b+off-mins,at:ct};}
+    let n=a-mins;if(n<0) n+=W;if(nextOpen==null||n<nextOpen.mins) nextOpen={mins:n,at:ot,day:od};}
+  return {open:false,next:nextOpen};
+};
+TN.Nav.prototype.bizCard=function(R){
+  const b=this.dest&&this.dest.biz;if(!b) return;
+  const hm=x=>{x=String(x).padStart(4,'0');const h=+x.slice(0,2),m=x.slice(2);return (TN.LANG==='fr'?h+' h '+m:((h%12)||12)+(m!=='00'?':'+m:'')+(h<12?' am':' pm'));};
+  const days=TN.LANG==='fr'?['lun.','mar.','mer.','jeu.','ven.','sam.','dim.']:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const now=TN.bizOpenAt(b.hours,Date.now()),arr=TN.bizOpenAt(b.hours,Date.now()+R.dur*1000);
+  let hrs='';
+  if(now){hrs=now.open?'<span style="color:#22a55b;font-weight:600">Open now</span> \u00b7 closes '+hm(now.at):'<span style="color:#e5534b;font-weight:600">Closed</span>'+(now.next?' \u00b7 opens '+(now.next.mins>1440?days[now.next.day]+' ':'')+hm(now.next.at):'');}
+  /* Rocco, when the hours matter for this trip */
+  let tip='';
+  if(arr&&now){if(!arr.open) tip=now.open?'They\u2019ll be closed by the time you get there.':'They\u2019re closed when you arrive'+(arr.next?' \u2014 opens '+(arr.next.mins>1440?days[arr.next.day]+' ':'')+hm(arr.next.at)+'.':'.');
+    else if(arr.until<=30) tip='They close at '+hm(arr.at)+' \u2014 you\u2019ll arrive just in time.';}
+  const st=b.rating!=null?Math.round(b.rating*2)/2:null;
+  const stars=st!=null?'\u2605'.repeat(Math.floor(st))+(st%1?'\u00bd':''):'';
+  const chip=(ic,t,cls)=>'<span class="'+(cls||'')+'" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;border:1px solid var(--tn-line,rgba(255,255,255,.15));border-radius:10px;padding:6px 10px;cursor:pointer">'+ic+' '+TN.esc(t)+'</span>';
+  const week=b.hours?'<div class="bizweek" style="display:none;margin-top:8px;font-size:13px;line-height:1.6">'+[0,1,2,3,4,5,6].map(d=>{const ps=b.hours.filter(p=>p[0]===d);return '<div><span style="display:inline-block;width:48px;color:var(--tn-sub)">'+days[d]+'</span>'+(ps.length?ps.map(p=>hm(p[1])+' \u2013 '+hm(p[3])).join(', '):'Closed')+'</div>';}).join('')+'</div>':'';
+  const html='<div class="tn-biz notr" style="flex:1 1 100%;margin:0 0 6px">'+
+    (b.photo?'<img src="'+TN.esc(b.photo)+'" alt="" style="width:100%;height:120px;object-fit:cover;border-radius:12px;display:block;margin-bottom:8px" onerror="this.style.display=\'none\'">':'')+
+    (b.cat?'<div style="font-size:13px;color:var(--tn-sub);text-transform:capitalize">'+TN.esc(b.cat)+'</div>':'')+
+    (st!=null?'<div style="font-size:14px;margin-top:3px"><b>'+b.rating.toFixed(1)+'</b> <span style="color:#e8a33a">'+stars+'</span>'+(b.reviews!=null?' <span style="color:var(--tn-sub)">('+b.reviews.toLocaleString()+' reviews)</span>':'')+'</div>':'')+
+    (hrs?'<div style="font-size:14px;margin-top:3px">'+hrs+'</div>':'')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+
+      (b.phone?chip('\u260e',b.phone):'')+(b.web?chip('\ud83c\udf10',(b.web.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]),'bizweb'):'')+(b.hours?chip('\ud83d\udd52','Hours','bizhrs'):'')+'</div>'+week+
+    (tip?'<div class="tn-rline notr amber" style="margin-top:8px">'+(TN.roccoSVG?TN.roccoSVG(28):'')+'<span>'+TN.esc(tip)+'</span></div>':'')+
+  '</div>';
+  this.roccoCss();this.ov.insertAdjacentHTML('afterbegin',html);
+  const wk=this.ov.querySelector('.bizhrs');if(wk) wk.onclick=ev=>{ev.stopPropagation();const w=this.ov.querySelector('.bizweek');if(w) w.style.display=w.style.display==='none'?'block':'none';};
+  const wb=this.ov.querySelector('.bizweb');if(wb) wb.onclick=ev=>{ev.stopPropagation();try{window.open(/^https?:/.test(b.web)?b.web:'https://'+b.web,'_blank');}catch(e){}};
+};
 TN.Nav.prototype.overview=function(){
   const R=this.route,api=this.api;api.setFollow(false);
   try{for(const id of ['tn-route-casing','tn-route-line']) if(api.map.getLayer(id)) api.map.setLayoutProperty(id,'visibility','visible');}catch(e){}
@@ -713,6 +762,7 @@ TN.Nav.prototype.overview=function(){
   this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+(TN.avoidList().length?' \u00b7 avoiding '+TN.avoidList().map(x=>({toll:'tolls',motorway:'highways',ferry:'ferries',unpaved:'unpaved roads'})[x]).join(', '):'')+'</small>'+
     (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="det">Details</button>'+(TN.tesla&&TN.tesla.connected()&&!(this.dest&&this.dest.fromTesla)?'<button class="tsend">'+TN.TESLA_T(16)+' Send to Tessy</button>':'')+'<button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
+  try{this.bizCard(R);}catch(e){}
   this.ov.querySelector('.save').onclick=ev=>{ev.stopPropagation();this.saveMenu(ev.currentTarget);};
   this.ov.querySelector('.stop').onclick=()=>this.addStop();
   this.ov.querySelector('.cancel').onclick=()=>this.end('cancel');
