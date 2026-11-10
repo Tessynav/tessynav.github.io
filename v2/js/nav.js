@@ -235,7 +235,9 @@ TN.Nav.prototype.pick=async function(it){
         /* where cars actually reach the place (an entrance or drop-off point), when Mapbox knows it */
         const rp=f.properties&&f.properties.coordinates&&f.properties.coordinates.routable_points;
         if(rp&&rp.length){const d=rp.find(p=>p.name==='default')||rp[0];if(d&&d.latitude!=null){it.rlng=d.longitude;it.rlat=d.latitude;}}
-        try{it.biz=this.bizFrom(f.properties||{});}catch(e){}}}catch(e){}
+        try{it.biz=this.bizFrom(f.properties||{});}catch(e){}
+        /* (for the trip recording: which details Mapbox had for this place) */
+        try{const md=(f.properties&&f.properties.metadata)||{};this.note('place info',{name:it.name,fields:Object.keys(md).slice(0,20),cat:f.properties.poi_category||null});}catch(e){}}}catch(e){}
     this.sess=null;   /* a new search session next time */
     if(it.lng==null){this.ov.style.display='flex';this.ov.innerHTML='<div>Could not open that place</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};return;}
   }
@@ -282,7 +284,7 @@ TN.Nav.prototype.showAll=async function(q){
   if(TN.MBX){try{
     const u='https://api.mapbox.com/search/searchbox/v1/forward?q='+encodeURIComponent(q)+'&types=poi&limit=10&language='+(TN.LANG||'en')+'&proximity='+h[0].toFixed(5)+','+h[1].toFixed(5)+'&access_token='+TN.MBX;
     const r=await fetch(u);if(r.ok){const j=await r.json();
-      items=(j.features||[]).map(f=>({name:f.properties.name||q,sub:f.properties.full_address||f.properties.place_formatted||'',lng:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]}));}
+      items=(j.features||[]).map(f=>{let biz=null;try{biz=this.bizFrom(f.properties||{});}catch(e){}return {name:f.properties.name||q,sub:f.properties.full_address||f.properties.place_formatted||'',lng:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],biz:biz||undefined};});}
   }catch(e){}}
   /* if Mapbox had nothing, the other services (each given at most 6 s) */
   if(!items.length) items=await this.moreNearby(q,h,6000);
