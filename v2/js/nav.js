@@ -1202,7 +1202,14 @@ TN.Nav.prototype.roccoCss=function(){
     '.tn-rline.amber{background:rgba(245,158,11,.16);color:#fcd34d}.tn-rline.red{background:rgba(239,68,68,.18);color:#fca5a5}.tn-rline.green{background:rgba(34,197,94,.16);color:#86efac}.tn-rline svg{flex-shrink:0}'+
     '#tn-rbub{position:absolute;z-index:35;left:50%;transform:translateX(-50%);max-width:min(88vw,520px);display:none;align-items:flex-start;gap:8px;transition:opacity .4s}'+
     '#tn-rbub .b{background:rgb(var(--tn-panel-rgb,43 45 49)/.97);color:var(--tn-text,#f3f1ec);border-radius:14px;padding:9px 13px;font:15px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35)}'+
-    '#tn-rbub.amber .b{color:#fcd34d}#tn-rbub.red .b{color:#fca5a5}#tn-rbub.green .b{color:#86efac}';
+    '#tn-rbub.amber .b{color:#fcd34d}#tn-rbub.red .b{color:#fca5a5}#tn-rbub.green .b{color:#86efac}'+
+    /* the light (Tesla day) theme: dark, readable text on a stronger tint, with a coloured edge (the pale colours
+       made for the dark themes were almost invisible in daylight) */
+    'html[data-theme="teslaDay"] .tn-rline{background:rgba(0,0,0,.05);color:#171a20}'+
+    'html[data-theme="teslaDay"] .tn-rline.amber{background:#fdf0d5;color:#7a4a00;border-left:4px solid #e0a020}'+
+    'html[data-theme="teslaDay"] .tn-rline.red{background:#fde2e1;color:#9b1c1c;border-left:4px solid #d93025}'+
+    'html[data-theme="teslaDay"] .tn-rline.green{background:#dcf5e3;color:#14532d;border-left:4px solid #1e9e4a}'+
+    'html[data-theme="teslaDay"] #tn-rbub .b{color:#171a20}html[data-theme="teslaDay"] #tn-rbub.amber .b{color:#7a4a00}html[data-theme="teslaDay"] #tn-rbub.red .b{color:#9b1c1c}html[data-theme="teslaDay"] #tn-rbub.green .b{color:#14532d}';
   document.head.appendChild(st);
 };
 /* other ways to go (before Go): the other routes are drawn on the map in grey with their times, and Rocco says
