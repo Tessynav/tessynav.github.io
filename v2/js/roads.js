@@ -1366,9 +1366,10 @@ TN.glowDisc=function(G,cx,cy,cz,R,k,r,col,kind,ux,uz){
 /* street lights: posts with an arm over the road along highways, main streets and bridges, about every 40-50 m.
    At night (glow layer) the lamp heads shine amber and each lamp casts a soft, gentle pool of amber light on the road. */
 /* is there a road surface (ground, ramp or bridge) at (x,z) within pad metres, at about height y? */
-TN.Net.prototype.roadAtHeight=function(x,z,y,pad){
+TN.Net.prototype.roadAtHeight=function(x,z,y,pad,below){
+  /* (below: also any road under that point, lower down: a lamp of a low ramp must not stand in the street beneath) */
   const hit=(w,i)=>{if(w.tun) return false;const r=TN.seg(w,i,x,z);if(r.d>=TN.width(w)/2+pad) return false;
-    const h=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);return Math.abs(h-y)<1.5;};
+    const h=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);return Math.abs(h-y)<1.5||(below&&h<y);};
   const G=this._sg;
   if(G){for(let ax=Math.floor(x/10)-1;ax<=Math.floor(x/10)+1;ax++) for(let az=Math.floor(z/10)-1;az<=Math.floor(z/10)+1;az++){
       const l=G.get(ax*1e6+az);if(l) for(const e of l) if(hit(e[0],e[1])) return true;}
@@ -1396,7 +1397,7 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       let x=0,z=0,ok=false;
       for(const extra of [0,1,2]){
         const off=(w.br||y0>0.5?hw+0.25:hw+0.9)+extra;x=x0+ox*off;z=z0+oz*off;
-        if(!this.roadAtHeight(x,z,y0,0.6)){ok=true;break;}
+        if(!this.roadAtHeight(x,z,y0,0.6,y0<6)){ok=true;break;}   /* (a low ramp's lamp: not over a street below either) */
         if(w.br||y0>0.5) break;
       }
       if(!ok) continue;

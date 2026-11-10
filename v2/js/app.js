@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=108;
+TN.APPBUILD=109;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -506,7 +506,10 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
          const h2=dH*Math.PI/180;dX+=Math.sin(h2)*dV*dt;dZ-=Math.cos(h2)*dV*dt;
        }
        car=Object.assign({},car,{x:dX,z:dZ,hd:dH});dispHd=dH;}
-      scene.placeCar(car.x,car.z,car.y||0,dispHd);
+      /* the car's height changes at most 5 m per second: when it moves onto a road piece at another height (a ramp
+         beside a raised highway, after navigation ends), it glides up or down instead of jumping 10 m at once */
+      {const yT=car.y||0;if(TN._ys==null||Math.abs(yT-TN._ys)>30) TN._ys=yT;else{const st=5*Math.min(0.1,dt||0.016);TN._ys+=Math.max(-st,Math.min(st,yT-TN._ys));}}
+      scene.placeCar(car.x,car.z,TN._ys,dispHd);
       if(ground){try{ground.update({x:car.x,z:car.z,hd:dispHd},dt);}catch(e){}}
       if(TN.shadows){try{const sl=TN.fromLocal(car.x,car.z);TN.shadows.update(sl[0],sl[1],{x:car.x,z:car.z,y:car.y,hd:dispHd,br:car.br});}catch(e){}}
       try{scene.updateBeam(car);}catch(e){}
