@@ -589,7 +589,7 @@ TN.Nav.prototype.draw=function(from){
   const pos=[],idx=[],col=[],rd=[],hw=1.3,CL=[];let n=0;const tc=new THREE.Color();
   const a0=Math.max(0,from|0);
   let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
-  this.fitRange(Math.max(0,a0-40),a1);this.drawVer=this.api.net.ver;
+  this.fitRange(Math.max(0,a0-40),a1);this.drawVer=this.api.net.ver+':'+(this.api.net.hVer||0);
   for(let i=a0;i<=a1;i++){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     const m=R.sm[i]||[0,0,0,0];let y=m[3]+0.22;let lo=m[0];
@@ -1056,7 +1056,7 @@ TN.Nav.prototype.update=function(dt){
   const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;this.lastOff=off;
   this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,glued:!!(TN.settings&&TN.settings.glueRoute),drawn:this.drawn});}
   const laneMoved=this.latS!=null&&Math.abs(this.latS-(this.drawLat==null?this.latS:this.drawLat))>0.35;
-  if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||this.api.net.ver!==this.drawVer||laneMoved){this.draw(Math.max(0,bi-4));this.drawLat=this.latS;}
+  if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||(this.api.net.ver+':'+(this.api.net.hVer||0))!==this.drawVer||laneMoved){this.draw(Math.max(0,bi-4));this.drawLat=this.latS;}
   if(this.rerouting) return;
   /* a stop reached (passed its arrival point): dropped from the list, so a recalculation won't send you back */
   {const st=R.steps.find(q=>q.stop===1);if(st&&s>st.at+30&&this.stops.length){this.stops.shift();this.stopPins();for(const q of R.steps) if(q.stop) q.stop--;}}

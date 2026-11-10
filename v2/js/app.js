@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=109;
+TN.APPBUILD=110;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -20,15 +20,20 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   TN.RW=null;
   if(typeof Worker!=='undefined'&&!/[?&]rw=0/.test(location.search)){try{
     const rs=document.querySelector('script[src*="roads.js"]'),rv=rs&&(rs.getAttribute('src').match(/v=(\d+)/)||[])[1]||'1';
-    const W=new Worker('js/roadworker.js?v=1&r='+rv),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
-    const failAll=()=>{RW.failed=true;net.mirror=false;for(const cb of RW.pend.values()){try{cb(null,'stopped');}catch(e){}}RW.pend.clear();};
+    const W=new Worker('js/roadworker.js?v=2&r='+rv),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
+    /* if it stops: everything is done here again as before, heights included (a full rebuild) */
+    const failAll=()=>{if(RW.failed&&!net.remoteHeights) return;RW.failed=true;net.mirror=false;
+      if(net.remoteHeights){net.remoteHeights=false;if(!net.job) net.startRebuild();else net._dirty=true;}
+      for(const cb of RW.pend.values()){try{cb(null,'stopped');}catch(e){}}RW.pend.clear();};
+    TN.RWfail=failAll;
     W.onmessage=e=>{const m=e.data;
       if(m.t==='ready') RW.ready=true;
+      else if(m.t==='heights'){const t0=performance.now();net.applyHeights(m.h);net.hVer=(net.hVer||0)+1;TN.prof('network',performance.now()-t0);}
       else if(m.t==='synced') RW.ver=m.ver;
       else if(m.t==='cell'||m.t==='error'){const cb=RW.pend.get(m.id);RW.pend.delete(m.id);if(cb) cb(m.t==='cell'?m.L:null,m.t==='error'?m.msg:null);
         if(m.t==='error'&&TN.fb) try{TN.fb.note('road builder error',{msg:m.msg});}catch(e){}}};
     W.onerror=()=>failAll();
-    net.mirror=true;TN.RW=RW;}catch(e){TN.RW=null;}}
+    net.mirror=true;net.remoteHeights=true;TN.RW=RW;}catch(e){TN.RW=null;}}   /* (round 2: the heights are worked out in the background too) */
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
@@ -459,7 +464,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     {const RW=TN.RW;if(RW&&RW.ready&&!RW.failed&&!net.job&&RW.syncVer!==net.ver){const tn=performance.now();
       if(!RW.sj){RW.sj=net.workerSyncJob();RW.sjVer=net.ver;}
       let r;do{r=RW.sj.next();}while(!r.done&&performance.now()-tn<Math.max(1,Math.min(3,TN.workLeft())));
-      if(r.done){RW.sj=null;if(RW.sjVer===net.ver){try{RW.w.postMessage(r.value.msg,r.value.transfer);RW.syncVer=net.ver;}catch(e){RW.failed=true;net.mirror=false;}}}
+      if(r.done){RW.sj=null;if(RW.sjVer===net.ver){try{RW.w.postMessage(r.value.msg,r.value.transfer);RW.syncVer=net.ver;}catch(e){failAll();}}}
       TN.prof('network',performance.now()-tn);}}
     const t0=performance.now();
     let car=track.frame(Date.now(),dt);

@@ -150,6 +150,8 @@ TN.Net.prototype.rebuildJob=function*(){
     if(++n%15===0) yield;
   }
   this.keys=keys;this.idx=idx;
+  /* (heights worked out by the background road builder: here only the index; the heights arrive from it) */
+  if(this.remoteHeights){this.ver++;return;}
   yield* this.heights();
   {let n=0;for(const w of this.ways.values()){w.br=w._br;w.H=w._H||0;w.W=w._W;w.hs=w._hs?w._hs.slice():w._hs;w.cb=null;if(++n%800===0) yield;}}
   yield;
@@ -158,7 +160,8 @@ TN.Net.prototype.rebuildJob=function*(){
 };
 /* what the background road builder needs after a network rebuild: the packs added and dropped since last time, and
    the heights of the road pieces that changed (packed into number arrays, cheap to send) */
-TN.Net.prototype.workerSyncJob=function*(){
+/* the heights of the road pieces that changed since last time, packed into number arrays (cheap to send) */
+TN.Net.prototype.packHeights=function*(){
   const ids=[],meta=[],hsl=[];let nh=0,nn=0;
   for(const w of this.ways.values()){
     if(++nn%300===0) yield;   /* (in small slices, so it never stalls a frame) */
@@ -169,9 +172,21 @@ TN.Net.prototype.workerSyncJob=function*(){
   }
   const H={ids:new Float64Array(ids),meta:new Float32Array(meta),hs:new Float32Array(nh)};
   let o=0;for(const a of hsl){H.hs.set(a,o);o+=a.length;}
-  const msg={t:'sync',ver:this.ver,remVer:this.remVer||0,add:this._wAdd||[],drop:this._wDrop||[],h:H};
+  return H;
+};
+TN.Net.prototype.applyHeights=function(h){if(!h) return 0;const ids=h.ids,m=h.meta,hs=h.hs;let off=0,n2=0;
+  for(let i=0;i<ids.length;i++){const n=m[i*4+3],w=this.ways.get(ids[i]);
+    if(w){w.br=!!m[i*4];w._br=w.br;w.H=m[i*4+1];w._H=w.H;const W=m[i*4+2];w.W=isNaN(W)?undefined:W;w._W=w.W;
+      w.hs=n?Array.from(hs.subarray(off,off+n)):null;w._hs=w.hs;w.cb=null;n2++;}
+    off+=n;}
+  return n2;};
+/* what the background road builder needs after a network rebuild: the packs added and dropped since last time, and
+   (when the heights are worked out here) the heights that changed */
+TN.Net.prototype.workerSyncJob=function*(){
+  const H=this.remoteHeights?null:(yield* this.packHeights());
+  const msg={t:'sync',ver:this.ver,remVer:this.remVer||0,hv2:!!TN.HV2,remote:!!this.remoteHeights,add:this._wAdd||[],drop:this._wDrop||[],h:H};
   this._wAdd=[];this._wDrop=[];
-  return {msg:msg,transfer:[H.ids.buffer,H.meta.buffer,H.hs.buffer]};
+  return {msg:msg,transfer:H?[H.ids.buffer,H.meta.buffer,H.hs.buffer]:[]};
 };
 TN.Net.prototype.rebuildIndex=function(){const j=this.rebuildJob();while(!j.next().done);};
 TN.Net.prototype.startRebuild=function(){this.job=this.rebuildJob();};

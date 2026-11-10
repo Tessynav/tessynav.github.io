@@ -116,7 +116,7 @@ TN.Scene.prototype.update=function(lng,lat){
   if(this.job&&this.job.wait){
     const J=this.job;
     if(J.res){this.job=null;const L=J.res;this.fin={k:J.k,L:L,layers:['lot','curb','road','mark','glow'].filter(q=>L[q]&&L[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};}
-    else if(J.fail||performance.now()-J.t>10000){if(!J.fail&&TN.RW){TN.RW.failed=true;net.mirror=false;}this.job={k:J.k,g:net.buildCellJob(J.x,J.y)};}
+    else if(J.fail||performance.now()-J.t>10000){if(!J.fail&&TN.RW){if(TN.RWfail) TN.RWfail();else{TN.RW.failed=true;net.mirror=false;}}this.job={k:J.k,g:net.buildCellJob(J.x,J.y)};}
     return;
   }
   if(this.job){
@@ -176,7 +176,7 @@ TN.Scene.prototype.update=function(lng,lat){
      a moment while it catches up; built here as before when there's none (or it stopped) */
   const RW=TN.RW;
   if(RW&&!RW.failed){
-    if(!RW.ready){if(performance.now()-RW.t0>6000){RW.failed=true;net.mirror=false;}else return;}
+    if(!RW.ready){if(performance.now()-RW.t0>6000){if(TN.RWfail) TN.RWfail();else{RW.failed=true;net.mirror=false;}}else return;}
     else if(RW.ver!==net.ver) return;
     else{const id=++RW.id,J={k:best.k,wait:true,t:performance.now(),x:best.x,y:best.y};this.job=J;
       RW.pend.set(id,(L,err)=>{if(err||!L) J.fail=true;else J.res=L;});
