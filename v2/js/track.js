@@ -302,6 +302,16 @@ TN.Track.prototype.heightNear=function(x,z,h,y0){
   /* (of the roads there, the one nearest the car's current height: never a bridge overhead or a road below) */
   return best;
 };
+/* a point kept on the road surface: if it's beyond the edge of the nearest road going roughly its way (1 m inside the
+   edge), the point moved back onto it; null when it's already on a road or no road is near */
+TN.Track.prototype.onRoad=function(x,z,hd){
+  let bd=1e9,bp=null;
+  this.net.near(x,z,12,(v,k)=>{if(v.tun) return;const r=TN.seg(v,k,x,z);const vh=(Math.atan2(r.tx,-r.tz)*180/Math.PI+360)%360;
+    const a2=Math.min(TN.angDiff(vh,hd),TN.angDiff((vh+180)%360,hd));if(a2>70) return;
+    const lim=Math.max(0.5,TN.width(v)/2-1);const over=r.d-lim;if(over<bd){bd=over;bp=[r.qx,r.qz,r.d];}});
+  if(bp&&bd>0&&bd<8){const k2=bd/bp[2];return [x+(bp[0]-x)*k2,z+(bp[1]-z)*k2];}
+  return null;
+};
 TN.Track.prototype.frame=function(now,dt){
   const L=this.last;if(!L) return null;
   /* (a quiet GPS, e.g. in a tunnel, keeps the car moving along its road at the last speed, as before) */
@@ -348,10 +358,19 @@ TN.Track.prototype.frame=function(now,dt){
     if(!this.wasTurning&&car&&car.x!=null&&Math.hypot(car.x-tx,car.z-tz)<15) this.turnOff=[car.x-tx,car.z-tz];
     if(!this.turnOff) this.turnOff=[0,0];
     const dec=Math.exp(-dt*0.7);this.turnOff[0]*=dec;this.turnOff[1]*=dec;tx+=this.turnOff[0];tz+=this.turnOff[1];
+    /* through a corner the car follows your path, but never over the sidewalk: the GPS often cuts the corner by a few
+       metres (Chemin du Golf on Nuns' Island), so the point is kept on the road surface (the nearest road going your
+       way, 1 m inside its edge) */
+    {let bd=1e9,bp=null;const hr=hd;
+     this.net.near(tx,tz,12,(v,k)=>{if(v.tun) return;const r=TN.seg(v,k,tx,tz);const vh=(Math.atan2(r.tx,-r.tz)*180/Math.PI+360)%360;
+       const a2=Math.min(TN.angDiff(vh,hr),TN.angDiff((vh+180)%360,hr));if(a2>70) return;
+       const lim=Math.max(0.5,TN.width(v)/2-1);const over=r.d-lim;if(over<bd){bd=over;bp=[r.qx,r.qz,r.d,lim];}});
+     if(bp&&bd>0&&bd<8){const k2=bd/bp[2];tx+=(bp[0]-tx)*k2;tz+=(bp[1]-tz)*k2;}}
     if(!car||car.x==null||Math.hypot(car.x-tx,car.z-tz)>30) car={x:tx,z:tz,hd:hd,v:L.v,y:car?car.y:0};
     else car={x:car.x,z:car.z,hd:car.hd,v:L.v,y:car.y||0};
     const k=1-Math.exp(-dt*3);car.x+=(tx-car.x)*k;car.z+=(tz-car.z)*k;
     car.hd=(car.hd+TN.angDiff2(hd,car.hd)*Math.min(1,dt*4)+360)%360;
+    {const q=this.onRoad(car.x,car.z,car.hd);if(q){car.x=q[0];car.z=q[1];}}   /* (the drawn car too stays on the road surface) */
     /* height while turning: the road the car is going onto (on a ramp coming down off a bridge the height was held,
        then dropped in steps when the car got back on a road piece) */
     {const yT=this.heightNear(car.x,car.z,h,car.y);if(yT!=null) car.y+=(yT-car.y)*Math.min(1,dt*4);}
@@ -432,6 +451,10 @@ TN.Track.prototype.frame=function(now,dt){
   /* like Codriver: no lane guessing (the GPS can't tell lanes apart). One-way roads and highways: the car rides in
      the middle of its carriageway. Two-way streets: in the middle of the right half. Steady, no lane jumps. */
   let target=w.ow?0:Math.max(1.2,W/4);
+  /* highways: the car keeps its line from one road piece to the next instead of re-centring on each one. Where lanes
+     are added or dropped, each piece's middle shifts by a lane or two, and re-centring swung the car left and right
+     (a zigzag on the A-15 and A-10). It only comes back inside the edges (1.8 m in) when a piece is narrower. */
+  if(w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&car.lat!=null){const edge=Math.max(0,W/2-1.8),drift=Math.sign(car.lat)*Math.min(Math.abs(car.lat),0.25*dt);target=Math.max(-edge,Math.min(edge,car.lat-drift));}   /* (and drifts back to the middle very slowly, 25 cm a second) */
   /* optional (Settings -> Follow my lane on wide roads, off by default): on one-way roads with 3 lanes or more, the
      car takes the lane the GPS has clearly been in, whole lanes only, changing after 2 s near another lane's centre.
      Closer to your real lane on wide highways and bridges, but it moves sideways more than the steady middle. */
@@ -458,7 +481,9 @@ TN.Track.prototype.frame=function(now,dt){
   {const sp=car.laneK==null&&!TN.navActive&&(L.acc||9)<=6&&L.v>3?this.splitAhead(w,dir,car.s,180):null;
    car.gf=car.gf==null?gl:car.gf+(gl-car.gf)*(1-Math.exp(-dt/0.5));
    if(sp&&sp.has(Math.sign(car.gf))&&Math.abs(car.gf)>Math.max(2,W/4)){const lim=W/2+8;target=Math.sign(car.gf)*Math.min(Math.abs(car.gf),lim);}}
-  if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>W/2+3) car.ease.lat0=Math.sign(car.ease.lat0)*(W/2+3);
+  /* (gliding onto a new road piece: on highways up to 3 m past the edge, on city streets never onto the sidewalk) */
+  {const eLim=/^(motorway|trunk)/.test(w.cls||'')?W/2+3:Math.max(0.5,W/2-0.8);
+   if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>eLim) car.ease.lat0=Math.sign(car.ease.lat0)*eLim;}
   if(car.ease){
     /* after moving onto another road piece (a split, a merge, a turn), the car glides to its new place over the
        next 35 m of driving, like steering, instead of sliding sideways on the spot */

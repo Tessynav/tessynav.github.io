@@ -1004,7 +1004,10 @@ TN.Nav.prototype.place=function(base,L,now,dt){
    /* (a different direction must last a moment: during a normal turn the two briefly differ) */
    const fresh=now-L.t<3000;   /* only judge from a recent GPS reading (not one frozen during a pause) */
    if(fresh&&gd>8&&off>55&&L.v>2) this.relT=(this.relT||0)+dt;else this.relT=0;
-   if(gd>18||this.relT>0.35||this.rerouting){if(this.ps!=null){this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.relAt=Date.now();}this.ps=null;return null;}}
+   /* in a tunnel the GPS is only the car's own estimate, often 15-20 m off the tunnel's curves: the route keeps the
+      car (not let go at 18 m, which threw it back and forth between the route and the estimate) */
+   const inTun=!!(base&&base.w&&base.w.tun)&&(L.acc||0)>4.5;this.inTun=inTun;
+   if(gd>(inTun?45:18)||this.relT>0.35||this.rerouting){if(this.ps!=null){this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.relAt=Date.now();}this.ps=null;return null;}}
   this.pi=bi;
   /* projection on the segment for a precise distance */
   const i0=Math.max(0,Math.min(R.pts.length-2,bi-(bi>0&&bi===R.pts.length-1?1:0)));
@@ -1015,7 +1018,8 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   if(this.ps==null) this.ps=sGps;
   /* glide at the current speed, and correct a part of the gap each second (never backwards when moving) */
   const v=L.v<0.5?0:L.v;
-  let ns=this.ps+v*dt+(sGps-this.ps)*Math.min(1,dt*1.5);
+  /* (in a tunnel the estimate only nudges it: the car moves at your speed, smoothly) */
+  let ns=this.ps+v*dt+(sGps-this.ps)*Math.min(1,dt*(this.inTun?0.35:1.5));
   if(v>0.5&&ns<this.ps) ns=this.ps;
   this.ps=Math.max(0,Math.min(R.L,ns));
   /* point and direction on the path at that distance */
