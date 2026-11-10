@@ -55,6 +55,6 @@ self.onmessage=e=>{const m=e.data;
       for(const q of ['lot','curb','road','mark','glow']){const G=L[q];if(!G||!G.n) continue;const T=typed(G);out[q]=T;tr.push(T.p.buffer,T.c.buffer,T.i.buffer);}
       self.postMessage({t:'cell',k:m.k,id:m.id,ver:net.ver,L:out},tr);
     }
-  }catch(err){self.postMessage({t:'error',k:m.k,id:m.id,msg:String(err&&err.message||err)});}
+  }catch(err){self.postMessage({t:'error',k:m.k,id:m.id,msg:String(err&&err.message||err)+' @'+m.t+' '+String(err&&err.stack||'').split('\n').slice(1,3).join(' | ')});}
 };
 self.postMessage({t:'ready'});
