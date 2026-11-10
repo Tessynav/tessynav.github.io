@@ -16,8 +16,14 @@ TN.Voice.prototype.ctx=function(){
   try{if(!this.ac){const AC=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AC){this.ac=false;return null;}
       this.ac=new AC();const c=this.ac.createDynamicsCompressor();c.threshold.value=-26;c.knee.value=8;c.ratio.value=6;c.attack.value=0.003;c.release.value=0.2;
       this.gain=this.ac.createGain();c.connect(this.gain);this.gain.connect(this.ac.destination);this.comp=c;}
-    if(this.ac.state==='suspended') this.ac.resume();return this.ac;}catch(e){this.ac=false;return null;}
+    /* (the car's browser only lets sound start after a tap: until then, Normal volume and no chime, never silence) */
+    if(this.ac.state!=='running'){try{this.ac.resume();}catch(e){}return null;}
+    return this.ac;}catch(e){this.ac=false;return null;}
 };
+/* unlocked by the first tap anywhere (and by changing the voice settings) */
+TN.Voice.prototype.unlock=function(){try{const AC=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AC||this.ac===false) return;
+  if(!this.ac) this.ctx();else if(this.ac.state!=='running') this.ac.resume();}catch(e){}};
+if(typeof document!=='undefined') for(const ev of ['pointerdown','touchstart','keydown']) document.addEventListener(ev,()=>{try{TN.voice&&TN.voice.unlock();}catch(e){}},{passive:true,capture:true});
 TN.Voice.prototype.boost=function(){const v=TN.settings&&TN.settings.voiceVol;return v==='xloud'?3.2:v==='loud'?2.0:1;};
 /* a soft two-note chime (made on the spot, no file), then call next */
 TN.Voice.prototype.chime=function(next){

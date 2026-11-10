@@ -34,6 +34,8 @@ TN.applyTheme=function(name,night){
 TN.Settings.prototype.apply=function(k){
   const m=this.m,s=this.s,sc=m.scene;
   try{
+    if(k==='chime'&&s.chime&&TN.voice){TN.voice.unlock();setTimeout(()=>{try{TN.voice.chime(()=>{});}catch(e){}},150);}
+    if(k==='voiceVol'&&TN.voice){TN.voice.unlock();setTimeout(()=>{try{TN.voice.say(s.voiceVol==='xloud'?'Extra loud':s.voiceVol==='loud'?'Loud':'Normal volume',true);}catch(e){}},200);}
     if(k==='trees'&&m.trees){const T=m.trees;
       if(!s.trees){T.on=false;for(const c of [...T.cells.keys()]) T.free(c);}
       else{T.on=true;if(!T.index) fetch('../trees/index.json').then(r=>r.ok?r.json():null).then(j=>{if(j){T.T=j.tile||0.05;T.index=new Set(j.tiles||[]);}}).catch(()=>{});}}

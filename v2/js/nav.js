@@ -1109,7 +1109,7 @@ TN.Nav.prototype.update=function(dt){
         [{d:400,text:'In 400 metres, '+t+w},{d:150,text:'In 150 metres, '+t+w},{d:30,text:I2.t+w}];}
     let due=null;for(const an of anns){const key=k+':'+an.d;if(this.said.has(key)) continue;if(dNext<=an.d+5){this.said.add(key);due=an;}}
     /* (only the latest one due is spoken, so nothing piles up after a pause) */
-    if(due&&dNext>-10&&!(due.d>dNext+250)) TN.voice.say(due.text,true,due.d<=60&&nx.type!=='arrive');}   /* (the last one, at the turn, may get the chime) */
+    if(due&&dNext>-10&&!(due.d>dNext+250)){const lastD=Math.min(...anns.map(x=>x.d));TN.voice.say(due.text,true,due.d===lastD&&nx.type!=='arrive');}}   /* (the last one for a turn, at the turn, may get the chime) */
   /* the following turn ("Then: ...") */
   {const k=R.steps.indexOf(nx),n2=k>=0?R.steps[k+1]:null;
    let th='';if(n2&&nx.type!=='arrive'){const I2=this.instr(n2);th='Then: '+(n2.type==='arrive'?'arrive':I2.t.charAt(0).toLowerCase()+I2.t.slice(1))+(I2.where&&n2.type!=='arrive'?' onto '+I2.where:'');}
