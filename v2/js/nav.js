@@ -446,7 +446,18 @@ TN.Nav.prototype.localStreet=async function(to){
     return b?b.p:null;}catch(e){return null;}
 };
 TN.Nav.prototype.fetchRoute=async function(from,to){
-  const rt=await this.fetchRouteOnce(from,to);
+  let rt=await this.fetchRouteOnce(from,to);
+  /* the car access point Mapbox gives can be on a back street (a store's loading dock, the far side of a plaza: the
+     Provigo at Place du Commerce sent you 2 km around the block). When it's away from the place itself, the route to
+     the place (which ends on the nearest drivable road, often the parking lot in front) is tried too, and kept when
+     it's clearly quicker and still ends close to the place */
+  try{const d=this.dest,stopsNone=!(this.stops&&this.stops.length);
+    if(rt&&d&&!d.ub&&stopsNone&&d.rlng!=null&&Math.abs(to[0]-d.rlng)<1e-7&&Math.abs(to[1]-d.rlat)<1e-7&&TN.distLL([d.lng,d.lat],[d.rlng,d.rlat])>40){
+      const keep=this.alts;const rt2=await this.fetchRouteOnce(from,[d.lng,d.lat]);
+      if(rt2){const C=rt2.geometry.coordinates,e=C[C.length-1],near=TN.distLL(e,[d.lng,d.lat]);
+        const quicker=rt2.duration<rt.duration-60||rt2.duration<rt.duration*0.85;
+        this.note('entrance check',{name:d.name,accessMin:Math.round(rt.duration/60),placeMin:Math.round(rt2.duration/60),endFromPlace:Math.round(near),used:!!(quicker&&near<150)});
+        if(quicker&&near<150){rt2.viaPlace=true;rt=rt2;this.alts=null;}else this.alts=keep;}}}catch(e){}
   /* a bad ending (like a station beside a highway, reached by crossing a bridge and coming back): ask again with
      the destination on the nearest local street, and keep that route if it's better */
   try{const bad=TN.badEnding(rt,to);
@@ -484,7 +495,10 @@ TN.Nav.prototype.plan=async function(reroute){
   try{
     const rt=await this.fetchRoute(from,to);this.wantAlts=false;
     if(this.alts&&this.alts.length>1&&rt.adjusted) this.alts=null;   /* (the route's end was corrected: compare nothing) */
-    this.setRoute(rt);this.curRt=rt;
+    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;
+    /* (for the trip recording: where this route really goes, to check a wrong destination) */
+    try{const d=this.dest,to=TN.routeTo(d),C=rt.geometry.coordinates,e=C[C.length-1];
+      this.note('route to',{name:d.name,place:[+d.lng.toFixed(5),+d.lat.toFixed(5)],to:[+to[0].toFixed(5),+to[1].toFixed(5)],end:[+e[0].toFixed(5),+e[1].toFixed(5)],km:+(rt.distance/1000).toFixed(2),reroute:!!reroute});}catch(e){}
     if(!reroute) this.overview();
   }catch(e){
     this.note('route failed',{reroute:!!reroute,err:String(e&&e.message||e)},true);
@@ -818,7 +832,7 @@ TN.Nav.prototype.overview=function(){
   /* the car access point (Mapbox's "where cars reach this place") far from the building: offer the building instead */
   {const d=this.dest;if(d&&d.rlng!=null&&TN.distLL([d.lng,d.lat],[d.rlng,d.rlat])>50&&!this.stops.length){
     const bt=this.ov.querySelector('.btns'),fr=TN.LANG==='fr';
-    const msg=d.ub?(fr?'Vers le bâtiment.':'Going to the building.'):(fr?'Vers l’accès voiture (stationnement).':'Going to the car access point (parking).');
+    const msg=d.ub?(fr?'Vers le bâtiment.':'Going to the building.'):this.viaPlace?(fr?'Vers le stationnement le plus proche (plus court que l’accès indiqué).':'Going to the nearest parking (quicker than the listed car access).'):(fr?'Vers l’accès voiture (stationnement).':'Going to the car access point (parking).');
     const sw=d.ub?(fr?'Aller à l’accès voiture':'Go to the car access point'):(fr?'Aller au bâtiment':'Go to the building instead');
     if(bt){bt.insertAdjacentHTML('beforebegin','<div class="tn-acc notr" style="display:flex;align-items:center;gap:10px;margin:8px 0;font-size:14px;color:var(--tn-sub,#b9b6ae)"><span style="flex:1">'+msg+'</span><button class="acc" style="border:0;border-radius:9px;padding:7px 11px;font:600 13px system-ui,sans-serif;background:var(--tn-btn,#45474d);color:var(--tn-text,#f3f1ec)">'+sw+'</button></div>');
       this.ov.querySelector('.tn-acc .acc').onclick=ev=>{ev.stopPropagation();d.ub=!d.ub;
@@ -1450,4 +1464,3 @@ TN.Nav.prototype.roccoArriveShow=function(text,charging){
   document.body.appendChild(el);
   clearTimeout(this.rarrT);this.rarrT=setTimeout(()=>{try{el.remove();}catch(e){}},9400);
 };
-
