@@ -7,11 +7,10 @@
 <title>TessyNav</title>
 <!-- the map (MapLibre) and 3D (three.js) libraries: from jsDelivr, with unpkg as a backup if jsDelivr doesn't answer
      (an outage of a single library site used to leave the app without its map) -->
-<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" onerror="this.onerror=null;this.href='https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'">
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-<script>window.THREE||document.write('<script src="https://unpkg.com/three@0.158.0/build/three.min.js"><\/script>')</script>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" media="print" onload="this.media='all'" onerror="this.onerror=null;this.media='all';this.href='https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'">
+<!-- (the two libraries are loaded at the end of the page, after the start screen is up: the screen used to stay white
+     for several seconds while they downloaded) -->
+<style>html{background:#080e1a}</style>
 <style>
 html,body,#map{margin:0;height:100%;background:#e9ece6}
 :root{--tn-panel-rgb:43 45 49;--tn-text:#f3f1ec;--tn-sub:#b9b6ae;--tn-tip:#f2b55a;--tn-link:#f2b55a;--tn-accent:#e8913a;--tn-on-accent:#2b1a08;--tn-btn:#45474d;--tn-off:#55575d;--tn-line:rgba(255,255,255,.09);--tn-joke:#f2b55a;--tn-danger:#ff8a80}
@@ -83,6 +82,11 @@ button.hud{border:0;cursor:pointer}
 </head>
 <body>
 <div id="tn-boot"><div class="road"></div><div class="beam"></div><div class="hl l"></div><div class="hl r"></div><div class="nm">Tessy<b>Nav</b></div><div class="sub">Navigation for Tesla</div></div>
+<!-- the map (MapLibre) and 3D (three.js) libraries, from jsDelivr with unpkg as a backup -->
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script>window.THREE||document.write('<script src="https://unpkg.com/three@0.158.0/build/three.min.js"><\/script>')</script>
 <script>
 window.TN_T0=performance.now();
 /* the opening animation starts dark from the first moment (no blank screen); skipped after an update or with ?intro=0 */
