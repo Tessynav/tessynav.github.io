@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=112;
+TN.APPBUILD=113;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -32,7 +32,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
       if(m.t==='ready'){RW.ready=true;rwNote('ready');}
       else if(m.t==='heights'){const t0=performance.now();net.applyHeights(m.h);net.hVer=(net.hVer||0)+1;TN.prof('network',performance.now()-t0);}
       else if(m.t==='synced'){RW.ver=m.ver;RW.syncedT=performance.now();}
-      else if(m.t==='cell'||m.t==='bld'||m.t==='error'){const cb=RW.pend.get(m.id);RW.pend.delete(m.id);if(cb) cb(m.t==='cell'?m.L:m.t==='bld'?m.R:null,m.t==='error'?m.msg:null);
+      else if(m.t==='cell'||m.t==='bld'||m.t==='error'){const cb=RW.pend.get(m.id);RW.pend.delete(m.id);if(cb) cb(m.t==='cell'?m.L:m.t==='bld'?m.R:null,m.t==='error'?m.msg:null,m.ver);
         if(m.t==='error'){rwNote('error',{msg:String(m.msg).slice(0,200)});
           /* an error while catching up with the network (not one area): the background builder is out of step, so
              everything goes back to being done here */

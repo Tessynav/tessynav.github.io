@@ -115,7 +115,7 @@ TN.Scene.prototype.update=function(lng,lat){
      if it doesn't come back (the background builder stopped), the area is built here as before */
   if(this.job&&this.job.wait){
     const J=this.job;
-    if(J.res){this.job=null;const L=J.res;this.fin={k:J.k,L:L,layers:['lot','curb','road','mark','glow'].filter(q=>L[q]&&L[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};}
+    if(J.res){this.job=null;const L=J.res;this.fin={k:J.k,L:L,ver:J.ver,layers:['lot','curb','road','mark','glow'].filter(q=>L[q]&&L[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};}
     else if(J.fail||performance.now()-J.t>10000){if(!J.fail&&TN.RW){if(TN.RWfail) TN.RWfail();else{TN.RW.failed=true;net.mirror=false;}}this.job={k:J.k,g:net.buildCellJob(J.x,J.y)};}
     return;
   }
@@ -155,7 +155,8 @@ TN.Scene.prototype.update=function(lng,lat){
     if(F.li>=F.layers.length){
       this.fin=null;const grp=F.grp.children.length?F.grp:null;this.freeCell(F.k);
       if(grp) this.three.scene.add(grp);
-      this.cells.set(F.k,{grp:grp,lamps:F.L.lamps||[]});this.glowKey=null;   /* (refresh which light pools are shown) */
+      /* (built from an older map than the one now loaded: shown, and rebuilt again soon) */
+      this.cells.set(F.k,{grp:grp,lamps:F.L.lamps||[],old:F.ver!=null&&F.ver!==net.ver});this.glowKey=null;   /* (refresh which light pools are shown) */
     }
     TN.prof('roads',performance.now()-t0);
     return;
@@ -177,9 +178,12 @@ TN.Scene.prototype.update=function(lng,lat){
   const RW=TN.RW;
   if(RW&&!RW.failed){
     if(!RW.ready){if(performance.now()-RW.t0>6000){if(TN.RWfail) TN.RWfail();else{RW.failed=true;net.mirror=false;}}else return;}
-    else if(RW.ver!==net.ver) return;
+    /* (it no longer waits until the background builder has caught up with every new piece of map: while it was busy
+       working out new heights, the areas around the car waited and the roads near the car stayed blank. An area built
+       with a slightly older map is rebuilt by itself once the newer one is in.) */
+    else if(RW.ver<0) return;
     else{const id=++RW.id,J={k:best.k,wait:true,t:performance.now(),x:best.x,y:best.y};this.job=J;
-      RW.pend.set(id,(L,err)=>{if(err||!L) J.fail=true;else J.res=L;});
+      RW.pend.set(id,(L,err,ver)=>{if(err||!L) J.fail=true;else{J.res=L;J.ver=ver;}});
       try{RW.w.postMessage({t:'cell',x:best.x,y:best.y,k:best.k,id:id});}catch(e){J.fail=true;}
       TN.prof('roads',performance.now()-t0);return;}
   }
