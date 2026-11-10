@@ -253,6 +253,7 @@ TN.Nav.prototype.pick=async function(it){
     return;}
   this.stops=[];this.stopPins();
   this.dest=it;this.plan(false);
+  try{this.osmBiz(it);}catch(e){}   /* (hours, phone and website from OpenStreetMap, when Mapbox has none) */
 };
 /* add a stop: the search box opens (also while driving), the next place picked becomes a stop on the way */
 TN.Nav.prototype.addStop=function(){
@@ -697,6 +698,50 @@ TN.Nav.prototype.clearMapLine=function(){
   if(this.pin){try{this.pin.remove();}catch(e){}this.pin=null;}
 };
 /* business details (from Mapbox, when the place is a business): photo, rating, hours, phone, website */
+/* OpenStreetMap's opening_hours, the common forms ("Mo-Fr 07:00-23:00; Sa,Su 08:00-22:00", "24/7", "off"), as
+   periods [day (0 = Monday), "HHMM", day, "HHMM"]; null when it can't be read */
+TN.osmHours=function(oh){
+  if(!oh||typeof oh!=='string') return null;oh=oh.trim();
+  if(/^24\/7$/.test(oh)) return [0,1,2,3,4,5,6].map(d=>[d,'0000',(d+1)%7,'0000']);
+  const D={mo:0,tu:1,we:2,th:3,fr:4,sa:5,su:6},week={};let ok=false;
+  for(let rule of oh.split(';')){rule=rule.trim();if(!rule) continue;
+    if(/^(PH|SH)\b/i.test(rule)) continue;   /* (holidays: left out) */
+    const m=rule.match(/^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)*)?\s*(.*)$/i);
+    if(!m) return null;let days=[];
+    if(m[1]){for(const part of m[1].split(',')){const [a,b]=part.trim().toLowerCase().split('-');const da=D[a],db=b?D[b]:da;if(da==null||db==null) return null;
+      for(let d=da;;d=(d+1)%7){days.push(d);if(d===db) break;}}}else days=[0,1,2,3,4,5,6];
+    const t=m[2].trim();
+    if(/^(off|closed)$/i.test(t)){for(const d of days) week[d]=[];ok=true;continue;}
+    const rs=[];for(const r of t.split(',')){const q=r.trim().match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);if(!q) return null;rs.push([+q[1]*60+ +q[2],+q[3]*60+ +q[4]]);}
+    if(!rs.length) return null;for(const d of days) week[d]=rs;ok=true;}
+  if(!ok) return null;
+  const hm=x=>String(Math.floor(x/60)%24).padStart(2,'0')+String(x%60).padStart(2,'0'),per=[];
+  for(const d in week) for(const [a,b] of week[d]){const dd=+d;const next=b<=a||b>=1440;per.push([dd,hm(a),next?(dd+1)%7:dd,hm(b>=1440?b-1440:b)]);}
+  return per.length?per:null;
+};
+/* the place in OpenStreetMap (same name, within about 80 m): its hours, phone and website fill what Mapbox lacks; the
+   card appears (or fills in) when the answer comes back */
+TN.Nav.prototype.osmBiz=async function(it){
+  if(!it||it.lat==null) return;const b0=it.biz||{};if(b0.hours&&b0.phone&&b0.web) return;
+  const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  const nm=norm(it.name);if(!nm) return;
+  const ql='[out:json][timeout:8];(nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["opening_hours"];nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["phone"];nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["contact:phone"];nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["website"];);out tags center 30;';
+  let j;try{const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql));if(!r.ok) return;j=await r.json();}catch(e){return;}
+  const words=new Set(nm.split(' ').filter(w=>w.length>1));let best=null,bs=0;
+  for(const e of j.elements||[]){const t=e.tags||{};const cands=[t.name,t.brand,t['name:en'],t['name:fr']].map(norm).filter(Boolean);
+    let sc=0;for(const c of cands){const cw=c.split(' ').filter(w=>w.length>1);if(!cw.length) continue;const hit=cw.filter(w=>words.has(w)).length;sc=Math.max(sc,hit/Math.max(cw.length,1),hit/Math.max(words.size,1));}
+    if(sc>bs){bs=sc;best=t;}}
+  if(!best||bs<0.5) return;
+  const hours=TN.osmHours(best.opening_hours),phone=best.phone||best['contact:phone']||null,web=best.website||best['contact:website']||null;
+  if(!hours&&!phone&&!web) return;
+  const nb=Object.assign({},b0);if(!nb.hours&&hours) nb.hours=hours;if(!nb.phone&&phone) nb.phone=String(phone).split(';')[0].trim();if(!nb.web&&web) nb.web=String(web).split(';')[0].trim();
+  if(!nb.cat&&(best.amenity||best.shop)) nb.cat=String(best.amenity||best.shop).replace(/_/g,' ');nb.osm=true;
+  it.biz=nb;
+  try{const rc=this.recent.find(r=>r.name===it.name&&Math.abs(r.lat-it.lat)<1e-4);if(rc){rc.biz=nb;localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}}catch(e){}
+  try{this.note('place info',{name:it.name,osm:Object.keys({h:!!hours,p:!!phone,w:!!web}).filter(k=>({h:!!hours,p:!!phone,w:!!web})[k])});}catch(e){}
+  /* the overview for this place is still open: show the card now */
+  if(this.dest===it&&!this.active&&this.route&&this.ov&&this.ov.style.display!=='none'){const old=this.ov.querySelector('.tn-biz');if(old) old.remove();try{this.bizCard(this.route);}catch(e){}}
+};
 TN.Nav.prototype.bizFrom=function(P){
   const m=P.metadata||{},str=v=>typeof v==='string'&&v.trim()?v.trim():null;
   let photo=m.primary_photo;if(Array.isArray(photo)) photo=photo[0];if(photo&&typeof photo==='object') photo=photo.url;photo=str(photo);
@@ -730,7 +775,7 @@ TN.Nav.prototype.bizCard=function(R){
   const st=b.rating!=null?Math.round(b.rating*2)/2:null;
   const stars=st!=null?'\u2605'.repeat(Math.floor(st))+(st%1?'\u00bd':''):'';
   const chip=(ic,t,cls)=>'<span class="'+(cls||'')+'" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;border:1px solid var(--tn-line,rgba(255,255,255,.15));border-radius:10px;padding:6px 10px;cursor:pointer">'+ic+' '+TN.esc(t)+'</span>';
-  const week=b.hours?'<div class="bizweek" style="display:none;margin-top:8px;font-size:13px;line-height:1.6">'+[0,1,2,3,4,5,6].map(d=>{const ps=b.hours.filter(p=>p[0]===d);return '<div><span style="display:inline-block;width:48px;color:var(--tn-sub)">'+days[d]+'</span>'+(ps.length?ps.map(p=>hm(p[1])+' \u2013 '+hm(p[3])).join(', '):'Closed')+'</div>';}).join('')+'</div>':'';
+  const week=b.hours?'<div class="bizweek" style="display:none;margin-top:8px;font-size:13px;line-height:1.6">'+[0,1,2,3,4,5,6].map(d=>{const ps=b.hours.filter(p=>p[0]===d);return '<div><span style="display:inline-block;width:48px;color:var(--tn-sub)">'+days[d]+'</span>'+(ps.length?ps.map(p=>p[1]==='0000'&&p[3]==='0000'?'Open 24 hours':hm(p[1])+' \u2013 '+hm(p[3])).join(', '):'Closed')+'</div>';}).join('')+'</div>':'';
   const html='<div class="tn-biz notr" style="flex:1 1 100%;margin:0 0 6px">'+
     (b.photo?'<img src="'+TN.esc(b.photo)+'" alt="" style="width:100%;height:120px;object-fit:cover;border-radius:12px;display:block;margin-bottom:8px" onerror="this.style.display=\'none\'">':'')+
     (b.cat?'<div style="font-size:13px;color:var(--tn-sub);text-transform:capitalize">'+TN.esc(b.cat)+'</div>':'')+
@@ -739,6 +784,7 @@ TN.Nav.prototype.bizCard=function(R){
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+
       (b.phone?chip('\u260e',b.phone):'')+(b.web?chip('\ud83c\udf10',(b.web.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]),'bizweb'):'')+(b.hours?chip('\ud83d\udd52','Hours','bizhrs'):'')+'</div>'+week+
     (tip?'<div class="tn-rline notr amber" style="margin-top:8px">'+(TN.roccoSVG?TN.roccoSVG(28):'')+'<span>'+TN.esc(tip)+'</span></div>':'')+
+    (b.osm?'<div style="font-size:11px;color:var(--tn-sub);margin-top:6px">Hours and contact: OpenStreetMap contributors</div>':'')+
   '</div>';
   this.roccoCss();this.ov.insertAdjacentHTML('afterbegin',html);
   const wk=this.ov.querySelector('.bizhrs');if(wk) wk.onclick=ev=>{ev.stopPropagation();const w=this.ov.querySelector('.bizweek');if(w) w.style.display=w.style.display==='none'?'block':'none';};
