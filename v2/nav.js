@@ -55,6 +55,13 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .rk .bub{background:#fff;color:#1d2b3a;border:1px solid #d6dbe1;border-radius:12px;padding:2px 10px;font:600 13px system-ui,sans-serif;white-space:nowrap;transition:opacity .6s}'+
    '#tn-bar .rk .bub.off{opacity:0}#tn-bar .rk svg{display:block}'+
    '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:var(--tn-sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
+   /* far from the next turn: a slim one-line pill (more road on screen); full again ~2 km before the turn */
+   '#tn-bar.slim{padding:6px 16px!important;gap:10px;border-radius:999px;right:auto;max-width:min(620px,calc(100vw - 120px))}#tn-bar.slim .a{width:26px}#tn-bar.slim .a svg{width:24px;height:24px}'+
+   '#tn-bar.slim .t{display:flex;align-items:center;gap:10px}#tn-bar.slim .dist{font-size:17px}#tn-bar.slim .ins{font-size:14px}#tn-bar.slim .then,#tn-bar.slim .lanes,#tn-bar.slim .rk{display:none!important}'+
+   /* weather ahead: a one-line chip just under the banner, and Rocco's card at the bottom left */
+   '#tn-bar .wchip{position:absolute;left:0;top:calc(100% + 6px);max-width:100%;box-sizing:border-box;background:rgba(238,241,244,.95);color:#223;border-radius:10px;padding:5px 12px;font:13px system-ui,sans-serif;border-left:4px solid #e08a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;display:none}#tn-bar .wchip.on{display:block}'+
+   '#tn-wcard{position:absolute;left:16px;bottom:120px;z-index:6;max-width:min(420px,calc(100vw - 32px));background:rgb(var(--tn-panel-rgb,24 26 30) / .94);color:var(--tn-text,#fff);border-radius:16px;padding:10px 14px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.3);border-left:5px solid #e08a1a;display:none;align-items:center;gap:10px}'+
+   '.tn-wxstrip{display:flex;border-radius:8px;overflow:hidden;height:26px;font-size:11px;text-align:center;line-height:26px;margin-top:6px}.tn-wxstrip div{color:#223;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:2px solid rgba(255,255,255,.7)}'+
    '#tn-bar .dline{display:flex;align-items:center;gap:14px}#tn-bar .lanes{display:flex;gap:3px}#tn-bar .lanes:empty{display:none}#tn-bar .lanes span{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:var(--tn-line)}#tn-bar .lanes span.on{background:rgba(59,130,246,.35)}'+
    '#tn-bar .pb{position:absolute;left:18px;right:18px;bottom:9px;height:6px;border-radius:3px;background:#2a3444}'+
    '#tn-bar .pb .car{position:absolute;top:50%;left:0;width:13px;height:13px;border-radius:50%;background:#fff;border:3px solid #3b82f6;transform:translate(-50%,-50%);box-sizing:border-box}'+
@@ -446,7 +453,18 @@ TN.Nav.prototype.localStreet=async function(to){
     return b?b.p:null;}catch(e){return null;}
 };
 TN.Nav.prototype.fetchRoute=async function(from,to){
-  const rt=await this.fetchRouteOnce(from,to);
+  let rt=await this.fetchRouteOnce(from,to);
+  /* the car access point Mapbox gives can be on a back street (a store's loading dock, the far side of a plaza: the
+     Provigo at Place du Commerce sent you 2 km around the block). When it's away from the place itself, the route to
+     the place (which ends on the nearest drivable road, often the parking lot in front) is tried too, and kept when
+     it's clearly quicker and still ends close to the place */
+  try{const d=this.dest,stopsNone=!(this.stops&&this.stops.length);
+    if(rt&&d&&!d.ub&&stopsNone&&d.rlng!=null&&Math.abs(to[0]-d.rlng)<1e-7&&Math.abs(to[1]-d.rlat)<1e-7&&TN.distLL([d.lng,d.lat],[d.rlng,d.rlat])>40){
+      const keep=this.alts;const rt2=await this.fetchRouteOnce(from,[d.lng,d.lat]);
+      if(rt2){const C=rt2.geometry.coordinates,e=C[C.length-1],near=TN.distLL(e,[d.lng,d.lat]);
+        const quicker=rt2.duration<rt.duration-60||rt2.duration<rt.duration*0.85;
+        this.note('entrance check',{name:d.name,accessMin:Math.round(rt.duration/60),placeMin:Math.round(rt2.duration/60),endFromPlace:Math.round(near),used:!!(quicker&&near<150)});
+        if(quicker&&near<150){rt2.viaPlace=true;rt=rt2;this.alts=null;}else this.alts=keep;}}}catch(e){}
   /* a bad ending (like a station beside a highway, reached by crossing a bridge and coming back): ask again with
      the destination on the nearest local street, and keep that route if it's better */
   try{const bad=TN.badEnding(rt,to);
@@ -484,7 +502,8 @@ TN.Nav.prototype.plan=async function(reroute){
   try{
     const rt=await this.fetchRoute(from,to);this.wantAlts=false;
     if(this.alts&&this.alts.length>1&&rt.adjusted) this.alts=null;   /* (the route's end was corrected: compare nothing) */
-    this.setRoute(rt);this.curRt=rt;
+    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;
+    try{this.wxFetch(rt);}catch(e){}
     /* (for the trip recording: where this route really goes, to check a wrong destination) */
     try{const d=this.dest,to=TN.routeTo(d),C=rt.geometry.coordinates,e=C[C.length-1];
       this.note('route to',{name:d.name,place:[+d.lng.toFixed(5),+d.lat.toFixed(5)],to:[+to[0].toFixed(5),+to[1].toFixed(5)],end:[+e[0].toFixed(5),+e[1].toFixed(5)],km:+(rt.distance/1000).toFixed(2),reroute:!!reroute});}catch(e){}
@@ -793,6 +812,84 @@ TN.Nav.prototype.bizCard=function(R){
   const wk=this.ov.querySelector('.bizhrs');if(wk) wk.onclick=ev=>{ev.stopPropagation();const w=this.ov.querySelector('.bizweek');if(w) w.style.display=w.style.display==='none'?'block':'none';};
   const wb=this.ov.querySelector('.bizweb');if(wb) wb.onclick=ev=>{ev.stopPropagation();try{window.open(/^https?:/.test(b.web)?b.web:'https://'+b.web,'_blank');}catch(e){}};
 };
+/* weather ahead: the forecast at points along the route (every ~4 km), for the time you'll be there (Open-Meteo,
+   free, one request for all points; again every 10 minutes while driving). Worth knowing: snow, freezing rain,
+   heavy rain, thick fog. */
+TN.wxKind=(code,pr,sn,vis)=>{
+  if([56,57,66,67].includes(code)) return {k:'frz',ic:'\u2744',t:'Freezing rain',sev:3};
+  if([75,86].includes(code)||sn>=1) return {k:'snow',ic:'\u2744',t:'Heavy snow',sev:3};
+  if([71,73,77,85].includes(code)||sn>=0.2) return {k:'snow',ic:'\u2744',t:'Snow',sev:2};
+  if([65,82,95,96,99].includes(code)||pr>=4) return {k:'rain',ic:'\ud83c\udf27',t:'Heavy rain',sev:2};
+  if([45,48].includes(code)||(vis!=null&&vis<400)) return {k:'fog',ic:'\ud83c\udf2b',t:'Thick fog',sev:2};
+  if(pr>=0.3||[51,53,55,61,63,80,81].includes(code)) return {k:'lrain',ic:'\ud83c\udf26',t:'Rain',sev:1};
+  return {k:'ok',ic:'',t:'',sev:0};
+};
+TN.Nav.prototype.wxFetch=async function(rt){
+  if(!rt||!rt.geometry) return;const C=rt.geometry.coordinates;if(C.length<2) return;
+  const cum=[0];for(let i=1;i<C.length;i++) cum.push(cum[i-1]+TN.distLL(C[i-1],C[i]));const L=cum[cum.length-1];
+  const step=Math.max(2000,Math.min(6000,L/24)),pts=[];
+  for(let d=0,i=0;d<=L;d+=step){while(i<C.length-2&&cum[i+1]<d) i++;const u=(d-cum[i])/Math.max(1,cum[i+1]-cum[i]);
+    pts.push({d:d,lng:C[i][0]+(C[i+1][0]-C[i][0])*u,lat:C[i][1]+(C[i+1][1]-C[i][1])*u});}
+  const u='https://api.open-meteo.com/v1/forecast?latitude='+pts.map(p=>p.lat.toFixed(3)).join(',')+'&longitude='+pts.map(p=>p.lng.toFixed(3)).join(',')+
+    '&hourly=precipitation,snowfall,weather_code,visibility&forecast_hours=12&timezone=GMT';
+  let j;try{const r=await fetch(u);if(!r.ok) return;j=await r.json();}catch(e){return;}
+  const arr=Array.isArray(j)?j:[j],t0=Date.now(),dur=rt.duration||L/15;
+  const out=pts.map((p,k)=>{const h=arr[k]&&arr[k].hourly;if(!h) return null;const eta=t0+dur*1000*(p.d/Math.max(1,L));
+    let bi=0,bd=1e18;for(let i=0;i<h.time.length;i++){const tt=Date.parse(h.time[i]+'Z');const dd=Math.abs(tt+1800000-eta);if(dd<bd){bd=dd;bi=i;}}
+    return Object.assign({d:p.d,eta:eta},TN.wxKind(h.weather_code[bi],h.precipitation[bi]||0,h.snowfall[bi]||0,h.visibility?h.visibility[bi]:null));}).filter(Boolean);
+  if(this.curRt!==rt) return;
+  this.wx={rt:rt,L:L,dur:dur,at:t0,pts:out};this.wxSaid=this.wxSaid||{};
+  try{this.note('weather ahead',{n:out.length,worst:Math.max(0,...out.map(o=>o.sev)),kinds:[...new Set(out.filter(o=>o.sev>=2).map(o=>o.k))]});}catch(e){}
+  if(!this.active) try{this.wxStrip();}catch(e){}
+};
+/* the strip on the route overview (before Go): the weather by stretch of the route */
+TN.Nav.prototype.wxStrip=function(){
+  const W=this.wx;if(!W||!this.ov||this.ov.style.display==='none') return;
+  if(!W.pts.some(o=>o.sev>=1)) return;
+  const old=this.ov.querySelector('.tn-wxwrap');if(old) old.remove();
+  const segs=[];for(const o of W.pts){const last=segs[segs.length-1];if(last&&last.k===o.k) last.n++;else segs.push({k:o.k,t:o.t||'Clear',ic:o.ic,n:1,d:o.d});}
+  const col={ok:'#d6e4ee',lrain:'#cfdce6',rain:'#b8c9d8',snow:'#eef1f4',frz:'#f1dede',fog:'#dedede'};
+  const worst=W.pts.reduce((a,b)=>b.sev>a.sev?b:a,W.pts[0]);
+  const msg=worst.sev>=2?worst.t+' on your route, from about km '+Math.round(worst.d/1000)+'.':'Some rain on your route.';
+  const html='<div class="tn-wxwrap notr" style="flex:1 1 100%;margin:4px 0 6px"><div style="font-size:13px">'+(worst.ic||'')+' '+TN.esc(msg)+'</div><div class="tn-wxstrip">'+
+    segs.map(g=>'<div style="flex:'+g.n+';background:'+(col[g.k]||'#ddd')+'">'+(g.ic?g.ic+' ':'')+TN.esc(g.t)+'</div>').join('')+'</div></div>';
+  const bt=this.ov.querySelector('.btns');if(bt) bt.insertAdjacentHTML('beforebegin',html);
+};
+/* while driving: the chip under the banner, and Rocco's card once per stretch of bad weather */
+TN.Nav.prototype.wxUpdate=function(s,R){
+  const W=this.wx;if(!W||W.rt!==this.curRt){this.wxChip(null);return;}
+  if(Date.now()-W.at>600000&&!this.wxBusy){this.wxBusy=true;this.wxFetch(this.curRt).finally(()=>{this.wxBusy=false;});}
+  const frac=R&&R.L?s/R.L:0,here=frac*W.L;
+  let a=null;for(const o of W.pts){if(o.d<here-500) continue;if(o.sev>=2){a=o;break;}}
+  if(!a||a.d-here>40000){this.wxChip(null);return;}
+  let end=a.d;for(const o of W.pts){if(o.d>a.d&&o.sev>=2) end=o.d;else if(o.d>end) break;}
+  const km=Math.max(0,(a.d-here)/1000),mins=Math.max(2,Math.round((end-a.d+3000)/Math.max(1,W.L)*W.dur/60));
+  const txt=km<1?a.ic+' '+a.t+' now \u00b7 about '+mins+' min':a.ic+' '+a.t+' in '+(km<10?km.toFixed(km<3?1:0):Math.round(km))+' km \u00b7 about '+mins+' min';
+  this.wxChip(txt);
+  const key=a.k+':'+Math.round(a.d/1000);
+  if(!this.wxSaid[key]&&km<12){this.wxSaid[key]=1;
+    const advice={snow:'slow down and keep your distance.',frz:'roads may be icy — slow down.',rain:'visibility drops — keep your distance.',fog:'low visibility — lights on, slow down.'}[a.k]||'';
+    this.wxCard(a.t+(km<1?' starting now':' in '+Math.max(1,Math.round(km))+' km')+' \u2014 '+advice);}
+};
+TN.Nav.prototype.wxChip=function(txt){
+  let c=this.bar.querySelector('.wchip');
+  if(!txt){if(c&&c.classList.contains('on')) c.classList.remove('on');return;}
+  if(!c){c=document.createElement('div');c.className='wchip notr';c.onclick=ev=>{ev.stopPropagation();this.wxCardFull();};this.bar.appendChild(c);}
+  if(c.textContent!==txt) c.textContent=txt;if(!c.classList.contains('on')) c.classList.add('on');
+};
+TN.Nav.prototype.wxCard=function(txt){
+  let el=document.getElementById('tn-wcard');if(!el){el=document.createElement('div');el.id='tn-wcard';el.className='notr';document.body.appendChild(el);}
+  el.innerHTML=(TN.roccoSVG?'<span style="flex:none">'+TN.roccoSVG(30)+'</span>':'')+'<span>'+TN.esc(txt)+'</span>';el.style.display='flex';
+  clearTimeout(this.wxT);this.wxT=setTimeout(()=>{el.style.display='none';},9000);
+  try{if(TN.voice&&TN.voice.say) TN.voice.say(txt,false);}catch(e){}
+  try{this.note('weather warning',{t:txt});}catch(e){}
+};
+/* a tap on the chip: the weather for the rest of the route */
+TN.Nav.prototype.wxCardFull=function(){
+  const W=this.wx;if(!W) return;const segs=[];
+  for(const o of W.pts){const last=segs[segs.length-1];if(last&&last.k===o.k) last.e=o.d;else segs.push({k:o.k,t:o.t||'Clear',s:o.d,e:o.d});}
+  this.wxCard(segs.filter(g=>g.k!=='ok').map(g=>g.t+' km '+Math.round(g.s/1000)+'\u2013'+Math.round(g.e/1000+W.L/W.pts.length/1000)).join(' \u00b7 ')||'No bad weather on the rest of your route.');
+};
 TN.Nav.prototype.overview=function(){
   const R=this.route,api=this.api;api.setFollow(false);
   try{for(const id of ['tn-route-casing','tn-route-line']) if(api.map.getLayer(id)) api.map.setLayoutProperty(id,'visibility','visible');}catch(e){}
@@ -821,7 +918,7 @@ TN.Nav.prototype.overview=function(){
   /* the car access point (Mapbox's "where cars reach this place") far from the building: offer the building instead */
   {const d=this.dest;if(d&&d.rlng!=null&&TN.distLL([d.lng,d.lat],[d.rlng,d.rlat])>50&&!this.stops.length){
     const bt=this.ov.querySelector('.btns'),fr=TN.LANG==='fr';
-    const msg=d.ub?(fr?'Vers le bâtiment.':'Going to the building.'):(fr?'Vers l’accès voiture (stationnement).':'Going to the car access point (parking).');
+    const msg=d.ub?(fr?'Vers le bâtiment.':'Going to the building.'):this.viaPlace?(fr?'Vers le stationnement le plus proche (plus court que l’accès indiqué).':'Going to the nearest parking (quicker than the listed car access).'):(fr?'Vers l’accès voiture (stationnement).':'Going to the car access point (parking).');
     const sw=d.ub?(fr?'Aller à l’accès voiture':'Go to the car access point'):(fr?'Aller au bâtiment':'Go to the building instead');
     if(bt){bt.insertAdjacentHTML('beforebegin','<div class="tn-acc notr" style="display:flex;align-items:center;gap:10px;margin:8px 0;font-size:14px;color:var(--tn-sub,#b9b6ae)"><span style="flex:1">'+msg+'</span><button class="acc" style="border:0;border-radius:9px;padding:7px 11px;font:600 13px system-ui,sans-serif;background:var(--tn-btn,#45474d);color:var(--tn-text,#f3f1ec)">'+sw+'</button></div>');
       this.ov.querySelector('.tn-acc .acc').onclick=ev=>{ev.stopPropagation();d.ub=!d.ub;
@@ -831,6 +928,7 @@ TN.Nav.prototype.overview=function(){
     this.note('tesla send',{ok:!!(r&&r.ok),why:r&&r.why,detail:r&&r.detail?String(r.detail).slice(0,120):undefined},true);};}
   {const bt=this.ov.querySelector('.btns'),rl=this.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
   this.showAlts();
+  try{if(this.wx&&this.wx.rt===this.curRt) this.wxStrip();}catch(e){}
   if(TN.bridges) TN.bridges.checkRoute(this).catch(()=>{});   /* (a slow or partly closed bridge on the route: Rocco says so) */
   this.tripButtons(this.ov);
 };
@@ -962,7 +1060,7 @@ TN.Nav.prototype.routeDist=function(x,z){
   return Math.sqrt(m);
 };
 TN.Nav.prototype.end=function(why){
-  TN.navActive=false;TN.routeNear=null;try{this.clearAlts();}catch(e){}this.alts=null;
+  TN.navActive=false;TN.routeNear=null;try{this.wx=null;this.wxSaid={};this.wxChip(null);this.bar.classList.remove('slim');}catch(e){}try{this.clearAlts();}catch(e){}this.alts=null;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
@@ -1169,6 +1267,10 @@ TN.Nav.prototype.update=function(dt){
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
   const I=this.instr(nx),dNext=Math.max(0,nx.at-s);
+  {const slim=dNext>2000&&nx.type!=='arrive'&&this.jvStep==null&&!(this.barFullT>Date.now());
+   if(slim!==this.bar.classList.contains('slim')) this.bar.classList.toggle('slim',slim);
+   if(!this.slimTap){this.slimTap=true;this.bar.addEventListener('click',ev=>{if(this.bar.classList.contains('slim')&&!ev.target.closest('.wchip,.dst')){ev.stopPropagation();this.barFullT=Date.now()+20000;this.bar.classList.remove('slim');}},true);}}
+  try{this.wxUpdate(s,R);}catch(e){}
   if(this.jvStep==null&&this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'currentColor');this.lastIcon=I.a;}
   this.bar.querySelector('.dist').textContent=nx.type==='arrive'&&dNext<30?'Arriving':fmtDist(dNext);
   /* the exit number as a green highway exit sign (where the map has one) */
