@@ -486,7 +486,10 @@ TN.Scene.prototype.applyNight=function(nt){
       L.color.set(TN.mix('#ffffff','#ffc08a',gold));L.intensity=2.2*(1-0.4*cl);}
       if(this.hemiLight) this.hemiLight.intensity=1.6*(1+0.12*cl);}catch(e){}   /* (night darkening stays as before, done elsewhere) */
     const fogc=TN.mix(TN.mix('#dfe8ef','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);
-    try{this.map.getContainer().style.background=fogc;}catch(e){}   /* (shows near the horizon, beyond what the map draws) */
+    /* behind the map: where the map stops drawing (past its horizon, which sits higher than the 3D scene's when the
+       camera looks far ahead) the page itself shows. It was one pale colour, a hard-edged white band under the blue
+       sky; now it continues the sky: the horizon blue, fading to the haze near the ground */
+    try{this.map.getContainer().style.background='linear-gradient(to bottom,'+sky+' 0%,'+hor+' 45%,'+fogc+' 100%)';}catch(e){}
     if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':sky,'horizon-color':hor,
       'fog-color':fogc,'sky-horizon-blend':0.32+0.3*cl,'horizon-fog-blend':0.5+0.4*fg,'fog-ground-blend':0.85-0.6*fg,'atmosphere-blend':0});
   }catch(e){}
