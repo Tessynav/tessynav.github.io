@@ -269,7 +269,7 @@ TN.BTILES='https://tessynav.github.io/tessynav-buildings/';
 TN.Buildings.prototype.tilesIndex=function(){
   if(this.tidx||this.tidxLoading||Date.now()-(this.tidxT||0)<600000) return this.tidx;
   this.tidxLoading=true;this.tidxT=Date.now();
-  fetch(TN.BTILES+'index.json?d='+new Date().toISOString().slice(0,10)).then(r=>r.ok?r.json():null).then(j=>{this.tidxLoading=false;if(j&&j.v===1&&j.regions){this.tidx=j;if(TN.Store) TN.Store.use('bld',j.date);}}).catch(()=>{this.tidxLoading=false;});
+  fetch(TN.BTILES+'index.json?d='+new Date().toISOString().slice(0,10)).then(r=>r.ok?r.json():null).then(j=>{this.tidxLoading=false;if(j&&j.v>=1&&j.regions){   /* (v2: buildings with parts, roofs, types and colours; it was refused here, so every building came from the base map, on the screen's thread) */this.tidx=j;if(TN.Store) TN.Store.use('bld',j.date);}}).catch(()=>{this.tidxLoading=false;});
   return null;
 };
 TN.Buildings.prototype.covered=function(lng,lat){const I=this.tilesIndex();return !!(I&&I.regions.some(r=>lng>=r.bbox[0]&&lng<r.bbox[2]&&lat>=r.bbox[1]&&lat<r.bbox[3]));};

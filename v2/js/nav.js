@@ -467,6 +467,20 @@ TN.Nav.prototype.fetchRoute=async function(from,to){
         const quicker=rt2.duration<rt.duration-60||rt2.duration<rt.duration*0.85;
         this.note('entrance check',{name:d.name,accessMin:Math.round(rt.duration/60),placeMin:Math.round(rt2.duration/60),endFromPlace:Math.round(near),used:!!(quicker&&near<150)});
         if(quicker&&near<150){rt2.viaPlace=true;rt=rt2;this.alts=null;}else this.alts=keep;}}}catch(e){}
+  /* a store or business with its own parking lot (OpenStreetMap, within 150 m): the route goes into the lot, when
+     that's not much longer (the Provigo at Place du Commerce: the route ended on the street beside the store) */
+  try{const d=this.dest;
+    if(rt&&d&&!d.ub&&!(this.stops&&this.stops.length)&&(d.biz||d.rlng!=null)&&TN.distLL([from[0],from[1]],[d.lng,d.lat])>400){
+      const ql='[out:json][timeout:6];(nwr(around:150,'+d.lat.toFixed(6)+','+d.lng.toFixed(6)+')["amenity"="parking"]["access"!~"private|no"];);out center tags 20;';
+      const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql));
+      if(r.ok){const j=await r.json();let best=null,bd=1e9;
+        for(const e of j.elements||[]){const c=e.center||(e.lat!=null?{lat:e.lat,lon:e.lon}:null);if(!c) continue;
+          const dd=TN.distLL([d.lng,d.lat],[c.lon,c.lat]);if(dd<bd){bd=dd;best=c;}}
+        if(best&&bd<150){const rt3=await this.fetchRouteOnce(from,[best.lon,best.lat]);
+          if(rt3){const C=rt3.geometry.coordinates,e=C[C.length-1],inLot=TN.distLL(e,[best.lon,best.lat]),toPlace=TN.distLL(e,[d.lng,d.lat]);
+            const ok=inLot<70&&toPlace<180&&rt3.duration<=rt.duration+90;
+            this.note('parking lot check',{name:d.name,lotFromPlace:Math.round(bd),endInLot:Math.round(inLot),lotMin:Math.round(rt3.duration/60),bestMin:Math.round(rt.duration/60),used:ok});
+            if(ok){rt3.viaParking=true;rt=rt3;this.alts=null;}}}}}}catch(e){}
   /* a bad ending (like a station beside a highway, reached by crossing a bridge and coming back): ask again with
      the destination on the nearest local street, and keep that route if it's better */
   try{const bad=TN.badEnding(rt,to);
@@ -504,7 +518,7 @@ TN.Nav.prototype.plan=async function(reroute){
   try{
     const rt=await this.fetchRoute(from,to);this.wantAlts=false;
     if(this.alts&&this.alts.length>1&&rt.adjusted) this.alts=null;   /* (the route's end was corrected: compare nothing) */
-    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;
+    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;this.viaParking=!!rt.viaParking;
     try{this.wxFetch(rt);}catch(e){}
     /* (for the trip recording: where this route really goes, to check a wrong destination) */
     try{const d=this.dest,to=TN.routeTo(d),C=rt.geometry.coordinates,e=C[C.length-1];
@@ -920,7 +934,7 @@ TN.Nav.prototype.overview=function(){
   /* the car access point (Mapbox's "where cars reach this place") far from the building: offer the building instead */
   {const d=this.dest;if(d&&d.rlng!=null&&TN.distLL([d.lng,d.lat],[d.rlng,d.rlat])>50&&!this.stops.length){
     const bt=this.ov.querySelector('.btns'),fr=TN.LANG==='fr';
-    const msg=d.ub?(fr?'Vers le bâtiment.':'Going to the building.'):this.viaPlace?(fr?'Vers le stationnement le plus proche (plus court que l’accès indiqué).':'Going to the nearest parking (quicker than the listed car access).'):(fr?'Vers l’accès voiture (stationnement).':'Going to the car access point (parking).');
+    const msg=d.ub?(fr?'Vers le bâtiment.':'Going to the building.'):this.viaParking?(fr?'Vers le stationnement du commerce.':'Going into the parking lot.'):this.viaPlace?(fr?'Vers le stationnement le plus proche (plus court que l’accès indiqué).':'Going to the nearest parking (quicker than the listed car access).'):(fr?'Vers l’accès voiture (stationnement).':'Going to the car access point (parking).');
     const sw=d.ub?(fr?'Aller à l’accès voiture':'Go to the car access point'):(fr?'Aller au bâtiment':'Go to the building instead');
     if(bt){bt.insertAdjacentHTML('beforebegin','<div class="tn-acc notr" style="display:flex;align-items:center;gap:10px;margin:8px 0;font-size:14px;color:var(--tn-sub,#b9b6ae)"><span style="flex:1">'+msg+'</span><button class="acc" style="border:0;border-radius:9px;padding:7px 11px;font:600 13px system-ui,sans-serif;background:var(--tn-btn,#45474d);color:var(--tn-text,#f3f1ec)">'+sw+'</button></div>');
       this.ov.querySelector('.tn-acc .acc').onclick=ev=>{ev.stopPropagation();d.ub=!d.ub;
