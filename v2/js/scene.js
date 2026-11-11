@@ -485,11 +485,11 @@ TN.Scene.prototype.applyNight=function(nt){
     try{const L=this.sunLight;if(L&&sp){const el=Math.max(8,sp.el)*TN.R,az=sp.az*TN.R;L.position.set(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
       L.color.set(TN.mix('#ffffff','#ffc08a',gold));L.intensity=2.2*(1-0.4*cl);}
       if(this.hemiLight) this.hemiLight.intensity=1.6*(1+0.12*cl);}catch(e){}   /* (night darkening stays as before, done elsewhere) */
-    const fogc=TN.mix(TN.mix('#dfe8ef','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);
+    const fogc=TN.mix(TN.mix('#c6daec','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);   /* (clear day: close to the horizon blue, so the map's edge and what's under it match) */
     /* behind the map: where the map stops drawing (past its horizon, which sits higher than the 3D scene's when the
        camera looks far ahead) the page itself shows. It was one pale colour, a hard-edged white band under the blue
        sky; now it continues the sky: the horizon blue, fading to the haze near the ground */
-    try{this.map.getContainer().style.background='linear-gradient(to bottom,'+sky+' 0%,'+hor+' 45%,'+fogc+' 100%)';}catch(e){}
+    try{this.map.getContainer().style.background='linear-gradient(to bottom,'+fogc+' 0%,'+TN.mix(fogc,hor,0.5)+' 100%)';}catch(e){}   /* (only shows below the map's horizon: it starts with the exact colour the map ends with) */
     if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':sky,'horizon-color':hor,
       'fog-color':fogc,'sky-horizon-blend':0.32+0.3*cl,'horizon-fog-blend':0.5+0.4*fg,'fog-ground-blend':0.85-0.6*fg,'atmosphere-blend':0});
   }catch(e){}
