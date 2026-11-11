@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=115;
+TN.APPBUILD=116;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -524,7 +524,17 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       /* the car's height changes at most 5 m per second: when it moves onto a road piece at another height (a ramp
          beside a raised highway, after navigation ends), it glides up or down instead of jumping 10 m at once */
       {const yT=car.y||0;if(TN._ys==null||Math.abs(yT-TN._ys)>30) TN._ys=yT;else{const st=5*Math.min(0.1,dt||0.016);TN._ys+=Math.max(-st,Math.min(st,yT-TN._ys));}}
-      scene.placeCar(car.x,car.z,TN._ys,dispHd);
+      /* the drawn car moves sideways at most 1.6 m per second (smoothly), whatever the matching does underneath: when it
+         switches road pieces or lanes, the car slides over instead of jumping or swinging left and right. Big jumps
+         (more than 12 m: a GPS jump, a reroute, a tunnel exit) still move it at once. */
+      {const h=dispHd*Math.PI/180,fx=Math.sin(h),fz=-Math.cos(h);
+       if(TN._cx==null||Math.hypot(car.x-TN._cx,car.z-TN._cz)>12){TN._cx=car.x;TN._cz=car.z;}
+       /* (through turns, the car follows freely: the limit is only for going straight) */
+       const turnRate=TN._chd==null?0:Math.abs(((dispHd-TN._chd+540)%360)-180)/Math.max(0.005,dt||0.016);TN._chd=dispHd;
+       if(turnRate>6){const k=Math.min(1,(dt||0.016)*8);TN._cx+=(car.x-TN._cx)*k;TN._cz+=(car.z-TN._cz)*k;}
+       else{const dx=car.x-TN._cx,dz=car.z-TN._cz,al=dx*fx+dz*fz,sd=dx*(-fz)+dz*fx,lim=1.6*Math.min(0.1,dt||0.016);
+         const sd2=Math.max(-lim,Math.min(lim,sd));TN._cx+=fx*al+(-fz)*sd2;TN._cz+=fz*al+fx*sd2;}}
+      scene.placeCar(TN._cx,TN._cz,TN._ys,dispHd);
       if(ground){try{ground.update({x:car.x,z:car.z,hd:dispHd},dt);}catch(e){}}
       if(TN.shadows){try{const sl=TN.fromLocal(car.x,car.z);TN.shadows.update(sl[0],sl[1],{x:car.x,z:car.z,y:car.y,hd:dispHd,br:car.br});}catch(e){}}
       try{scene.updateBeam(car);}catch(e){}

@@ -1409,6 +1409,11 @@ TN.Net.prototype.drawLights=function(L,w,runs){
       const nx=N[i][0]*side,nz=N[i][1]*side,nl=Math.hypot(nx,nz)||1,ox=nx/nl,oz=nz/nl;
       /* never on a road: checked for every lamp, raised roads included (any road surface at about the same height),
          trying a little further out before leaving the lamp out */
+      /* not at a junction: within 14 m of a point where other roads meet, the lamp could end up in the crossing street
+         (the junction area is drawn wider than each road's own width) */
+      {let nearJ=false;for(let q=Math.max(0,i-2);q<=Math.min(P.length-1,i+3)&&!nearJ;q++){const l=this.keys&&this.keys.get(w.keys[q]);
+         if(l&&l.length>1&&Math.hypot(P[q][0]-x0,P[q][1]-z0)<14) nearJ=true;}
+       if(nearJ) continue;}
       let x=0,z=0,ok=false;
       for(const extra of [0,1,2]){
         const off=(w.br||y0>0.5?hw+0.25:hw+0.9)+extra;x=x0+ox*off;z=z0+oz*off;
