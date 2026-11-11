@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=114;
+TN.APPBUILD=115;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -42,6 +42,8 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
+  /* Can I park here? (City of Montréal parking signs, read when you stop) */
+  const parking=TN.Parking?new TN.Parking({getCar:()=>track.car,getSpeed:()=>track.last?track.last.v:0,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;TN.parking=parking;
   const season=TN.Season?new TN.Season(scene,trees):null;
   const ground=TN.Ground?new TN.Ground(scene,net,trees,season):null;   /* fallen leaves, snowy ground and car */
   const water=TN.Water?new TN.Water(scene):null;
@@ -597,6 +599,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(trees){try{trees.update(ahead.lng,ahead.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(ahead.lng,ahead.lat,lastFps);}catch(e){}}
       if(rem){try{const tr0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);TN.prof('rem',performance.now()-tr0);}catch(e){}}
+      if(parking){try{parking.update(dt);}catch(e){}}
       if(water){try{water.update(dt,ahead.lng,ahead.lat);}catch(e){}}
       if(season){try{if(follow&&car&&car.x!=null) season.update(dt,car.x,car.y||0,car.z,lastFps);else{const q=TN.toLocal(ac.lng,ac.lat);season.update(dt,q[0],0,q[1],lastFps);}}catch(e){}}
       /* brake lights: on while slowing down clearly, and while stopped after driving (like a held brake) */
