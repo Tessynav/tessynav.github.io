@@ -17,7 +17,7 @@ TN.Scene.prototype.layer=function(){
     onAdd(m,gl){
       const scene=new THREE.Scene(),camera=new THREE.Camera();
       scene.add(new THREE.HemisphereLight(0xeef4ff,0x50555a,1.6));
-      const sun=new THREE.DirectionalLight(0xffffff,2.2);sun.position.set(-0.4,1,0.3);scene.add(sun);
+      const sun=new THREE.DirectionalLight(0xffffff,2.2);sun.position.set(-0.4,1,0.3);scene.add(sun);S.sunLight=sun;S.hemiLight=scene.children.find(o=>o.isHemisphereLight)||null;
       const renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
       renderer.autoClear=false;
       const mc=maplibregl.MercatorCoordinate.fromLngLat(TN.ORIGIN,0),msc=mc.meterInMercatorCoordinateUnits();
@@ -476,8 +476,15 @@ TN.Scene.prototype.applyNight=function(nt){
   try{
     /* the real weather: clouds grey the sky, rain darkens it, fog brings the haze in close */
     const W=this.weather||{cloud:0,rain:0,fog:0},cl=Math.min(1,W.cloud*0.85+W.rain*0.3),fg=Math.max(W.fog,W.rain*0.5);
-    const sky=TN.mix(TN.mix('#5d8fd1','#9aa4ae',cl),TN.mix('#0d1830','#141920',cl),nt);
-    const hor=TN.mix(TN.mix('#cfe0f2','#c3c9cf',cl),TN.mix('#2a3a5c','#232a33',cl),nt);
+    let sky=TN.mix(TN.mix('#3f7fcf','#9aa4ae',cl),TN.mix('#0d1830','#141920',cl),nt);
+    let hor=TN.mix(TN.mix('#d6e8f6','#c3c9cf',cl),TN.mix('#2a3a5c','#232a33',cl),nt);
+    /* sunrise and sunset: warm orange at the horizon and a violet-blue sky, when the sun is low (less with clouds) */
+    const sp=this.sunNow(),gold=sp?Math.max(0,1-Math.abs(sp.el-2)/8)*(1-0.8*cl):0;this.gold=gold;
+    if(gold>0.02){sky=TN.mix(sky,'#56609a',gold*0.7);hor=TN.mix(hor,'#ffb07a',gold*0.85);}
+    /* the light follows the real sun: direction, warmth at sunrise and sunset, softer under clouds */
+    try{const L=this.sunLight;if(L&&sp){const el=Math.max(8,sp.el)*TN.R,az=sp.az*TN.R;L.position.set(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
+      L.color.set(TN.mix('#ffffff','#ffc08a',gold));L.intensity=2.2*(1-0.4*cl);}
+      if(this.hemiLight) this.hemiLight.intensity=1.6*(1+0.12*cl);}catch(e){}   /* (night darkening stays as before, done elsewhere) */
     const fogc=TN.mix(TN.mix('#dfe8ef','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);
     try{this.map.getContainer().style.background=fogc;}catch(e){}   /* (shows near the horizon, beyond what the map draws) */
     if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':sky,'horizon-color':hor,
@@ -615,7 +622,26 @@ TN.Scene.prototype.addSky=function(){
     this.moonTex=new THREE.CanvasTexture(cv);
     this.moon=new THREE.Sprite(new THREE.SpriteMaterial({map:this.moonTex,transparent:true,opacity:0,depthWrite:false}));
     this.moon.scale.set(70,70,1);this.three.scene.add(this.moon);this.moonT=0;
+    /* the sun: a bright disc with a soft glow, at its real place in the sky */
+    {const c2=document.createElement('canvas');c2.width=c2.height=128;const g2=c2.getContext('2d');
+     const gr=g2.createRadialGradient(64,64,0,64,64,64);gr.addColorStop(0,'rgba(255,255,250,1)');gr.addColorStop(0.08,'rgba(255,252,235,1)');
+     gr.addColorStop(0.2,'rgba(255,240,190,.55)');gr.addColorStop(0.5,'rgba(255,225,160,.18)');gr.addColorStop(1,'rgba(255,220,150,0)');g2.fillStyle=gr;g2.fillRect(0,0,128,128);
+     this.sunSpr=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c2),transparent:true,opacity:0,depthWrite:false,fog:false}));
+     this.sunSpr.scale.set(220,220,1);this.three.scene.add(this.sunSpr);}
+    /* clouds: a few soft shapes high in the sky (as many as the real cloud cover), drifting slowly */
+    {const c3=document.createElement('canvas');c3.width=256;c3.height=128;const g3=c3.getContext('2d');let s3=99;const r3=()=>{s3=(s3*16807)%2147483647;return s3/2147483647;};
+     for(let k=0;k<14;k++){const x=40+r3()*176,y=58+r3()*30-(Math.abs(x-128)<60?14:0),rr=20+r3()*26,gg=g3.createRadialGradient(x,y,0,x,y,rr);
+       gg.addColorStop(0,'rgba(255,255,255,.95)');gg.addColorStop(0.6,'rgba(255,255,255,.55)');gg.addColorStop(1,'rgba(255,255,255,0)');g3.fillStyle=gg;g3.fillRect(x-rr,y-rr,2*rr,2*rr);}
+     const tex=new THREE.CanvasTexture(c3);this.clouds=[];let sc=7;const rc=()=>{sc=(sc*16807)%2147483647;return sc/2147483647;};
+     for(let k=0;k<22;k++){const m=new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0,depthWrite:false,fog:false,color:0xffffff});const sp=new THREE.Sprite(m);
+       const w=260+rc()*260;sp.scale.set(w,w*0.42,1);sp.userData={az:rc()*Math.PI*2,el:(7+rc()*24)*TN.R,ord:rc()};sp.visible=false;this.three.scene.add(sp);this.clouds.push(sp);}}
   }catch(e){}
+};
+/* the sun's place now (once a minute) */
+TN.Scene.prototype.sunNow=function(){
+  const now=Date.now();if(this.sunI&&now-this.sunT<60000) return this.sunI;
+  try{const c=this.map.getCenter();this.sunT=now;this.sunI=TN.sunPos?TN.sunPos(new Date(),c.lat,c.lng):{el:TN.sunAlt(new Date(),c.lat,c.lng),az:180};}catch(e){}
+  return this.sunI;
 };
 TN.Scene.prototype.updateSky=function(cam){
   if(!this.skyStars) return;
@@ -627,6 +653,18 @@ TN.Scene.prototype.updateSky=function(cam){
   const al=I.alt*TN.R,az=I.az*TN.R,R=1200;
   this.moon.position.set(cam.x+Math.sin(az)*Math.cos(al)*R,cam.y+Math.sin(al)*R,cam.z-Math.cos(az)*Math.cos(al)*R);
   this.moon.material.opacity=I.alt>1?Math.min(1,this.glowOp*1.2):0;
+  /* the sun and the clouds (kept far away around the camera, like the stars) */
+  try{const W=this.weather||{cloud:0,rain:0,fog:0},cl=Math.min(1,(W.cloud||0)+(W.rain||0)*0.3),nt=this.night||0,sp=this.sunNow();
+    if(this.sunSpr&&sp){const el=sp.el*TN.R,az=sp.az*TN.R,R=1150;
+      this.sunSpr.position.set(cam.x+Math.sin(az)*Math.cos(el)*R,cam.y+Math.sin(el)*R,cam.z-Math.cos(az)*Math.cos(el)*R);
+      const low=Math.max(0,1-sp.el/15);this.sunSpr.scale.setScalar(200+160*low);
+      this.sunSpr.material.color.set(TN.mix('#ffffff','#ffb070',this.gold||0));
+      this.sunSpr.material.opacity=sp.el>-1.5?Math.max(0,(1-0.9*cl)*(1-nt)*Math.min(1,(sp.el+1.5)/3)):0;}
+    if(this.clouds){const n=cl<0.08?0:Math.round(3+cl*19),t=now/1000,col=TN.mix(TN.mix('#ffffff','#9ea6ae',Math.max(0,cl-0.5)*2),'#ffc49a',(this.gold||0)*0.7),dark=TN.mix(col,'#2a3242',nt);
+      for(let k=0;k<this.clouds.length;k++){const c=this.clouds[k],u=c.userData,on=k<n;c.visible=on;if(!on) continue;
+        const az=u.az+t*0.0004*(0.6+u.ord),R=1100;
+        c.position.set(cam.x+Math.sin(az)*Math.cos(u.el)*R,cam.y+Math.sin(u.el)*R,cam.z-Math.cos(az)*Math.cos(u.el)*R);
+        c.material.color.set(dark);c.material.opacity=(0.55+0.35*cl)*(1-0.6*nt);}}}catch(e){}
 };
 TN.Scene.prototype.drawMoon=function(I){
   /* the lit part of the moon for its phase */
