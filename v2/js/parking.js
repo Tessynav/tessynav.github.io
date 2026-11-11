@@ -1,4 +1,4 @@
-/* TessyNav v2 — parking.js (v1)
+/* TessyNav v2 — parking.js (v2: ?parkdemo preview)
    "Can I park here?" — when you stop for a while (or arrive) on a street the City of Montréal has parking signs for,
    Rocco reads the signs on your side of the street and says whether you can park right now, until when, and what
    comes next (street cleaning, rush-hour no-stopping, permit zones). Test areas: Ville-Marie and Le Sud-Ouest
@@ -24,6 +24,18 @@ TN.Parking.prototype.load=async function(){
     }catch(e){}
   }
   this.loaded=this.grid.size>0;
+  /* a preview from anywhere (?parkdemo): Rocco reads a real sign in Griffintown / Saint-Henri as if you were
+     parked beside it, so the feature can be seen without driving there */
+  if(this.loaded&&typeof location!=='undefined'&&/[?&]parkdemo/.test(location.search)) setTimeout(()=>this.demo(),3000);
+};
+TN.Parking.prototype.demo=function(){
+  const all=[];for(const l of this.grid.values()) for(const s of l) all.push(s);
+  const kinds=['lim','np','res','ns'],pick=kinds.map(k=>all.find(s=>s.r.k===k&&(k!=='np'||s.r.h))).filter(Boolean);
+  this.demoI=this.demoI||0;if(this.demoI>=pick.length){this.demoI=0;return;}   /* (each example once, 9 s each) */
+  const s=pick[this.demoI++];if(!s) return;
+  for(const hd of [0,90,180,270]){const r=hd*Math.PI/180,car={x:s.x-Math.cos(r)*6,z:s.z-Math.sin(r)*6,hd:hd};
+    const near=this.near(car),v=near.length?this.verdict(near,new Date()):null;
+    if(v){v.t='[Preview] '+v.t;this.show(v,near);this.shownAt=Date.now();this.demoT=setTimeout(()=>{this.hide();this.demo();},9000);return;}}
 };
 /* is a rule in force at a time (days 0 = Monday, hours in minutes, season [month, day, month, day]) */
 TN.parkActive=function(r,d){
