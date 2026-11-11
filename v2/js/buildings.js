@@ -131,8 +131,22 @@ TN.Buildings.prototype.overRem=function(ring){
       for(const t of [0.25,0.5,0.75]) if(inside(a[0]+(c[0]-a[0])*t,a[1]+(c[1]-a[1])*t)) return true;}}
   return false;
 };
-TN.Buildings.prototype.palette=function(H,seed,area){
+/* building details from our building tiles (v2 packs: "m", one entry per building, 0 when none):
+   [roof shape, type, roof height x10, wall colour (RGB number, -1 none), roof colour (-1 none)]
+   roof: 1 gabled, 2 hipped, 3 pyramidal, 4 dome, 5 skillion, 9 a guess for a house (gabled or hipped by shape)
+   type: 1 house, 2 apartments, 3 commercial, 4 industrial, 5 religious, 6 school, 7 civic or hospital, 8 garage */
+TN.bMeta=function(m){if(!m||!Array.isArray(m)) return null;return {roof:m[0]|0,cls:m[1]|0,rh:(m[2]|0)/10,wc:m[3]==null?-1:m[3],rc:m[4]==null?-1:m[4]};};
+TN.rgbHex=v=>'#'+(v>>>0).toString(16).padStart(6,'0').slice(-6);
+TN.Buildings.prototype.palette=function(H,seed,area,cls){
   const pick=a=>a[seed%a.length];
+  /* by type, when the data says what the building is */
+  if(cls===1) return pick(['#a65a43','#8e4b3a','#b46b54','#9c5f4a','#c8b08f','#b9a185','#d8cfbf','#a8a39a']);
+  if(cls===3) return pick(['#d9d6cf','#c9c6bd','#e2ddd2','#b9b7b0','#cfc6b4']);
+  if(cls===4) return pick(['#a9a59c','#9b978e','#b8b2a5','#8f9496']);
+  if(cls===5) return pick(['#b9b1a3','#a79f92','#c4baa8']);
+  if(cls===6) return pick(['#a65a43','#b46b54','#c9b28f','#bfae96']);
+  if(cls===7) return pick(['#c8c4ba','#d6d1c6','#b8b4aa']);
+  if(cls===8) return pick(['#a8a6a0','#b5b2aa']);
   /* low but large (a mall, a warehouse, a school): concrete/beige, not house brick */
   if(H<=13&&area>900) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
   if(H<=13) return pick(['#a65a43','#8e4b3a','#b46b54','#9c5f4a','#c8b08f','#b9a185']);
@@ -155,8 +169,12 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   if(area<12) return;
   const seed=b.id!=null?(Math.abs(Math.floor(Number(b.id)))%997)+1:Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;
   const wholeArea=Math.max(area,b.wa||0),pieces=b.parts||1;
-  const col=TN.hex(this.palette(b.H,seed,wholeArea));
-  const top=b.H,bot=b.B,ex=0.3;   /* slightly outside the map's own building, so it is covered */
+  const M=b.m||null;
+  const col=TN.hex(M&&M.wc>=0?TN.rgbHex(M.wc):this.palette(b.H,seed,wholeArea,M?M.cls:0));
+  /* a roof shape from the data: the walls stop where the roof starts (the building's height includes its roof) */
+  const dataRoof=M&&M.roof>0&&M.roof!==5&&b.B<b.H-2;
+  const rise0=dataRoof?(M.rh>0?Math.min(M.rh,b.H*0.6):Math.min(4,0.35*Math.sqrt(area))):0;
+  const top=dataRoof?Math.max(b.B+2,b.H-rise0):b.H,bot=b.B,ex=0.3;   /* slightly outside the map's own building, so it is covered */
   if(TN.shadows&&G.s) TN.shadows.addBuilding(G.s,ring,top);   /* (its shadow on the ground, stretched later by the sun) */
   let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
   const out=ring.map(p=>{const dx=p[0]-cx,dz=p[1]-cz,l=Math.hypot(dx,dz)||1;return [p[0]+dx/l*ex,p[1]+dz/l*ex];});
@@ -172,11 +190,29 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
     const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
     quadWall(a,c,bot,top,run,len,seed+(top-bot>=25?1000:0),col);run+=len;   /* (+1000: an office-height building) */
   }
-  /* pitched roof only for a whole small house in one piece (a piece of a bigger building gets the flat roof) */
-  const pitched=b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1;
-  if(pitched){
-    /* low-poly hip roof up to the middle */
-    const rise=Math.min(3.2,0.32*Math.sqrt(area)),rc=TN.hex(['#4b4542','#5a3f36','#3f4448'][seed%3]);
+  /* pitched roof: a shape from the data, or (no data) a whole small house in one piece */
+  const pitched=dataRoof||(b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1);
+  const rcol=TN.hex(M&&M.rc>=0?TN.rgbHex(M.rc):['#4b4542','#5a3f36','#3f4448'][seed%3]);
+  /* a gable roof (two slopes and a ridge) on a four-cornered building: from the data, or the guess for a house */
+  const gable=pitched&&out.length===4&&(M&&(M.roof===1||M.roof===9));
+  if(gable){
+    const rise=dataRoof?rise0:Math.min(3.2,0.32*Math.sqrt(area));
+    /* the ridge runs along the longer sides, from the middle of one short side to the other */
+    const L=k=>Math.hypot(out[(k+1)%4][0]-out[k][0],out[(k+1)%4][1]-out[k][1]);
+    const s0=L(0)+L(2)<L(1)+L(3)?0:1;   /* edges s0 and s0+2 are the short ones (the gable ends) */
+    const A=out[s0],B2=out[(s0+1)%4],C=out[(s0+2)%4],D=out[(s0+3)%4];
+    const m1=[(A[0]+B2[0])/2,(A[1]+B2[1])/2],m2=[(C[0]+D[0])/2,(C[1]+D[1])/2];
+    const face=(p,q,r,cc)=>{const ux=q[0]-p[0],uy=q[1]-p[1],uz=q[2]-p[2],vx=r[0]-p[0],vy=r[1]-p[1],vz=r[2]-p[2];
+      let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;
+      const i0=V(p[0],p[1],p[2],nx,ny,nz,0,0,-1,cc),i1=V(q[0],q[1],q[2],nx,ny,nz,0,0,-1,cc),i2=V(r[0],r[1],r[2],nx,ny,nz,0,0,-1,cc);G.i.push(i0,i1,i2,i0,i2,i1);};
+    const P3=(p,y)=>[p[0],y,p[1]],R1=P3(m1,top+rise),R2=P3(m2,top+rise);
+    /* the two slopes (each a long side up to the ridge) and the two gable-end triangles (wall colour) */
+    face(P3(B2,top),P3(C,top),R2,rcol);face(P3(B2,top),R2,R1,rcol);
+    face(P3(D,top),P3(A,top),R1,rcol);face(P3(D,top),R1,R2,rcol);
+    face(P3(A,top),P3(B2,top),R1,col);face(P3(C,top),P3(D,top),R2,col);
+  }else if(pitched){
+    /* low-poly hip roof up to the middle (hipped, pyramidal and dome roofs, and other house shapes) */
+    const rise=dataRoof?(M.roof===4?Math.max(rise0,0.5*Math.sqrt(area/Math.PI)):rise0):Math.min(3.2,0.32*Math.sqrt(area)),rc=rcol;
     for(let i=0;i<n;i++){
       const a=out[i],c=out[(i+1)%n];
       const ux=c[0]-a[0],uz=c[1]-a[1],vx=cx-a[0],vy=rise,vz=cz-a[1];
@@ -188,7 +224,7 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
     }
   }else{
     /* flat roof a little above the walls, with a low parapet */
-    const rc=TN.hex(['#6e6b66','#5f6266','#76736c'][seed%3]);
+    const rc=TN.hex(M&&M.rc>=0?TN.rgbHex(M.rc):['#6e6b66','#5f6266','#76736c'][seed%3]);
     let tri=[];
     try{tri=THREE.ShapeUtils.triangulateShape(out.map(p=>new THREE.Vector2(p[0],p[1])),[]);}catch(e){tri=[];}
     const base=G.cnt;for(const p of out) V(p[0],top+0.05,p[1],0,1,0,0,0,-1,rc);
@@ -250,11 +286,11 @@ TN.Buildings.prototype.tileList=function(ck,lng,lat){
   /* decoded only when that area is needed */
   const raw=P.raw.get(ck);if(!raw) return [];
   if(!raw.done){const ox=P.o[0],oy=P.o[1],out=[];
-    for(const r of raw.recs){let x=r[2],y=r[3];const ring=[TN.toLocal(ox+x/1e6,oy+y/1e6)];
+    for(let ri=0;ri<raw.recs.length;ri++){const r=raw.recs[ri];let x=r[2],y=r[3];const ring=[TN.toLocal(ox+x/1e6,oy+y/1e6)];
       for(let k=4;k<r.length;k+=2){x+=r[k];y+=r[k+1];ring.push(TN.toLocal(ox+x/1e6,oy+y/1e6));}
       let A=0;for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length];A+=a[0]*b[1]-b[0]*a[1];}
-      out.push({ring:ring,H:r[0]/10,B:r[1]/10,id:null,wa:Math.abs(A)/2,parts:1});}
-    raw.list=out;raw.recs=null;raw.done=true;}
+      out.push({ring:ring,H:r[0]/10,B:r[1]/10,id:null,wa:Math.abs(A)/2,parts:1,m:raw.ms?TN.bMeta(raw.ms[ri]):null});}
+    raw.list=out;raw.recs=null;raw.ms=null;raw.done=true;}
   return raw.list;
 };
 TN.Buildings.prototype.packWaiting=function(ck){
@@ -271,7 +307,7 @@ TN.Buildings.prototype.loadPack=function(key){
     if(!j||!j.b){T.delete(key);return;}
     /* grouped by area (by each building's first corner), decoded later when the area is built */
     const raw=new Map(),C=TN.CELL;
-    for(const r of j.b){const lng=j.o[0]+r[2]/1e6,lat=j.o[1]+r[3]/1e6,ck=Math.floor(lng/C)+','+Math.floor(lat/C);let e=raw.get(ck);if(!e){e={recs:[],done:false};raw.set(ck,e);}e.recs.push(r);}
+    for(let bi=0;bi<j.b.length;bi++){const r=j.b[bi];const lng=j.o[0]+r[2]/1e6,lat=j.o[1]+r[3]/1e6,ck=Math.floor(lng/C)+','+Math.floor(lat/C);let e=raw.get(ck);if(!e){e={recs:[],ms:[],done:false};raw.set(ck,e);}e.recs.push(r);e.ms.push(j.m?j.m[bi]||0:0);}
     T.set(key,{st:'ok',o:j.o,raw:raw,used:Date.now()});
   }).catch(()=>{T.delete(key);});
 };
@@ -359,7 +395,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
       if(raw&&!raw.done&&raw.recs&&raw.recs.length){this.lastStart=now;
         const id=++RW.id,J={k:best.k,wait:true,t:now,tries:best.tries};this.job=J;
         RW.pend.set(id,(R,err)=>{if(err||!R) J.fail=true;else J.res=R;});
-        try{RW.w.postMessage({t:'bld',k:best.k,id:id,o:P.o,recs:raw.recs,shadows:!!TN.shadows});}catch(e){J.fail=true;}
+        try{RW.w.postMessage({t:'bld',k:best.k,id:id,o:P.o,recs:raw.recs,ms:raw.ms||null,shadows:!!TN.shadows});}catch(e){J.fail=true;}
         return;}}}}
   const tl=this.tileList(best.k,lng,lat);
   if(tl===null){this.lastStart=now;return;}   /* (that tile is still on its way: try again shortly) */
