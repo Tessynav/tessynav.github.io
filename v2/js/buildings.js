@@ -351,7 +351,12 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     const J=this.job;
     if(J.res){const t0=performance.now();this.job=null;const mesh=this.finishTyped(J.res);if(mesh) this.scene.three.scene.add(mesh);
       this.cells.set(J.k,{mesh:mesh,n:J.res.n,t:now,tries:J.tries,ids:[]});TN.prof('buildings',performance.now()-t0);}
-    else if(J.fail||now-J.t>10000){this.job=null;this.bgOff=true;}
+    /* no answer yet: the background builder can be busy for a while (working out heights when a lot of map arrives,
+       right after opening the app); the area is simply asked again later. Only after three real failures in a row
+       are buildings built here for the next 2 minutes (it used to give up for the whole drive after one slow answer,
+       and then buildings slowed the screen down) */
+    else if(J.fail||now-J.t>20000){this.job=null;
+      if(J.fail){this.bgFails=(this.bgFails||0)+1;if(this.bgFails>=3){this.bgOff=true;this.bgOffT=now;this.bgFails=0;}}}
     return;
   }
   /* keep building the current area: a few hundred buildings per frame */
@@ -387,6 +392,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
   /* inside the area covered by our own building tiles (Overture), the buildings come from there; elsewhere (or if
      the tiles can't be reached) from the map, as before */
   /* our building tiles, with the background builder running: the area is decoded and built there */
+  if(this.bgOff&&now-(this.bgOffT||0)>120000) this.bgOff=false;   /* (tries the background builder again after 2 minutes) */
   {const RW=TN.RW;if(RW&&RW.ready&&!RW.failed&&!this.bgOff&&this.covered(lng,lat)){
     const [cx,cy]=best.k.split(',').map(Number),key=Math.floor(cx/4)+'_'+Math.floor(cy/4),P=(this.tp||(this.tp=new Map())).get(key);
     if(!P){this.loadPack(key);this.lastStart=now;return;}
@@ -394,7 +400,7 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
     if(P.st==='ok'){const raw=P.raw.get(best.k);P.used=Date.now();
       if(raw&&!raw.done&&raw.recs&&raw.recs.length){this.lastStart=now;
         const id=++RW.id,J={k:best.k,wait:true,t:now,tries:best.tries};this.job=J;
-        RW.pend.set(id,(R,err)=>{if(err||!R) J.fail=true;else J.res=R;});
+        RW.pend.set(id,(R,err)=>{if(err||!R) J.fail=true;else{J.res=R;this.bgFails=0;}});
         try{RW.w.postMessage({t:'bld',k:best.k,id:id,o:P.o,recs:raw.recs,ms:raw.ms||null,shadows:!!TN.shadows});}catch(e){J.fail=true;}
         return;}}}}
   const tl=this.tileList(best.k,lng,lat);

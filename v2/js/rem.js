@@ -134,6 +134,9 @@ TN.Rem.prototype.updateLabels=function(cx,cz){
   /* the station name labels are moved 30 times a second, not 60 (each move costs the page some work), and not at
      all when no station is within reach */
   this.lblF=(this.lblF||0)+1;if(this.lblF%2) return;
+  /* (and only when the view has moved: parked or stopped at a light, the labels stay where they are) */
+  {const cm=this.scene.three&&this.scene.three.camera;if(cm){const e=cm.matrixWorld.elements,key=Math.round(e[12]*2)+','+Math.round(e[13]*2)+','+Math.round(e[14]*2)+','+Math.round(e[8]*200)+','+Math.round(e[10]*200);
+    if(key===this.lblCam&&this.lblF%30) return;this.lblCam=key;}}
   if(this.labels&&this.stations.size){let near=false;for(const st of this.stations.values()) if(Math.abs(st.x-cx)<1700&&Math.abs(st.z-cz)<1700){near=true;break;}
     if(!near){if(!this.lblHid){this.lblHid=true;for(const el of this.labels.values()) if(el._k!=='h'){el.style.display='none';el._k='h';}}return;}this.lblHid=false;}
   if(!this.labels){this.labels=new Map();
