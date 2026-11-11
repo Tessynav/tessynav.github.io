@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=117;
+TN.APPBUILD=118;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -524,20 +524,9 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       /* the car's height changes at most 5 m per second: when it moves onto a road piece at another height (a ramp
          beside a raised highway, after navigation ends), it glides up or down instead of jumping 10 m at once */
       {const yT=car.y||0;if(TN._ys==null||Math.abs(yT-TN._ys)>30) TN._ys=yT;else{const st=5*Math.min(0.1,dt||0.016);TN._ys+=Math.max(-st,Math.min(st,yT-TN._ys));}}
-      /* the drawn car moves sideways at most 1.6 m per second (smoothly), whatever the matching does underneath: when it
-         switches road pieces or lanes, the car slides over instead of jumping or swinging left and right. Big jumps
-         (more than 12 m: a GPS jump, a reroute, a tunnel exit) still move it at once. */
-      {/* (measured against the direction the car is actually moving, not the drawn heading: on curves the drawn heading
-          lags a little, and the limit held the car back until it jumped forward, a stepping "block by block" motion) */
-       /* (the direction of movement averaged over about a third of a second, so a one-frame sideways jump doesn't count as direction) */
-       const ddt=Math.min(0.1,dt||0.016),rmx=car.x-(TN._px==null?car.x:TN._px),rmz=car.z-(TN._pz==null?car.z:TN._pz);TN._px=car.x;TN._pz=car.z;
-       const kv=Math.min(1,ddt*3);TN._vx=(TN._vx||0)+(rmx/ddt-(TN._vx||0))*kv;TN._vz=(TN._vz||0)+(rmz/ddt-(TN._vz||0))*kv;
-       let mx=TN._vx,mz=TN._vz,ml=Math.hypot(mx,mz)*ddt;if(ml<0.02){const h=dispHd*Math.PI/180;mx=Math.sin(h);mz=-Math.cos(h);ml=0;}
-       const mn=Math.hypot(mx,mz)||1,fx=mx/mn,fz=mz/mn;
-       if(TN._cx==null||Math.hypot(car.x-TN._cx,car.z-TN._cz)>12){TN._cx=car.x;TN._cz=car.z;}
-       else{const dx=car.x-TN._cx,dz=car.z-TN._cz,al=dx*fx+dz*fz,sd=dx*(-fz)+dz*fx,lim=1.6*ddt;
-         const sd2=Math.max(-lim,Math.min(lim,sd));TN._cx+=fx*al+(-fz)*sd2;TN._cz+=fz*al+fx*sd2;}}
-      scene.placeCar(TN._cx,TN._cz,TN._ys,dispHd);
+      /* (the drawn car follows the tracking directly again: the extra sideways smoothing of builds 116 and 117 caused the
+         stepping and the zigzag on screen, while the tracking itself, in the recordings, was smooth) */
+      scene.placeCar(car.x,car.z,TN._ys,dispHd);
       if(ground){try{ground.update({x:car.x,z:car.z,hd:dispHd},dt);}catch(e){}}
       if(TN.shadows){try{const sl=TN.fromLocal(car.x,car.z);TN.shadows.update(sl[0],sl[1],{x:car.x,z:car.z,y:car.y,hd:dispHd,br:car.br});}catch(e){}}
       try{scene.updateBeam(car);}catch(e){}
