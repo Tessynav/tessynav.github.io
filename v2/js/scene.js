@@ -477,7 +477,7 @@ TN.Scene.prototype.applyNight=function(nt){
     /* the real weather: clouds grey the sky, rain darkens it, fog brings the haze in close */
     const W=this.weather||{cloud:0,rain:0,fog:0},cl=Math.min(1,W.cloud*0.85+W.rain*0.3),fg=Math.max(W.fog,W.rain*0.5);
     let sky=TN.mix(TN.mix('#3f7fcf','#9aa4ae',cl),TN.mix('#0d1830','#141920',cl),nt);
-    let hor=TN.mix(TN.mix('#d6e8f6','#c3c9cf',cl),TN.mix('#2a3a5c','#232a33',cl),nt);
+    let hor=TN.mix(TN.mix('#b9d3ee','#c3c9cf',cl),TN.mix('#2a3a5c','#232a33',cl),nt);   /* (a light blue haze, not near-white) */
     /* sunrise and sunset: warm orange at the horizon and a violet-blue sky, when the sun is low (less with clouds) */
     const sp=this.sunNow(),gold=sp?Math.max(0,1-Math.abs(sp.el-2)/8)*(1-0.8*cl):0;this.gold=gold;
     if(gold>0.02){sky=TN.mix(sky,'#56609a',gold*0.7);hor=TN.mix(hor,'#ffb07a',gold*0.85);}
@@ -488,7 +488,7 @@ TN.Scene.prototype.applyNight=function(nt){
     const fogc=TN.mix(TN.mix('#dfe8ef','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);
     try{this.map.getContainer().style.background=fogc;}catch(e){}   /* (shows near the horizon, beyond what the map draws) */
     if(typeof this.map.setSky==='function') this.map.setSky({'sky-color':sky,'horizon-color':hor,
-      'fog-color':fogc,'sky-horizon-blend':0.6,'horizon-fog-blend':0.5+0.4*fg,'fog-ground-blend':0.85-0.6*fg,'atmosphere-blend':0});
+      'fog-color':fogc,'sky-horizon-blend':0.32+0.3*cl,'horizon-fog-blend':0.5+0.4*fg,'fog-ground-blend':0.85-0.6*fg,'atmosphere-blend':0});
   }catch(e){}
   try{
     this.map.setPaintProperty('tn-night','fill-opacity',this.extraDark||0);   /* the 'darker' end of the night brightness setting */
