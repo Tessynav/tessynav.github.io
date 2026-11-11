@@ -4,7 +4,8 @@
    Stations: found from the map's railway stations that sit right beside the REM line: platforms, a white canopy on
    columns, a stair tower, and a floating name label (always facing you, readable from about 1.5 km).
    Trains stop 10 seconds at each station. The trains themselves run on a made-up rhythm near you.
-   Built to stay light: at most 3 trains, only within about 2 km. ?rem=0 switches the trains off. */
+   Built to stay light: at most 3 trains, only within about 2 km. ?rem=0 switches the trains off.
+   v12: trains far away aren't drawn and are placed less often; the work is measured in parts in recordings. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.Rem=function(scene,net){
@@ -166,8 +167,8 @@ TN.Rem.prototype.update=function(dt,cx,cz){
   this.stT-=dt;
   if(this.stT<=0&&this.scene.three&&this.net.rem&&this.net.rem.size){this.stT=15;
     const moved=this.stPos?Math.hypot(cx-this.stPos[0],cz-this.stPos[1]):1e9;
-    if(moved>300||this.net.ver!==this.stVer){this.stPos=[cx,cz];this.stVer=this.net.ver;try{this.findStations(cx,cz);}catch(e){}}}
-  try{this.updateLabels(cx,cz);}catch(e){}
+    if(moved>300||this.net.ver!==this.stVer){this.stPos=[cx,cz];this.stVer=this.net.ver;const t0=performance.now();try{this.findStations(cx,cz);}catch(e){}TN.prof&&TN.prof('rem:stations',performance.now()-t0);}}
+  {const t0=performance.now();try{this.updateLabels(cx,cz);}catch(e){}TN.prof&&TN.prof('rem:labels',performance.now()-t0);}
   const net=this.net;
   if(!this.on||!this.scene.three||!net.rem||!net.rem.size){for(const t of this.trains) this.free(t);this.trains=[];return;}
   this.build();
@@ -196,7 +197,11 @@ TN.Rem.prototype.update=function(dt,cx,cz){
         else{t.s=Math.max(0,Math.min(t.w.L,t.s));t.dir=-t.dir;t.wait=15;t.next=1100+Math.random()*900;}
       }
     }
-    const hs=net.remHeights(t.w),q=TN.remAt(t.w,hs,Math.max(0,Math.min(t.w.L,t.s)));
+    /* a train more than 1.3 km away isn't drawn and is placed only a few times a second (it keeps moving along) */
+    const far=Math.abs(t.g.position.x-cx)>1300||Math.abs(t.g.position.z-cz)>1300;
+    if(far){t.g.visible=false;t.fc=(t.fc||0)+1;if(t.fc%10) continue;}else if(!t.g.visible) t.g.visible=true;
+    const th=performance.now(),hs=net.remHeights(t.w);TN.prof&&TN.prof('rem:heights',performance.now()-th);
+    const q=TN.remAt(t.w,hs,Math.max(0,Math.min(t.w.L,t.s)));
     const dx=q.ux*t.dir,dz=q.uz*t.dir,rx=-dz,rz=dx;
     t.g.position.set(q.x,q.y+0.1,q.z);   /* on its own track */
     t.g.rotation.y=-Math.atan2(dx,-dz);
