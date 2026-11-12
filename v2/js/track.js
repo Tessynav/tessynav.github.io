@@ -485,7 +485,12 @@ TN.Track.prototype.frame=function(now,dt){
   /* (gliding onto a new road piece: on highways up to 3 m past the edge, on city streets never onto the sidewalk) */
   {const eLim=/^(motorway|trunk)/.test(w.cls||'')?W/2+3:Math.max(0.5,W/2-0.8);
    if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>eLim) car.ease.lat0=Math.sign(car.ease.lat0)*eLim;}
-  if(car.ease){
+  /* (the 35 m glide after each road piece change is switched off: on interchanges, with a new piece every few
+     seconds, the glides followed one another and the car wove left and right, the zigzag; measured on your drives,
+     the car's sideways movement and left-right reversals both drop without it, with the same accuracy. The car
+     still moves over smoothly, by the gentle follow below.) */
+  if(car.ease) car.ease=null;
+  if(false){
     /* after moving onto another road piece (a split, a merge, a turn), the car glides to its new place over the
        next 35 m of driving, like steering, instead of sliding sideways on the spot */
     const u=Math.min(1,Math.abs(car.s-car.ease.s0)/(car.ease.len||35)),k=u*u*(3-2*u);

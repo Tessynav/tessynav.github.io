@@ -40,11 +40,22 @@ TN.Tesla.prototype.vehicle=async function(){
   const v=r.j&&r.j.response&&r.j.response[0];if(!v) throw new Error('novehicle');
   const b=this.load()||{};b.vin=v.vin;b.name=v.display_name||'';this.save(b);return v.vin;
 };
+/* "asleep" (408) even while you're in the car: Tesla's servers can think the car is asleep for a moment (it just
+   woke, or its connection dropped). Ask it to wake up, then wait until it says it's online, at most about 25 s */
+TN.Tesla.prototype.wake=async function(vin,say){
+  try{if(say) say('Waking Tessy…');await this.post('/api/1/vehicles/'+vin+'/wake_up',{});
+    for(let i=0;i<9;i++){await new Promise(r=>setTimeout(r,3000));
+      const r=await this.api('/api/1/vehicles/'+vin);const st=r.j&&r.j.response&&r.j.response.state;
+      if(st==='online') return true;
+      if(i===2) try{await this.post('/api/1/vehicles/'+vin+'/wake_up',{});}catch(e){}}}catch(e){}
+  return false;
+};
 /* Tessy's active trip, as Tesla's navigation has it */
 TN.Tesla.prototype.trip=async function(){
   const vin=await this.vehicle();
-  const r=await this.api('/api/1/vehicles/'+vin+'/vehicle_data?endpoints='+encodeURIComponent('location_data;drive_state'));
-  if(r.status===408) return {asleep:true};
+  const q='/api/1/vehicles/'+vin+'/vehicle_data?endpoints='+encodeURIComponent('location_data;drive_state');
+  let r=await this.api(q);
+  if(r.status===408){if(!(await this.wake(vin,this._say))) return {asleep:true};r=await this.api(q);if(r.status===408) return {asleep:true};}
   if(r.status===401){this.signOut();throw new Error('signin');}
   if(r.status!==200) throw new Error('tesla '+r.status);
   const d=(r.j.response&&r.j.response.drive_state)||{};
@@ -55,10 +66,10 @@ TN.Tesla.prototype.trip=async function(){
 };
 TN.Tesla.prototype.getTrip=async function(nav){
   const say=m=>{if(nav&&nav.toast) nav.toast(m);};
-  say('Asking Tessy…');
+  say('Asking Tessy…');this._say=say;
   try{
     const t=await this.trip();
-    if(t.asleep){say('Tessy is asleep. Try again from the car.');return;}
+    if(t.asleep){say('Tessy didn’t wake up. Try again in a minute.');return;}
     if(t.none){say('No trip in Tessy’s navigation');return;}
     const sub=['From Tessy'];if(t.energy!=null) sub.push(Math.round(t.energy)+'% at arrival');
     if(nav) nav.pick({name:t.name,sub:sub.join(' \u00b7 '),lng:t.lng,lat:t.lat,fromTesla:true,tesla:{energy:t.energy,min:t.min,km:t.km}});
@@ -83,10 +94,13 @@ TN.Tesla.prototype.send=async function(dest,nav){
   say('Sending to Tessy…');
   try{
     const vin=await this.vehicle();
-    let r=await this.post('/api/1/vehicles/'+vin+'/command/navigation_gps_request',{lat:+dest.lat,lon:+dest.lng,order:0});
+    const cmd=()=>this.post('/api/1/vehicles/'+vin+'/command/navigation_gps_request',{lat:+dest.lat,lon:+dest.lng,order:0});
+    let r=await cmd();
+    {const e0=String((r.j&&(r.j.error||r.j.error_description))||(r.j&&r.j.response&&r.j.response.reason)||'');
+     if(r.status===408||/offline|asleep|unavailable/i.test(e0)){if(await this.wake(vin,say)){say('Sending to Tessy…');r=await cmd();}}}
     const res=r.j&&r.j.response,err=String((r.j&&(r.j.error||r.j.error_description))||(res&&res.reason)||'');
     if(r.status===200&&res&&res.result!==false){say('Sent to Tessy ✓');return {ok:true};}
-    if(r.status===408||/offline|asleep|unavailable/i.test(err)){say('Tessy is asleep. Try again from the car.');return {ok:false,why:'asleep'};}
+    if(r.status===408||/offline|asleep|unavailable/i.test(err)){say('Tessy didn’t wake up. Try again in a minute.');return {ok:false,why:'asleep'};}
     if(r.status===401){this.signOut();say('Connect your Tesla first');return {ok:false,why:'signin'};}
     if(r.status===403||/protocol|unsigned|hardlocked/i.test(err)){say('Tessy needs signed commands: next update');return {ok:false,why:'signed',detail:err};}
     say('Tessy didn’t accept it ('+(err||r.status)+')');return {ok:false,why:'other',detail:err||r.status};
