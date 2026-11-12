@@ -1396,7 +1396,11 @@ TN.LIGHT={motorway:65,trunk:60,primary:52,secondary:55,tertiary:58,minor:70};
 TN.LAMPH={motorway:9.5,trunk:9,primary:8.5,secondary:8.5,tertiary:7.5,minor:6.5};
 TN.Net.prototype.drawLights=function(L,w,runs){
   if(w.tun||w.pa) return;
-  const sp=w.br?52:TN.LIGHT[w.cls];if(!sp) return;
+  /* no made-up lamps on highways, their ramps, or raised decks: the map has no lamp positions, so they are placed by
+     a rule, and on interchanges, medians and ramps that rule put lamps in the middle of roads (and on Turcot alone
+     drew hundreds of extra poles and light pools). City streets keep theirs, where the rule works. */
+  if(/^(motorway|trunk)/.test(w.cls||'')||w.br||(w.hs&&Math.max(...w.hs)>2.5)) return;
+  const sp=TN.LIGHT[w.cls];if(!sp) return;
   const P=w.pts,N=TN.normals(P),hw=TN.width(w)/2,H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
   for(const [a,b] of runs){
     for(let s=Math.ceil(w.cum[a]/sp)*sp+sp*0.3;s<w.cum[b];s+=sp){

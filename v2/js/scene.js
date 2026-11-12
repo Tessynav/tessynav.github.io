@@ -41,7 +41,9 @@ TN.Scene.prototype.layer=function(){
         else TN.CUTU.cutR.value=0;
       }catch(e){}
       T.renderer.resetState();
-      T.renderer.render(T.scene,T.camera);
+      /* (for the recordings: how long the 3D drawing takes, and how many pieces and triangles it draws) */
+      {const t0=performance.now();T.renderer.render(T.scene,T.camera);
+       if(TN.prof){TN.prof('draw3d',performance.now()-t0);const ri=T.renderer.info&&T.renderer.info.render;if(ri){TN.prof('calls',ri.calls);TN.prof('ktris',ri.triangles/1000);}}}
     }
   };
 };
