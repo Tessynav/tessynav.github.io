@@ -214,6 +214,17 @@ TN.Nav.prototype.etaFor=function(k){
         if(this.res.style.display!=='none'&&!this.input.value) this.showStart();}}).catch(()=>{});}
   return c&&c.key===pl.lng+','+pl.lat?c.min:null;
 };
+/* your recent places (and Home / Work) that match what's typed: every word typed is the start of a word in the name or
+   address ("1311 stra" finds 1311 Avenue Stravinski); accents and capitals don't matter */
+TN.Nav.prototype.localMatches=function(q){
+  const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ');
+  const qw=norm(q).split(' ').filter(Boolean);if(!qw.length) return [];
+  const pool=[];try{for(const r of this.recent||[]) pool.push(r);}catch(e){}
+  try{const P=this.places||{};for(const k of ['home','work']){const f=P[k];if(f&&f.lng!=null) pool.push(Object.assign({},f,{name:f.name||(k==='home'?'Home':'Work')}));}for(const f of P.favs||[]) if(f&&f.lng!=null) pool.push(f);}catch(e){}
+  const out=[];for(const r of pool){const ws=norm((r.name||'')+' '+(r.sub||'')).split(' ').filter(Boolean);
+    if(qw.every(w=>ws.some(x=>x.startsWith(w)))) out.push(Object.assign({},r,{hist:true}));}
+  return out.slice(0,3);
+};
 TN.Nav.prototype.search=async function(q){
   const h=this.here(),my=++this.qn;this.qn=my;
   if(TN.MBX){try{
@@ -222,7 +233,11 @@ TN.Nav.prototype.search=async function(q){
       '&origin='+h[0].toFixed(5)+','+h[1].toFixed(5)+'&session_token='+this.sess+'&access_token='+TN.MBX;
     const r=await fetch(u);if(!r.ok) throw 0;const j=await r.json();if(my!==this.qn) return;
     const items=(j.suggestions||[]).filter(sg=>sg.feature_type!=='category'&&sg.mapbox_id).map(sg=>({name:sg.name,sub:sg.full_address||sg.place_formatted||'',mbid:sg.mapbox_id,dist:sg.distance}));
-    if(items.length){items.sort((a,b)=>(a.dist==null?1e9:a.dist)-(b.dist==null?1e9:b.dist));this.list(items);return;}
+    /* (Mapbox's own order is kept: it's already the best matches first, weighted by how near they are. Re-sorting by
+       distance alone pushed the place you were typing below closer, half-matching ones, so the full address had to be
+       typed. Your recent places that match what you typed come first, like in the Tesla and Google.) */
+    const mine=this.localMatches(q).filter(m=>!items.some(it=>it.name===m.name));
+    if(items.length||mine.length){this.list(mine.concat(items).slice(0,9));return;}
   }catch(e){}}
   try{
     const u='https://photon.komoot.io/api/?q='+encodeURIComponent(q)+'&lat='+h[1].toFixed(4)+'&lon='+h[0].toFixed(4)+'&limit=7&lang=en';
