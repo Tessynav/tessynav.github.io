@@ -1392,9 +1392,14 @@ TN.Nav.prototype.update=function(dt){
   this.roadName.textContent=c.w&&c.w.name?c.w.name:'';this.roadName.style.display=c.w&&c.w.name?'block':'none';
   /* arrived: at the destination, or parked near it (stopped 15 s within 250 m, in the second half of the route:
      a mall's or a building's parking lot is often away from the address point on the map) */
-  {const G=this.api.gps&&this.api.gps(),v=G&&G.v!=null?G.v:9;
-    if(left<250&&left<R.L*0.5&&v<0.8) this.parkT=(this.parkT||0)+dt;else this.parkT=0;}
-  if(left<30||(nx.type==='arrive'&&dNext<25)||this.parkT>15){this.arriveT+=dt;if(this.arriveT>3&&!this.saidArrive){this.saidArrive=true;try{this.roccoArrive();}catch(e){}if(TN.voice) TN.voice.say('You have arrived at '+(this.dest?this.dest.name:'your destination'),true);}
+  /* (but not stopped at a red light on the way in: on a main road it waits much longer, 2 minutes, and right after
+     a traffic-light wait on Boulevard Taschereau, 170 m before the Pharmacy's lot, it used to end the route) */
+  {const G=this.api.gps&&this.api.gps(),v=G&&G.v!=null?G.v:9,car=this.api.getCar&&this.api.getCar();
+    const cc=car&&((car.w&&car.w.cls)||car.cls)||'',main=/^(motorway|trunk|primary|secondary|tertiary)/.test(cc);
+    const near=this.dest&&G&&G.x!=null?TN.distLL(TN.fromLocal(G.x,G.z),[this.dest.lng,this.dest.lat]):(this.dest&&car&&car.x!=null?TN.distLL(TN.fromLocal(car.x,car.z),[this.dest.lng,this.dest.lat]):0);
+    if(left<250&&left<R.L*0.5&&v<0.8&&near<200) this.parkT=(this.parkT||0)+dt;else this.parkT=0;
+    this.parkNeed=main?120:15;}
+  if(left<30||(nx.type==='arrive'&&dNext<25)||this.parkT>(this.parkNeed||15)){this.arriveT+=dt;if(this.arriveT>3&&!this.saidArrive){this.saidArrive=true;try{this.roccoArrive();}catch(e){}if(TN.voice) TN.voice.say('You have arrived at '+(this.dest?this.dest.name:'your destination'),true);}
     if(this.arriveT>3){this.bar.querySelector('.dist').textContent='You have arrived';this.bar.querySelector('.ins').textContent=TN.esc(this.dest.name);}
     if(this.arriveT>12) this.end('arrived');return;}
   /* left the route: find a new one (at most every 15 s) */
