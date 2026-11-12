@@ -465,9 +465,15 @@ TN.Nav.prototype.localStreet=async function(to){
     const r=TN.seg(w,k,q[0],q[1]);if(!best||r.d<best.d) best={d:r.d,x:r.qx,z:r.qz};});
   if(best) return TN.fromLocal(best.x,best.z);
   try{const oq='[out:json][timeout:10];way(around:250,'+to[1]+','+to[0]+')[highway~"^(primary|secondary|tertiary|residential|unclassified|living_street|service|primary_link|secondary_link|tertiary_link)$"];out geom;';
-    const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(oq));if(!r.ok) return null;const j=await r.json();
+    const r=await TN.fetchT('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(oq),3500);if(!r) return null;const j=await r.json();   /* (3.5 s at most) */
     let b=null;for(const e of j.elements||[]) for(const g of e.geometry||[]){const d=TN.llDist([g.lon,g.lat],to);if(!b||d<b.d) b={d:d,p:[g.lon,g.lat]};}
     return b?b.p:null;}catch(e){return null;}
+};
+/* a download that gives up after ms milliseconds (the OpenStreetMap server can be very slow at busy times: the route
+   used to wait for it, up to a minute on "Calculating the route…"); null when it's too slow or fails */
+TN.fetchT=async function(url,ms){
+  const ctl=typeof AbortController!=='undefined'?new AbortController():null;const tm=ctl?setTimeout(()=>ctl.abort(),ms):null;
+  try{const r=await fetch(url,ctl?{signal:ctl.signal}:{});if(tm) clearTimeout(tm);return r.ok?r:null;}catch(e){if(tm) clearTimeout(tm);return null;}
 };
 TN.Nav.prototype.fetchRoute=async function(from,to){
   let rt=await this.fetchRouteOnce(from,to);
@@ -487,8 +493,8 @@ TN.Nav.prototype.fetchRoute=async function(from,to){
   try{const d=this.dest;
     if(rt&&d&&!d.ub&&!(this.stops&&this.stops.length)&&(d.biz||d.rlng!=null)&&TN.distLL([from[0],from[1]],[d.lng,d.lat])>400){
       const ql='[out:json][timeout:6];(nwr(around:150,'+d.lat.toFixed(6)+','+d.lng.toFixed(6)+')["amenity"="parking"]["access"!~"private|no"];);out center tags 20;';
-      const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql));
-      if(r.ok){const j=await r.json();let best=null,bd=1e9;
+      const r=await TN.fetchT('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql),3000);   /* (3 s at most: without it, the route as it is) */
+      if(r){const j=await r.json();let best=null,bd=1e9;
         for(const e of j.elements||[]){const c=e.center||(e.lat!=null?{lat:e.lat,lon:e.lon}:null);if(!c) continue;
           const dd=TN.distLL([d.lng,d.lat],[c.lon,c.lat]);if(dd<bd){bd=dd;best=c;}}
         if(best&&bd<150){const rt3=await this.fetchRouteOnce(from,[best.lon,best.lat]);
@@ -779,7 +785,7 @@ TN.Nav.prototype.osmBiz=async function(it){
   const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
   const nm=norm(it.name);if(!nm) return;
   const ql='[out:json][timeout:8];(nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["opening_hours"];nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["phone"];nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["contact:phone"];nwr(around:90,'+it.lat.toFixed(6)+','+it.lng.toFixed(6)+')["name"]["website"];);out tags center 30;';
-  let j;try{const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql));if(!r.ok) return;j=await r.json();}catch(e){return;}
+  let j;try{const r=await TN.fetchT('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql),8000);if(!r) return;j=await r.json();}catch(e){return;}
   const words=new Set(nm.split(' ').filter(w=>w.length>1));let best=null,bs=0;
   for(const e of j.elements||[]){const t=e.tags||{};const cands=[t.name,t.brand,t['name:en'],t['name:fr']].map(norm).filter(Boolean);
     let sc=0;for(const c of cands){const cw=c.split(' ').filter(w=>w.length>1);if(!cw.length) continue;const hit=cw.filter(w=>words.has(w)).length;sc=Math.max(sc,hit/Math.max(cw.length,1),hit/Math.max(words.size,1));}
