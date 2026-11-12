@@ -9,11 +9,11 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;   /* (same as the other files) */
 (function(){
 let lang='en';
-try{const s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s.lang==='fr') lang='fr';}catch(e){}
+try{const s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s.lang==='fr'||s.lang==='frfr') lang='fr';}catch(e){}   /* (fr: French as spoken in Québec; frfr: France French) */
 TN.LANG=lang;
 const FR=lang==='fr';
-/* French as spoken in Québec (the default for French; ⚙ → App → Accent: France for the France style) */
-let QC=true;try{const s2=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s2.frStyle==='fr') QC=false;}catch(e){}
+/* French as spoken in Québec (Language: Français · Québec), or France French (Language: Français · France) */
+let QC=true;try{const s2=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s2.lang==='frfr'||s2.frStyle==='fr') QC=false;}catch(e){}
 TN.QC=FR&&QC;
 
 /* ---------- plain texts ---------- */
