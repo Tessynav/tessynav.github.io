@@ -59,7 +59,9 @@ TN.Voice.prototype.next=function(){
   if(v){try{const u=new SpeechSynthesisUtterance(t);u.voice=v;u.lang=v.lang;u.rate=1.02;u.onend=done;u.onerror=done;this.synth.speak(u);this.mode='browser';
       setTimeout(()=>{if(this.busy&&this.last===t) done();},12000);return;}catch(e){}}
   /* no browser voice: Mapbox's voice service */
-  const url='https://api.mapbox.com/voice/v1/speak/'+encodeURIComponent(t)+'?textType=text&language='+(TN.LANG==='fr'?'fr-FR':'en-US')+'&outputFormat=mp3&access_token='+TN.MBX;
+  /* (French: the Canadian French voice for the Québec accent; if the voice service has none, the France one) */
+  const vl=TN.LANG==='fr'?(TN.QC&&!this.noCA?'fr-CA':'fr-FR'):'en-US';
+  const url='https://api.mapbox.com/voice/v1/speak/'+encodeURIComponent(t)+'?textType=text&language='+vl+'&outputFormat=mp3&access_token='+TN.MBX;
   /* Loud / Extra loud: the sound is fetched and played through the compressor and boost; if anything about that
      fails, it's played the normal way */
   const B=this.boost(),ac=B>1?this.ctx():null;
@@ -74,6 +76,7 @@ TN.Voice.prototype.next=function(){
 TN.Voice.prototype.plain=function(url,t,done){
   try{
     const a=new Audio(url);
+    if(/language=fr-CA/.test(url)) a.addEventListener('error',()=>{this.noCA=true;},{once:true});   /* (no Canadian voice: France voice from now on) */
     this.audio=a;this.mode='mapbox';a.onended=done;a.onerror=done;
     const p=a.play();if(p&&p.catch) p.catch(done);
     setTimeout(()=>{if(this.busy&&this.last===t) done();},12000);

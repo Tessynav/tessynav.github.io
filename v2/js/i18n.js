@@ -1,4 +1,4 @@
-/* TessyNav v2 — i18n.js (v1)
+/* TessyNav v2 — i18n.js (v1; v14: French as spoken in Québec, the default for French)
    French for the whole app. The app is written in English; when the language setting is French, every text the app
    puts on screen is swapped for its French version as it appears (a watcher on the page), and spoken instructions go
    through the same translation with a French voice. Texts with numbers or names inside ("In 300 metres, turn right
@@ -12,6 +12,9 @@ let lang='en';
 try{const s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s.lang==='fr') lang='fr';}catch(e){}
 TN.LANG=lang;
 const FR=lang==='fr';
+/* French as spoken in Québec (the default for French; ⚙ → App → Accent: France for the France style) */
+let QC=true;try{const s2=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s2.frStyle==='fr') QC=false;}catch(e){}
+TN.QC=FR&&QC;
 
 /* ---------- plain texts ---------- */
 const D={
@@ -237,12 +240,27 @@ function one(k){
   for(const [re,f] of R){const m=k.match(re);if(m){const v=f(m);if(v!=null) return v;}}
   return null;
 }
+/* the Québec way of saying it: "tu" instead of "vous" (Tourne, Prends, Reste…), and a few Québécois words, in the
+   instructions on screen and in the voice. Street names, numbers and directions stay exactly the same. */
+const QCW=[
+  [/\bTournez\b/g,'Tourne'],[/\btournez\b/g,'tourne'],[/\bPrenez\b/g,'Prends'],[/\bprenez\b/g,'prends'],
+  [/\bRestez\b/g,'Reste'],[/\brestez\b/g,'reste'],[/\bContinuez\b/g,'Continue'],[/\bcontinuez\b/g,'continue'],
+  [/\bFaites demi-tour\b/g,'Fais demi-tour'],[/\bfaites demi-tour\b/g,'fais demi-tour'],[/\bSortez\b/g,'Sors'],[/\bsortez\b/g,'sors'],
+  [/\bGardez\b/g,'Garde'],[/\bgardez\b/g,'garde'],[/\bSuivez\b/g,'Suis'],[/\bsuivez\b/g,'suis'],[/\bRejoignez\b/g,'Embarque sur'],[/\brejoignez\b/g,'embarque sur'],
+  [/\bEngagez-vous\b/g,'Embarque'],[/\bengagez-vous\b/g,'embarque'],[/\bDirigez-vous\b/g,'Va'],[/\bdirigez-vous\b/g,'va'],
+  [/\bVous êtes arrivé\b/g,'T’es arrivé'],[/\bvous êtes arrivé\b/g,'t’es arrivé'],[/\bVous êtes\b/g,'T’es'],[/\bvous êtes\b/g,'t’es'],
+  [/\bvotre\b/g,'ton'],[/\bVotre\b/g,'Ton'],[/\bvos\b/g,'tes'],[/\bVos\b/g,'Tes'],
+  [/\bRecalcul de l’itinéraire\b/g,'Pas de stress, je recalcule'],[/\bcarrefour giratoire\b/g,'rond-point'],
+  [/\bArrivée à destination\b/g,'C’est icitte, t’es arrivé'],[/\bdestination atteinte\b/gi,'t’es arrivé']
+];
+TN.qcSay=function(t){if(!TN.QC||!t) return t;let r=String(t);for(const [a,b] of QCW) r=r.replace(a,b);return r;};
 TN.tr=function(s){
   if(!FR||s==null) return s;s=String(s);
   if(!/[A-Za-z]/.test(s)) return s;
   if(cache.has(s)) return cache.get(s);
   const k=s.replace(/\s+/g,' ').trim();let r=one(k);
   r=r==null?s:s.match(/^\s*/)[0]+r+s.match(/\s*$/)[0];   /* (keeps the spaces around the text) */
+  if(TN.QC) r=TN.qcSay(r);
   if(cache.size>4000) cache.clear();
   cache.set(s,r);return r;
 };
