@@ -21,6 +21,8 @@ html,body,#map{margin:0;height:100%;background:#e9ece6}
 :root{--tn-panel-rgb:43 45 49;--tn-text:#f3f1ec;--tn-sub:#b9b6ae;--tn-tip:#f2b55a;--tn-link:#f2b55a;--tn-accent:#e8913a;--tn-on-accent:#2b1a08;--tn-btn:#45474d;--tn-off:#55575d;--tn-line:rgba(255,255,255,.09);--tn-joke:#f2b55a;--tn-danger:#ff8a80}
 .hud{position:absolute;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-text);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;border-radius:16px;padding:10px 16px;z-index:5;transition:opacity .6s;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 body.tn-intro .hud:not(#panel){opacity:0;pointer-events:none}
+/* the page's own buttons stay hidden until the app has set itself up (no bare grey page with plain buttons) */
+body:not(.tn-app) .hud{visibility:hidden}
 /* see-through panels (Settings -> Map and view): the top bar, status, search and buttons let the sky and buildings show
    through, without blur (a blur would be recalculated every frame over the moving 3D view); a soft outline keeps the text
    readable. The light theme stays more solid, with a light glow instead of a shadow. Lists, the route overview and forms
@@ -116,7 +118,9 @@ window.TN_PROGRESS=function(){};
   if(!on){b.parentNode.removeChild(b);return;}
   document.body.classList.add('tn-intro');
   /* safety: never stay dark for long if anything goes wrong */
-  setTimeout(()=>{const x=document.getElementById('tn-boot');if(x) x.parentNode.removeChild(x);document.body.classList.remove('tn-intro');},9000);
+  /* safety: if the app hasn't revealed the city after 25 s (a very slow connection), the start screen goes away
+     anyway (it was 9 s: on a slow connection the app wasn't ready yet, and its bare buttons showed on a grey page) */
+  setTimeout(()=>{const x=document.getElementById('tn-boot');if(x) x.parentNode.removeChild(x);document.body.classList.remove('tn-intro');},25000);
 })();
 </script>
 <!-- the map (MapLibre) and 3D (three.js) libraries, from jsDelivr with unpkg as a backup -->
@@ -164,7 +168,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/tunnel.js?v=3"></script>
 <script src="js/feedback.js?v=7"></script>
 <script src="js/rec.js?v=4"></script>
-<script src="js/app.js?v=118"></script>
+<script src="js/app.js?v=119"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
