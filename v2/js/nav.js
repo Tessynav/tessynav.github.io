@@ -486,14 +486,20 @@ TN.Nav.prototype.fetchRoute=async function(from,to){
       const keep=this.alts;const rt2=await this.fetchRouteOnce(from,[d.lng,d.lat]);
       if(rt2){const C=rt2.geometry.coordinates,e=C[C.length-1],near=TN.distLL(e,[d.lng,d.lat]);
         const quicker=rt2.duration<rt.duration-60||rt2.duration<rt.duration*0.85;
-        this.note('entrance check',{name:d.name,accessMin:Math.round(rt.duration/60),placeMin:Math.round(rt2.duration/60),endFromPlace:Math.round(near),used:!!(quicker&&near<150)});
-        if(quicker&&near<150){rt2.viaPlace=true;rt=rt2;this.alts=null;}else this.alts=keep;}}}catch(e){}
+        /* (or when the route to the place itself ends right at it, within 40 m, and is at most a minute and a half
+           longer: the Provigo's listed car access is on the street 50 m away, while the route to the store ends 9 m
+           from it, for one more minute) */
+        const closeEnough=TN.distLL(rt2.geometry.coordinates[rt2.geometry.coordinates.length-1],[d.lng,d.lat])<40&&rt2.duration<=rt.duration+90;
+        
+        this.note('entrance check',{name:d.name,accessMin:Math.round(rt.duration/60),placeMin:Math.round(rt2.duration/60),endFromPlace:Math.round(near),used:!!((quicker&&near<150)||closeEnough)});
+        if((quicker&&near<150)||closeEnough){rt2.viaPlace=true;rt=rt2;this.alts=null;}else this.alts=keep;}}}catch(e){}
   /* a store or business with its own parking lot (OpenStreetMap, within 150 m): the route goes into the lot, when
      that's not much longer (the Provigo at Place du Commerce: the route ended on the street beside the store) */
   try{const d=this.dest;
     if(rt&&d&&!d.ub&&!(this.stops&&this.stops.length)&&(d.biz||d.rlng!=null)&&TN.distLL([from[0],from[1]],[d.lng,d.lat])>400){
       const ql='[out:json][timeout:6];(nwr(around:150,'+d.lat.toFixed(6)+','+d.lng.toFixed(6)+')["amenity"="parking"]["access"!~"private|no"];);out center tags 20;';
-      const r=await TN.fetchT('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql),3000);   /* (3 s at most: without it, the route as it is) */
+      const r=await TN.fetchT('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(ql),4000);   /* (4 s at most: without it, the route as it is) */
+      if(!r) this.note('parking lot check',{name:d.name,err:'no answer from the map server'});
       if(r){const j=await r.json();let best=null,bd=1e9;
         for(const e of j.elements||[]){const c=e.center||(e.lat!=null?{lat:e.lat,lon:e.lon}:null);if(!c) continue;
           const dd=TN.distLL([d.lng,d.lat],[c.lon,c.lat]);if(dd<bd){bd=dd;best=c;}}
