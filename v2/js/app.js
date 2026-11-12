@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=118;
+TN.APPBUILD=119;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -14,6 +14,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:start,zoom:17,pitch:60,maxPitch:85,
     fadeDuration:0,pixelRatio:1,
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
+  document.body.classList.add('tn-app');   /* (the buttons can show now) */
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   /* the background road builder: builds the 3D road areas on its own thread (the screen never waits for it); it gets
      the same road packs and the heights worked out here. Off with ?rw=0, and it switches itself off if it fails. */
