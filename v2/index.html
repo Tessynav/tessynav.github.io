@@ -11,6 +11,11 @@
 <!-- (the two libraries are loaded at the end of the page, after the start screen is up: the screen used to stay white
      for several seconds while they downloaded) -->
 <style>html{background:#080e1a}</style>
+<!-- (the big libraries start downloading right away, while the start screen shows; the page only uses them further down) -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js">
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js">
+<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <style>
 html,body,#map{margin:0;height:100%;background:#e9ece6}
 :root{--tn-panel-rgb:43 45 49;--tn-text:#f3f1ec;--tn-sub:#b9b6ae;--tn-tip:#f2b55a;--tn-link:#f2b55a;--tn-accent:#e8913a;--tn-on-accent:#2b1a08;--tn-btn:#45474d;--tn-off:#55575d;--tn-line:rgba(255,255,255,.09);--tn-joke:#f2b55a;--tn-danger:#ff8a80}
@@ -82,11 +87,6 @@ button.hud{border:0;cursor:pointer}
 </head>
 <body>
 <div id="tn-boot"><div class="road"></div><div class="beam"></div><div class="hl l"></div><div class="hl r"></div><div class="nm">Tessy<b>Nav</b></div><div class="sub">Navigation for Tesla</div></div>
-<!-- the map (MapLibre) and 3D (three.js) libraries, from jsDelivr with unpkg as a backup -->
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-<script>window.THREE||document.write('<script src="https://unpkg.com/three@0.158.0/build/three.min.js"><\/script>')</script>
 <script>
 window.TN_T0=performance.now();
 /* the opening animation starts dark from the first moment (no blank screen); skipped after an update or with ?intro=0 */
@@ -108,7 +108,9 @@ window.TN_PROGRESS=function(){};
   /* never stay on this screen if something goes wrong */
   setTimeout(()=>window.TN_PROGRESS(100,'Ready'),12000);
 })();
-(function(){let on=true;try{if(/[?&]intro=0/.test(location.search)||(/[?&]r=\d/.test(location.search)&&!/[?&]intro=1/.test(location.search))||sessionStorage.getItem('tn2_target')) on=false;
+/* (the real opening plays after an update too, with a thin progress line under it, instead of the old
+   "Updating TessyNav" screen with a faded picture of the map from before) */
+(function(){let on=true;try{if(/[?&]intro=0/.test(location.search)) on=false;
   const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');if(st&&st.intro===false) on=false;}catch(e){}
   const b=document.getElementById('tn-boot');
   if(!on){b.parentNode.removeChild(b);return;}
@@ -117,6 +119,11 @@ window.TN_PROGRESS=function(){};
   setTimeout(()=>{const x=document.getElementById('tn-boot');if(x) x.parentNode.removeChild(x);document.body.classList.remove('tn-intro');},9000);
 })();
 </script>
+<!-- the map (MapLibre) and 3D (three.js) libraries, from jsDelivr with unpkg as a backup -->
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script>window.THREE||document.write('<script src="https://unpkg.com/three@0.158.0/build/three.min.js"><\/script>')</script>
 <div id="map"></div>
 <div id="status" class="hud">Finding Tessy…</div>
 <div id="tag" class="hud">TessyNav v2 · test</div>
