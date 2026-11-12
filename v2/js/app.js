@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=119;
+TN.APPBUILD=120;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -472,7 +472,10 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
        roads are built here again, so they never stay missing */
     {const RW=TN.RW;if(RW&&!RW.failed&&RW.ready&&RW.syncVer===net.ver&&RW.ver!==net.ver&&RW.syncT&&performance.now()-RW.syncT>15000){if(RW.note) RW.note('no answer',{ver:net.ver});if(TN.RWfail) TN.RWfail();}}
     /* after a network rebuild: the background road builder gets the new packs and heights (worked out in slices) */
-    {const RW=TN.RW;if(RW&&RW.ready&&!RW.failed&&!net.job&&RW.syncVer!==net.ver){const tn=performance.now();
+    /* (one map update at a time: the next one waits until the background builder has finished the last. On long
+       highway drives new map arrived every few seconds and the updates queued up behind each other, each a full
+       height calculation, so the requests for roads and buildings waited behind them: buildings didn't appear) */
+    {const RW=TN.RW;if(RW&&RW.ready&&!RW.failed&&!net.job&&RW.syncVer!==net.ver&&!(RW.syncVer!==RW.ver&&RW.syncT&&performance.now()-RW.syncT<15000)){const tn=performance.now();
       if(!RW.sj){RW.sj=net.workerSyncJob();RW.sjVer=net.ver;}
       let r;do{r=RW.sj.next();}while(!r.done&&performance.now()-tn<Math.max(1,Math.min(3,TN.workLeft())));
       if(r.done){RW.sj=null;if(RW.sjVer===net.ver){try{RW.w.postMessage(r.value.msg,r.value.transfer);RW.syncVer=net.ver;RW.syncT=performance.now();}catch(e){if(TN.RWfail) TN.RWfail();}}}
