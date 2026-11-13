@@ -1396,6 +1396,10 @@ TN.LIGHT={motorway:65,trunk:60,primary:52,secondary:55,tertiary:58,minor:70};
 TN.LAMPH={motorway:9.5,trunk:9,primary:8.5,secondary:8.5,tertiary:7.5,minor:6.5};
 TN.Net.prototype.drawLights=function(L,w,runs){
   if(w.tun||w.pa) return;
+  /* no made-up lamps at all any more: the map has no lamp positions, so they were placed by a rule, and that rule kept
+     putting lamps in the middle of roads (medians, junctions, wide boulevards like René-Lévesque). Codriver shows none.
+     ?lamps=1 brings them back for testing. */
+  if(!(typeof location!=='undefined'&&/[?&]lamps=1/.test(location.search))) return;
   /* no made-up lamps on highways, their ramps, or raised decks: the map has no lamp positions, so they are placed by
      a rule, and on interchanges, medians and ramps that rule put lamps in the middle of roads (and on Turcot alone
      drew hundreds of extra poles and light pools). City streets keep theirs, where the rule works. */

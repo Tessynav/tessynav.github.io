@@ -643,9 +643,14 @@ TN.Nav.prototype.fitRange=function(i0,i1){
   /* smoothed values for drawing and placing the car (lane and shift change gradually, over about 40 m) */
   R.sm=R.sm||{};const sm=R.sm;
   /* (the shift is averaged over 70 m, weighted toward the middle; the lane over 40 m as before) */
-  for(let i=i0;i<=i1;i++){let ln=0,nl=0,dx=0,dz=0,wt=0;
-    for(let k=i;k>=i0&&R.cum[i]-R.cum[k]<70;k--){const f=R.fit[k],d=R.cum[i]-R.cum[k],q=1-d/70;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
-    for(let k=i+1;k<=i1&&R.cum[k]-R.cum[i]<70;k++){const f=R.fit[k],d=R.cum[k]-R.cum[i],q=1-d/70;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+  /* (the average uses every point already fitted on both sides, not only the ones fitted in this batch: the route is
+     fitted in batches as you drive, and each batch's first and last 70 m were averaged on one side only, so the line
+     and the car stepped sideways at every batch boundary, a weave of about 1 m every few seconds on highways. The
+     points just before and after the batch are recomputed too. Averaged over 120 m.) */
+  const SW=120;let a0=i0,a1=i1;while(a0>0&&R.cum[i0]-R.cum[a0-1]<SW) a0--;while(a1<R.pts.length-1&&R.cum[a1+1]-R.cum[i1]<SW) a1++;
+  for(let i=a0;i<=a1;i++){if(!R.fit[i]) continue;let ln=0,nl=0,dx=0,dz=0,wt=0;
+    for(let k=i;k>=0&&R.cum[i]-R.cum[k]<SW;k--){const f=R.fit[k];if(!f) break;const d=R.cum[i]-R.cum[k],q=1-d/SW;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+    for(let k=i+1;k<R.pts.length&&R.cum[k]-R.cum[i]<SW;k++){const f=R.fit[k];if(!f) break;const d=R.cum[k]-R.cum[i],q=1-d/SW;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
     sm[i]=[ln/Math.max(1,nl),dx/(wt||1),dz/(wt||1),R.fit[i].h];}
 };
 TN.Nav.prototype.heights=function(){};
