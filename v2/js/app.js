@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=123;
+TN.APPBUILD=124;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -569,6 +569,12 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
       if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);
+      /* the car leaving the screen while the map isn't following it (at the start of a trip, or after looking around):
+         driving off the edge brings the view back to the car right away, instead of after the usual wait */
+      const viewBusy=(nav&&((nav.res&&nav.res.style.display!=='none'&&nav.res.childElementCount)||(nav.ov&&nav.ov.style.display!=='none')))||(document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName));
+      if(!follow&&ready&&!viewBusy&&track.last&&(track.last.v||0)>2&&typeof startFollow==='function'){
+        try{const pp=map.project([ll[0],ll[1]]),Wd=map.getContainer().clientWidth,Hd=map.getContainer().clientHeight;
+          if(pp.y>Hd*0.93||pp.y<Hd*0.05||pp.x<Wd*0.03||pp.x>Wd*0.97){startFollow();try{if(rec&&rec.rec) rec.note('car off screen',{x:Math.round(pp.x),y:Math.round(pp.y)});}catch(e){}}}catch(e){}}
       if(follow){
         const kmh=(track.last?track.last.v:0)*3.6;
         /* heading-up, like Tesla's map: the car always points straight up the screen and in a turn the whole map
