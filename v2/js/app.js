@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=122;
+TN.APPBUILD=123;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -614,7 +614,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
         /* Clean view (Codriver-like): the camera a bit higher, looking down more at the road */
         {const want=TN.viewClean?1:0;TN._ck=(TN._ck==null?want:TN._ck)+(want-(TN._ck==null?want:TN._ck))*Math.min(1,(dt||0.016)*2.5);}
         const ck=TN._ck||0;
-        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-0.9*ck,pitch:gPitch+(50-gPitch)*ck,padding:{top:Math.round(H*(0.56-0.06*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
+        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-0.5*ck,pitch:gPitch+(52-gPitch)*ck,padding:{top:Math.round(H*(0.56-0.06*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
         map.jumpTo(view);
         if(ready) setLite(true);
       }

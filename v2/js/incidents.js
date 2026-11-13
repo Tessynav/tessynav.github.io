@@ -311,6 +311,13 @@ TN.Incidents.prototype.openReport=function(){
   g.innerHTML=TN.REPORT_KINDS.map(k=>'<button data-k="'+k+'">'+TN.ROCCO(k,52)+'<span>'+TN.ROCCO_TITLE[k]+'</span></button>').join('')+'<button class="x" data-k="">Cancel</button>';
   g.querySelectorAll('button').forEach(b=>b.onclick=async()=>{g.style.display='none';document.body.classList.remove('tn-reporting');const k=b.dataset.k;if(!k) return;
     const c=this.api.getCar&&this.api.getCar(),ll=c&&c.x!=null?TN.fromLocal(c.x,c.z):null;if(!ll){this.toast('Waiting for GPS\u2026');return;}
+    /* (5 seconds to undo before it's shared: alerts were sent by accidental taps while driving) */
+    const undone=await new Promise(res=>{const t=document.createElement('div');t.className='hud';
+      t.style.cssText='left:50%;top:84px;transform:translateX(-50%);z-index:9;font-size:15px;padding:8px 10px 8px 16px;display:flex;gap:12px;align-items:center';
+      t.innerHTML='<span>'+TN.esc(TN.ROCCO_TITLE[k]||k)+' alert in 5 s</span><button style="font:600 15px system-ui;padding:8px 16px;border-radius:10px;border:0;background:#2f6fe4;color:#fff">Undo</button>';
+      document.body.appendChild(t);let done=false;const fin=v=>{if(done) return;done=true;try{t.parentNode&&t.parentNode.removeChild(t);}catch(e){}res(v);};
+      t.querySelector('button').onclick=ev=>{ev.stopPropagation();fin(true);};setTimeout(()=>fin(false),5000);});
+    if(undone){this.toast('Alert cancelled');if(this.api.note) this.api.note('report cancelled',{kind:k});return;}
     try{await this.reports.send(k,ll[0],ll[1],c.hd||0);this.toast('Thanks! Rocco will warn other drivers.');this.repFetch=0;
       if(this.api.note) this.api.note('report sent',{kind:k});}
     catch(e){this.toast('Could not send the report right now');if(this.api.note) this.api.note('report failed',{err:String(e.message||e)});}});
