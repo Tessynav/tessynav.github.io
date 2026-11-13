@@ -267,7 +267,10 @@ TN.Track.prototype.pointOn=function(w,s,lat,dir){
   const at=q=>{q=Math.max(0,Math.min(L,q));let lo=0,hi=c.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(c[m]<=q) lo=m;else hi=m;}
     const sg=c[lo+1]-c[lo]||1,t=(q-c[lo])/sg;return [P[lo][0]+(P[lo+1][0]-P[lo][0])*t,P[lo][1]+(P[lo+1][1]-P[lo][1])*t];};
   const p0=at(s),x=p0[0],z=p0[1];
-  const a=at(s-4),b=at(s+4);let tx=b[0]-a[0],tz=b[1]-a[1];const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
+  /* (the direction over 8 m, but over 40 m on highways: the map's highway lines bend a few degrees at every join, and
+     the car, then the whole view turned with each bend, so the screen swung left and right) */
+  const hwd=/^(motorway|trunk)/.test(w.cls||'')&&L>12?20:4;
+  const a=at(s-hwd),b=at(s+hwd);let tx=b[0]-a[0],tz=b[1]-a[1];const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
   /* right of driving direction */
   const rx=-tz*dir,rz=tx*dir;
   return {x:x+rx*lat,z:z+rz*lat,hd:(Math.atan2(tx*dir,-tz*dir)/TN.R+360)%360};
@@ -502,7 +505,10 @@ TN.Track.prototype.frame=function(now,dt){
     if(/^(motorway|trunk)/.test(w.cls||'')){const mx=0.6*dt;d=Math.max(-mx,Math.min(mx,d));}
     car.lat+=d;}
   const p=this.pointOn(w,car.s,car.lat,dir);
-  car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*8)*(1-(car.mw||0))+360)%360;   /* (no pull from the street during a manoeuvre) */
+  /* (on highways at speed the direction follows gently, over about half a second: heading jumps at road-piece joins
+     turned the car, and the whole view with it, in a quick swing) */
+  const hrate=/^(motorway|trunk)/.test(w.cls||'')&&L.v>12?2:8;
+  car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*hrate)*(1-(car.mw||0))+360)%360;   /* (no pull from the street during a manoeuvre) */
   /* corners of the road drawing (and turns from one road piece onto another) are rounded: the shown car follows
      the road point fully along its direction, and smoothly (about 0.2 s) sideways */
   if(car.x==null||dt===0){car.x=p.x;car.z=p.z;}
