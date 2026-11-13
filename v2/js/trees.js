@@ -179,6 +179,8 @@ TN.Trees.prototype.free=function(ck){
 };
 TN.Trees.prototype.update=function(lng,lat,fps){
   if(!this.on||!this.scene.three) return;
+  /* trees are small: drawn up to 60% of the buildings' distance */
+  try{if(TN.lodApply&&performance.now()-(this.lodT||0)>500){this.lodT=performance.now();TN.lodApply(this.cells,lng,lat,(TN.lodFar||900)*0.6,e=>e&&e.grp);}}catch(e){}
   this.setup();this.load(lng,lat);
   /* keep the screen smooth: fewer areas if slow, off if very slow */
   if(fps){

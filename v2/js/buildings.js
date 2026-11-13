@@ -311,7 +311,29 @@ TN.Buildings.prototype.loadPack=function(key){
     T.set(key,{st:'ok',o:j.o,raw:raw,used:Date.now()});
   }).catch(()=>{T.delete(key);});
 };
+/* draw distance (both buildings and trees use it): areas further than this from the point ahead of the car are kept
+   but not drawn. It adapts to the frame rate: down to 450 m when the screen is slow (busy interchanges, downtown),
+   back up to 1000 m when it's smooth. The map's own haze already fades the distance, so it's hardly visible. */
+TN.lodFar=TN.lodFar||900;
+TN.lodTick=function(fps){
+  const now=performance.now();if(now-(TN._lodT||0)<500) return;const dt=(now-(TN._lodT||now))/1000;TN._lodT=now;
+  if(!fps) return;
+  if(fps<46){TN._lodSlow=(TN._lodSlow||0)+dt;TN._lodFast=0;}else if(fps>56){TN._lodFast=(TN._lodFast||0)+dt;TN._lodSlow=0;}else{TN._lodSlow=0;TN._lodFast=0;}
+  if(TN._lodSlow>=2){TN.lodFar=Math.max(450,TN.lodFar-100);TN._lodSlow=0;}
+  if(TN._lodFast>=8){TN.lodFar=Math.min(1000,TN.lodFar+100);TN._lodFast=0;}
+};
+/* show or hide whole areas by their distance (nearest edge of the area) from the point (lng, lat) */
+TN.lodApply=function(cells,lng,lat,far,getObj){
+  const q=TN.toLocal(lng,lat),C=TN.CELL;let shown=0,hidden=0;
+  for(const [k,e] of cells){const o=getObj(e);if(!o) continue;const [cx,cy]=k.split(',').map(Number);
+    const a=TN.toLocal(cx*C,cy*C),b=TN.toLocal(cx*C+C,cy*C+C);
+    const x0=Math.min(a[0],b[0]),x1=Math.max(a[0],b[0]),z0=Math.min(a[1],b[1]),z1=Math.max(a[1],b[1]);
+    const dx=q[0]<x0?x0-q[0]:q[0]>x1?q[0]-x1:0,dz=q[1]<z0?z0-q[1]:q[1]>z1?q[1]-z1:0;
+    const vis=Math.hypot(dx,dz)<far;if(o.visible!==vis) o.visible=vis;if(vis) shown++;else hidden++;}
+  return [shown,hidden];
+};
 TN.Buildings.prototype.update=function(lng,lat,fps){
+  try{TN.lodTick(fps);if(performance.now()-(this.lodT||0)>500){this.lodT=performance.now();TN.lodApply(this.cells,lng,lat,TN.lodFar,e=>e&&e.mesh);}}catch(e){}
   if(!this.on||!this.scene.three) return;
   if(fps){
     if(fps<45) this.slowT++;else this.slowT=Math.max(0,this.slowT-1);
