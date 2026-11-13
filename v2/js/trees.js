@@ -8,7 +8,8 @@
    - trees that fall on a road surface are left out
    - if the screen ever gets slow, fewer areas are drawn automatically, and trees switch off below 35 fps
    - ?trees=0 in the address turns them off completely
-   Nothing here touches the car, the roads or the recording. */
+   Nothing here touches the car, the roads or the recording.
+   v9: trees on the grass beside highways and ramps (in loose groups, never in built-up areas), like Codriver. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.Trees=function(scene,net){
@@ -94,9 +95,45 @@ TN.Trees.prototype.greenFor=function(ck){
   }
   return out;
 };
+/* trees on the grass beside highways and their ramps, like Codriver: in loose groups 9 to 26 m outside the road's
+   edge, never on another road, inside a built-up area (the map's residential, commercial or industrial land), on a
+   bridge or in a tunnel. At most 160 per area, so it stays light. */
+TN.Trees.prototype.sideFor=function(ck){
+  const net=this.net,map=this.scene.map;if(!net||!net.ways) return [];
+  const [cx,cy]=ck.split(',').map(Number),lo0=cx*TN.CELL,la0=cy*TN.CELL,lo1=lo0+TN.CELL,la1=la0+TN.CELL;
+  const A=TN.toLocal(lo0,la0),B=TN.toLocal(lo1,la1),x0=Math.min(A[0],B[0]),x1=Math.max(A[0],B[0]),z0=Math.min(A[1],B[1]),z1=Math.max(A[1],B[1]);
+  /* the built-up land (no roadside trees there) */
+  const urban=[];try{for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'landuse'})){const c=(f.properties||{}).class;
+      if(!/residential|commercial|industrial|retail|railway|school|hospital|university|college|stadium/.test(c||'')) continue;
+      const g=f.geometry;const list=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
+      for(const rings of list){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}
+        if(a1<lo0||a0>lo1||b1<la0||b0>la1) continue;urban.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
+  let h=(cx*83492791)^(cy*2971215073);const rnd=()=>{h^=h<<13;h^=h>>>17;h^=h<<5;return ((h>>>0)%10000)/10000;};
+  const out=[];
+  for(const w of net.ways.values()){
+    if(!/^(motorway|trunk)/.test(w.cls||'')||w.tun||w.br||!w.pts||w.pts.length<2) continue;
+    if(w.hs&&Math.max(...w.hs)>1) continue;
+    const P=w.pts;let inBox=false;for(const q of P){if(q[0]>=x0-30&&q[0]<=x1+30&&q[1]>=z0-30&&q[1]<=z1+30){inBox=true;break;}}if(!inBox) continue;
+    const hw=TN.width(w)/2;
+    for(let i=0;i<P.length-1;i++){const ax=P[i][0],az=P[i][1],bx=P[i+1][0],bz=P[i+1][1],L=Math.hypot(bx-ax,bz-az);if(L<1) continue;
+      const ux=(bx-ax)/L,uz=(bz-az)/L;
+      for(let d=rnd()*18;d<L;d+=14+rnd()*16){
+        for(const side of [-1,1]){if(rnd()>0.55) continue;
+          const off=hw+9+rnd()*17,x=ax+ux*d-uz*off*side,z=az+uz*d+ux*off*side;
+          if(x<x0||x>x1||z<z0||z>z1) continue;
+          /* clear of every road (with 4 m to spare) */
+          let near=false;net.near(x,z,0,(v,k)=>{if(v.tun) return;const r=TN.seg(v,k,x,z);if(r.d<TN.width(v)/2+4){near=true;return true;}});if(near) continue;
+          const ll=TN.fromLocal(x,z);let built=false;for(const u of urban){const b=u.bb;if(ll[0]<b[0]||ll[0]>b[1]||ll[1]<b[2]||ll[1]>b[3]) continue;if(TN.inPoly(ll[0],ll[1],u.rings)){built=true;break;}}if(built) continue;
+          /* a small group: the tree and sometimes one or two more close by */
+          const n=1+(rnd()<0.35?1:0)+(rnd()<0.15?1:0);
+          for(let g=0;g<n;g++) out.push(x+(g?(rnd()-0.5)*7:0),z+(g?(rnd()-0.5)*7:0),0.8+rnd()*0.6,Math.floor(rnd()*1024));
+          if(out.length>=160*4) return out;}}}}
+  return out;
+};
 TN.Trees.prototype.build=function(ck){
   const green=this.greenFor(ck);this.lastGreen=green.length;
-  const street=this.buckets.get(ck)||[],b=street.concat(green);if(!b.length) return null;
+  let side=[];try{if(!(TN.settings&&TN.settings.roadsideTrees===false)) side=this.sideFor(ck);}catch(e){side=[];}
+  const street=this.buckets.get(ck)||[],b=street.concat(green,side);if(!b.length) return null;
   const net=this.net,keep=[];
   for(let i=0;i<b.length&&keep.length<2200*4;i+=4){
     const x=b[i],z=b[i+1];let onRoad=false;
