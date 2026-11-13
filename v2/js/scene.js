@@ -379,7 +379,10 @@ TN.Scene.prototype.styleMap=function(){
   for(const l of map.getStyle().layers){
     const id=l.id.toLowerCase();
     try{
-      if(l.type==='background'){map.setPaintProperty(l.id,'background-color','#c2c3b6');this.dayPaint.push([l.id,'background-color','#c2c3b6','#3a3f48']);}
+      /* the land the map has nothing on (beside highways and ramps, empty lots, the space between roads): grass, with
+         the same natural texture as the parks, like Codriver; city blocks keep their light ground (the map marks those) */
+      if(l.type==='background'){map.setPaintProperty(l.id,'background-color','#6cc24a');this.dayPaint.push([l.id,'background-color','#6cc24a',TN.NIGHTCOL['#6cc24a']||TN.mix('#6cc24a','#1a2030',0.8)]);
+        try{const gname=this.grassImg('#6cc24a','#6cc24a');if(gname){map.setPaintProperty(l.id,'background-pattern',gname);this.texLayers=this.texLayers||[];if(!this.texLayers.some(t=>t[1]==='#6cc24a'&&t[0]===l.id)) this.texLayers.push([l.id,'#6cc24a']);}}catch(e){}}
       else if(l.type==='fill'){
         let c=null;
         if(/water|ocean|river|lake|basin|reservoir/.test(id)) c='#2f9fd6';
