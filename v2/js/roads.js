@@ -1763,7 +1763,9 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       }
     }
   };
-  const major=['motorway','trunk','primary','secondary'].indexOf(w.cls)>=0;
+  /* (ramps too: motorway, trunk and primary links get their white and yellow edge lines, like the real ramps and like
+     Codriver; they had none) */
+  const major=['motorway','trunk','primary','secondary','motorway_link','trunk_link','primary_link'].indexOf(w.cls)>=0;
   /* a ramp's own edge lines stop 35 m before the point where it joins (or leaves) another road, so no white line
      runs across the place where it merges into the highway */
   const joinsAt=j=>(this.keys.get(w.keys[j])||[]).length>1;
@@ -1782,11 +1784,12 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     if(w.ow){
       const n=w.lanes||Math.max(1,Math.round(W/3.4));
       /* drawing direction = driving direction for ow=1; ow=-1 roads are drawn the other way */
-      for(let k=1;k<n;k++) line(L.mark,a,b,j=>-hwJ(j)+k*WJ[j]/n,3,6,TN.C.white,0.13);
+      for(let k=1;k<n;k++) line(L.mark,a,b,j=>-hwJ(j)+k*WJ[j]/n,3,6,TN.C.white,0.16);
       if(major){
         const lft=w.ow===-1?-1:1;
-        line(L.mark,a,b,j=>-lft*(hwJ(j)-0.35),1e6,0.001,TN.C.white,0.14,-lft*1.5);
-        line(L.mark,a,b,j=>lft*(hwJ(j)-0.35),1e6,0.001,TN.C.yellow,0.14,lft*1.5);
+        /* (edge lines a little wider, 20 cm, so they read clearly from the higher camera) */
+        line(L.mark,a,b,j=>-lft*(hwJ(j)-0.35),1e6,0.001,TN.C.white,0.2,-lft*1.5);
+        line(L.mark,a,b,j=>lft*(hwJ(j)-0.35),1e6,0.001,TN.C.yellow,0.2,lft*1.5);
       }
     }else if(w.cls!=='service'){
       line(L.mark,a,b,()=>0,1e6,0.001,TN.C.yellow,0.14);
