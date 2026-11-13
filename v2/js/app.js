@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=124;
+TN.APPBUILD=125;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -21,7 +21,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   TN.RW=null;
   if(typeof Worker!=='undefined'&&!/[?&]rw=0/.test(location.search)){try{
     const sv=n=>{const e=document.querySelector('script[src*="'+n+'.js"]');return e&&(e.getAttribute('src').match(/v=(\d+)/)||[])[1]||'1';},rv=sv('roads');
-    const W=new Worker('js/roadworker.js?v=5&r='+rv+'&b='+sv('buildings')+'&s='+sv('shadows')),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
+    const W=new Worker('js/roadworker.js?v=6&r='+rv+'&b='+sv('buildings')+'&s='+sv('shadows')),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
     /* if it stops: everything is done here again as before, heights included (a full rebuild) */
     const failAll=()=>{if(RW.failed&&!net.remoteHeights) return;RW.failed=true;net.mirror=false;
       if(net.remoteHeights){net.remoteHeights=false;if(!net.job) net.startRebuild();else net._dirty=true;}

@@ -27,6 +27,11 @@ self.onmessage=e=>{const m=e.data;
       if(m.remote){
         /* the heights are worked out here (round 2): the whole network rebuild, then the heights that changed go back */
         T.HV2=!!m.hv2;const g=net.rebuildJob();while(!g.next().done);
+        /* (when new map arrived, all the heights go back, not only the changed ones: a road crossing into a newly loaded
+           area is a new copy over there, without heights, while here it hadn't changed, so it was never sent again;
+           on long bridges like the A-25's the car then sat at a guessed 6.5 m while the bridge was drawn at its real
+           height, and the camera, aiming for the car's height, pushed it off the bottom of the screen) */
+        if((m.add&&m.add.length)||(m.drop&&m.drop.length)) for(const w0 of net.ways.values()) w0._ws=null;
         const pg=net.packHeights();let q;do{q=pg.next();}while(!q.done);const H=q.value;
         net.ver=m.ver;net.remVer=m.remVer||0;net.changed=[];
         self.postMessage({t:'heights',ver:m.ver,h:H},[H.ids.buffer,H.meta.buffer,H.hs.buffer]);
