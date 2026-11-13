@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=120;
+TN.APPBUILD=121;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -200,7 +200,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   /* zoom buttons (like Codriver's): they always work, even where the screen's pinch gesture doesn't reach the map */
   $('zin').onclick=()=>{userZoom=Math.min(3,userZoom+0.5);if(!follow) map.easeTo({zoom:map.getZoom()+0.5,duration:300});};
   $('zout').onclick=()=>{userZoom=Math.max(-4,userZoom-0.5);if(!follow) map.easeTo({zoom:map.getZoom()-0.5,duration:300});};
-  map.on('dragstart',e=>{if(e.originalEvent) follow=false;});
+  map.on('dragstart',e=>{if(e.originalEvent){follow=false;try{TN.setLite&&TN.setLite(false);}catch(e2){}}});
   for(const ev of ['zoomstart','rotatestart','pitchstart']) map.on(ev,e=>{if(e.originalEvent){follow=false;$('btn').classList.add('free');}});
   /* touching the map (finger or mouse) pauses following right away, so you can drag, pinch, rotate and tilt freely;
      Recenter brings the following back. (Waiting for the map's own gesture events did not work while the camera was
@@ -440,7 +440,29 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
 
   /* ---------- main loop ---------- */
   try{window.TN_PROGRESS&&window.TN_PROGRESS(75,'Preparing the map…');}catch(e){}
-  map.on('load',()=>{scene.styleMap();ready=true;if(settings){try{settings.applyAll();}catch(e){}}night();
+  /* ---- one engine while driving (Option B): while the camera follows the car, the base map stops drawing its labels,
+     road lines, icons and its own 3D (the 3D scene draws the roads and buildings itself); it keeps only its flat
+     colours (land, parks, water) and our route layers. Everything comes back when you look around the map yourself.
+     ?lite=0 switches it off. */
+  TN.liteOn=!/[?&]lite=0/.test(location.search);let liteIds=null,liteState=null;
+  const setLite=on=>{if(!TN.liteOn) on=false;if(on===liteState) return;
+    try{if(!liteIds){liteIds=[];for(const L of map.getStyle().layers){if(/^tn-/.test(L.id)) continue;
+          if(L.type==='symbol'||L.type==='line'||L.type==='fill-extrusion'||L.type==='circle'||L.type==='heatmap') liteIds.push([L.id,(L.layout&&L.layout.visibility)||'visible']);}}
+      for(const [id,v0] of liteIds) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',on?'none':v0);
+      liteState=on;try{if(rec&&rec.rec) rec.note('map lite',{on:on,layers:liteIds.length});}catch(e){}}catch(e){}};
+  TN.setLite=setLite;
+  /* ---- the view button: Classic (today's look) / Clean (Codriver-like: higher camera, no falling leaves, a thicker route) */
+  TN.viewClean=!!(TN.settings&&TN.settings.view==='clean');
+  const applyView=()=>{try{const thick=['interpolate',['linear'],['zoom'],12,6,16,14,20,30];
+      if(map.getLayer('tn-route-line')){if(!TN._rw0) TN._rw0=map.getPaintProperty('tn-route-line','line-width');map.setPaintProperty('tn-route-line','line-width',TN.viewClean?thick:TN._rw0);}
+      const b=document.getElementById('tn-viewbtn');if(b){b.textContent=TN.viewClean?'Clean':'Classic';b.classList.toggle('on',TN.viewClean);}}catch(e){}};
+  TN.applyView=applyView;
+  {const st=document.createElement('style');st.textContent='#tn-viewbtn{position:absolute;right:88px;bottom:110px;z-index:5;height:40px;padding:0 14px;border-radius:20px;font:600 14px system-ui,sans-serif}#tn-viewbtn.on{background:#2f6fe4!important;color:#fff!important}';document.head.appendChild(st);
+   const b=document.createElement('button');b.id='tn-viewbtn';b.className='hud';b.setAttribute('aria-label','Change the view');b.textContent=TN.viewClean?'Clean':'Classic';
+   b.onclick=ev=>{ev.stopPropagation();TN.viewClean=!TN.viewClean;try{if(settings&&settings.set) settings.set('view',TN.viewClean?'clean':'classic');}catch(e){}applyView();
+     try{if(rec&&rec.rec) rec.note('view',{clean:TN.viewClean});}catch(e){}};
+   document.body.appendChild(b);}
+  map.on('load',()=>{scene.styleMap();ready=true;setTimeout(()=>{try{applyView();setLite(follow);}catch(e){}},500);if(settings){try{settings.applyAll();}catch(e){}}night();
     try{window.TN_PROGRESS&&window.TN_PROGRESS(90,'Building the streets…');}catch(e){}
     try{map.once('idle',()=>{try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e){}});}catch(e){try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e2){}}
     /* opening animation: the city in glowing lines with the TessyNav name, then real colours */
@@ -589,8 +611,12 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
           aim=TN.fromLocal(car.x+Math.sin(hr)*d,car.z-Math.cos(hr)*d);
         }
         autoZoom=gZoom;
-        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow),pitch:gPitch,padding:{top:Math.round(H*0.56),bottom:0,left:0,right:0}};
+        /* Clean view (Codriver-like): the camera higher, looking down at the road (about 1.7 zoom levels out, pitch 45°) */
+        {const want=TN.viewClean?1:0;TN._ck=(TN._ck==null?want:TN._ck)+(want-(TN._ck==null?want:TN._ck))*Math.min(1,(dt||0.016)*2.5);}
+        const ck=TN._ck||0;
+        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-1.7*ck,pitch:gPitch+(45-gPitch)*ck,padding:{top:Math.round(H*(0.56-0.1*ck)),bottom:0,left:0,right:0}};
         map.jumpTo(view);
+        if(ready) setLite(true);
       }
       /* roads and trees are built around the car while following, and around what you look at when you browse */
       const ac=follow?{lng:ll[0],lat:ll[1]}:map.getCenter();

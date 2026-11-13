@@ -58,6 +58,8 @@ TN.Season.prototype.density=function(cx,cz){
   return Math.max(0.3,Math.min(1,n/40));
 };
 TN.Season.prototype.update=function(dt,cx,cy,cz,fps){
+  if(TN.viewClean&&this.mode==='leaves'){if(this.mesh&&this.mesh.visible) this.mesh.visible=false;return;}   /* (Clean view: no falling leaves) */
+  if(this.mesh&&!this.mesh.visible&&this.mode) this.mesh.visible=true;
   if(!this.mode) return;
   if(this.off){if(this.mesh) this.mesh.visible=false;return;}
   if(this.mesh) this.mesh.visible=true;this.build();if(!this.mesh) return;
