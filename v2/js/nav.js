@@ -872,13 +872,21 @@ TN.wxKind=(code,pr,sn,vis)=>{
 TN.Nav.prototype.jamUpdate=function(s,R){
   if(!R||!R.cong||!R.cum||!this.active) return;
   const j0=this.pi||0;let a=-1,b=-1,delay=0,last=-1;
-  const slow=c=>c==='heavy'||c==='severe';
+  /* (for the recording, once a minute: how much slow traffic the route has in the next 8 km) */
+  if(Date.now()-(this.tAheadT||0)>60000){this.tAheadT=Date.now();const km={moderate:0,heavy:0,severe:0};
+    for(let i=j0;i<R.pts.length-1;i++){const d=R.cum[i]-s;if(d<0) continue;if(d>8000) break;const c=R.cong[i];if(km[c]!=null) km[c]+=R.cum[i+1]-R.cum[i];}
+    try{this.note('traffic ahead',{mod:+(km.moderate/1000).toFixed(1),heavy:+(km.heavy/1000).toFixed(1),severe:+(km.severe/1000).toFixed(1)});}catch(e){}}
+  /* slow traffic: heavy or severe, and also a long stretch of moderate (rush-hour crawling counts too) */
+  const slow=c=>c==='heavy'||c==='severe'||c==='moderate';
   for(let i=j0;i<R.pts.length-1;i++){const d=R.cum[i]-s;if(d<-50) continue;if(d>8000&&a<0) break;
     const c=R.cong[i],seg=R.cum[i+1]-R.cum[i];
-    if(slow(c)||(a>=0&&c==='moderate')){if(a<0) a=i;b=i+1;last=R.cum[i+1];
+    if(slow(c)){if(a<0) a=i;b=i+1;last=R.cum[i+1];
       delay+=seg*(1/({severe:2,heavy:4,moderate:8}[c]||8)-1/15);}
     else if(a>=0&&R.cum[i]-last>250) break;}
-  if(a<0||R.cum[b]-R.cum[a]<600||delay<90){this.jam=null;return;}
+  /* a jam: at least 600 m costing 1.5 min with heavy traffic in it, or 1.5 km of slow traffic costing 2 min */
+  let heavyIn=false;if(a>=0) for(let i=a;i<b;i++){if(R.cong[i]==='heavy'||R.cong[i]==='severe'){heavyIn=true;break;}}
+  const jl=a>=0?R.cum[b]-R.cum[a]:0;
+  if(a<0||!((heavyIn&&jl>=600&&delay>=90)||(jl>=1500&&delay>=120))){this.jam=null;return;}
   const startIn=Math.max(0,R.cum[a]-s),len=R.cum[b]-R.cum[a],key=Math.round(R.cum[a]/500);
   this.jam={a:a,b:b,startIn:startIn,len:len,delay:delay};
   if(startIn<5000&&this.jamSaid!==key){this.jamSaid=key;this.jamCard();
