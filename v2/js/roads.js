@@ -1712,6 +1712,47 @@ TN.Net.prototype.drawSign=function(L,m){
     for(const tri of [[0,1,2],[0,2,1]]){const base=G2.n;for(const k of tri){const a=inner[k];G2.p.push(c[0]+S.rx*a[0]-S.dx*0.03,cy+a[1],c[1]+S.rz*a[0]-S.dz*0.03);G2.c.push(col[0],col[1],col[2]);}G2.i.push(base,base+1,base+2);G2.n+=3;}
   }
 };
+/* a point on a road piece: s metres from its start (along it), off metres to the side (+ = left of its direction) */
+TN.wayPt=function(w,s,off){const P=w.pts,c=w.cum;if(!c) return null;s=Math.max(0,Math.min(w.L,s));
+  let lo=0,hi=c.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(c[m]<=s) lo=m;else hi=m;}
+  const a=P[lo],b=P[lo+1]||P[lo],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1,u=(s-c[lo])/L,ux=(b[0]-a[0])/L,uz=(b[1]-a[1])/L;
+  return [a[0]+(b[0]-a[0])*u-uz*off,a[1]+(b[1]-a[1])*u+ux*off];};
+TN.Net.prototype.drawGore=function(L,w,P,N,hw,H){
+  for(const end of [0,1]){
+    const key=w.keys[end?w.keys.length-1:0],list=this.keys.get(key)||[];
+    let M=null,mi=-1;for(const [v,vi] of list){if(v!==w&&!v.ramp&&/^(motorway|trunk)$/.test(v.cls||'')&&!v.tun){M=v;mi=vi;break;}}
+    if(!M||!M.cum||!w.cum) continue;
+    /* along both roads, away from the split point (the ramp from its end, the highway in its own direction or backwards) */
+    const sR0=end?w.L:0,dR=end?-1:1,sM0=M.cum[mi];
+    /* the highway's direction that runs alongside the ramp (the one whose point 30 m on is closest to the ramp's) */
+    const r30=TN.wayPt(w,sR0+dR*30,0),mf=TN.wayPt(M,sM0+30,0),mb=TN.wayPt(M,sM0-30,0);if(!r30||!mf||!mb) continue;
+    const dM=Math.hypot(mf[0]-r30[0],mf[1]-r30[1])<Math.hypot(mb[0]-r30[0],mb[1]-r30[1])?1:-1;
+    if((dM>0&&sM0>M.L-20)||(dM<0&&sM0<20)) continue;
+    /* which side of the highway the ramp is on (+1: its left), and the edges that face each other */
+    const m0=TN.wayPt(M,sM0,0),mm=TN.wayPt(M,sM0+dM*30,0),side=Math.sign((mm[0]-m0[0])*(r30[1]-m0[1])-(mm[1]-m0[1])*(r30[0]-m0[0]))*dM||1;
+    const hwM=TN.width(M)/2,hwR=hw,hM=TN.heightAt(M,sM0);if(Math.abs(hM-H(end?P.length-1:0))>1.5) continue;
+    const ptsM=[],ptsR=[];
+    for(let d=0;d<=120;d+=4){
+      /* the two edges that face each other: of each road's two edges, the one nearer the other road's centre line */
+      const mc=TN.wayPt(M,sM0+dM*d,0),rc=TN.wayPt(w,sR0+dR*d,0);
+      const mA=TN.wayPt(M,sM0+dM*d,hwM),mB=TN.wayPt(M,sM0+dM*d,-hwM),pm=Math.hypot(mA[0]-rc[0],mA[1]-rc[1])<Math.hypot(mB[0]-rc[0],mB[1]-rc[1])?mA:mB;
+      const prA=TN.wayPt(w,sR0+dR*d,hwR),prB=TN.wayPt(w,sR0+dR*d,-hwR),pin=Math.hypot(prA[0]-mc[0],prA[1]-mc[1])<Math.hypot(prB[0]-mc[0],prB[1]-mc[1])?prA:prB;
+      /* (the wedge starts where the two roads' edges separate: before that they overlap) */
+      const cdist=Math.hypot(mc[0]-rc[0],mc[1]-rc[1]);if(cdist<hwM+hwR-0.5){continue;}
+      const gap=Math.hypot(pin[0]-pm[0],pin[1]-pm[1]);
+      if(ptsM.length>1&&gap>9) break;ptsM.push([pm[0],pm[1],gap]);ptsR.push([pin[0],pin[1]]);}
+    if(ptsM.length<3) continue;
+    const y=hM+0.02,yl=hM+0.06,col=TN.C.road||[0.33,0.34,0.36],wh=TN.C.white;
+    /* the paved wedge */
+    for(let i=0;i<ptsM.length-1;i++){const a=ptsM[i],b=ptsM[i+1],c=ptsR[i+1],d=ptsR[i];
+      if(a[2]<0.3&&b[2]<0.3) continue;TN.quad(L.road||L.lot,[a[0],y,a[1]],[b[0],y,b[1]],[c[0],y,c[1]],[d[0],y,d[1]],col);}
+    /* its two white edges and the diagonal stripes, every 8 m */
+    const seg=(p,q,wd)=>{const dx=q[0]-p[0],dz=q[1]-p[1],l=Math.hypot(dx,dz)||1,nx=-dz/l*wd/2,nz=dx/l*wd/2;
+      TN.quad(L.mark,[p[0]+nx,yl,p[1]+nz],[q[0]+nx,yl,q[1]+nz],[q[0]-nx,yl,q[1]-nz],[p[0]-nx,yl,p[1]-nz],wh);};
+    for(let i=0;i<ptsM.length-1;i++){seg(ptsM[i],ptsM[i+1],0.25);seg(ptsR[i],ptsR[i+1],0.25);}
+    for(let i=2;i<ptsM.length-2;i+=2){const a=ptsM[i],b=ptsR[Math.min(ptsR.length-1,i+1)];if(a[2]<1.5) continue;seg(a,b,0.45);}
+  }
+};
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
   const H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
@@ -1741,6 +1782,10 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       const T0=t0+(t1-t0)*u0,T1=t0+(t1-t0)*u1,B0=b0+(b1-b0)*u0,B1=b0+(b1-b0)*u1;
       TN.quad(G,pt(u0,B0),pt(u1,B1),pt(u1,T1),pt(u0,T0),col);
     }}};
+  /* ---- painted exits: where a ramp leaves (or joins) a highway, the narrow wedge between the two roads is paved and
+     painted, like the real ones (white edges and diagonal stripes): from the split point out to where the roads are
+     about 9 m apart, at most 120 m. Drawn with the ramp. ---- */
+  if((w.ramp||/_link$/.test(w.cls||''))&&!w.tun&&P.length>1&&!(TN.settings&&TN.settings.gores===false)) try{this.drawGore(L,w,P,N,hw,H);}catch(e){}
   const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
     for(let i=a;i<b;i++){
       const s0=w.cum[i],s1=w.cum[i+1],len=s1-s0;if(len<0.05) continue;
