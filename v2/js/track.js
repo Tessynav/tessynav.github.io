@@ -528,4 +528,5 @@ TN.Track.prototype.frame=function(now,dt){
   return car;
 };
 TN.angDiff2=(a,b)=>((a-b+540)%360)-180;
+
 if(typeof module!=='undefined') module.exports=TN;

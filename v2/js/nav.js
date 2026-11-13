@@ -548,6 +548,9 @@ TN.Nav.prototype.plan=async function(reroute){
     this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;this.viaParking=!!rt.viaParking;this.jam=null;this.jamSaid=null;this.jamEndS=null;this.fasterAt=Date.now();
     try{this.wxFetch(rt);}catch(e){}
     /* (for the trip recording: where this route really goes, to check a wrong destination) */
+    /* (the route's line itself, a point every ~15 m, so a drive can be replayed with its navigation) */
+    try{const C=rt.geometry.coordinates,o=[];let last=null;for(const c of C){if(!last||TN.distLL(last,c)>15||c===C[C.length-1]){o.push([+c[0].toFixed(5),+c[1].toFixed(5)]);last=c;}}
+      this.note('route line',{n:o.length,c:o});}catch(e){}
     try{const d=this.dest,to=TN.routeTo(d),C=rt.geometry.coordinates,e=C[C.length-1];
       this.note('route to',{name:d.name,place:[+d.lng.toFixed(5),+d.lat.toFixed(5)],to:[+to[0].toFixed(5),+to[1].toFixed(5)],end:[+e[0].toFixed(5),+e[1].toFixed(5)],km:+(rt.distance/1000).toFixed(2),reroute:!!reroute});}catch(e){}
     if(!reroute) this.overview();
