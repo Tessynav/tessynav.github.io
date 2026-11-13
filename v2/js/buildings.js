@@ -17,7 +17,7 @@ TN.Buildings=function(scene,net){
 TN.Buildings.prototype.material=function(){
   if(this.mat) return this.mat;
   this.mat=new THREE.ShaderMaterial({
-    uniforms:Object.assign({night:{value:this.night}},TN.CUTU||{}),
+    uniforms:Object.assign({night:{value:this.night},clean:{value:0}},TN.CUTU||{}),
     vertexColors:true,side:THREE.DoubleSide,
     vertexShader:[
       'attribute vec3 wuv;',
@@ -27,11 +27,12 @@ TN.Buildings.prototype.material=function(){
       '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'].join('\n'),
     fragmentShader:[
       (TN.CUTGLSL||'varying vec3 vCutW;float tnCutK(){return 0.0;}'),
-      'uniform float night;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
+      'uniform float night;uniform float clean;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
       'float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
       'void main(){',
       '  float tnK=tnCutK();if(tnK>0.97) discard;float al=1.0-tnK;',
-      '  vec3 wall=vCol*vShade*(1.0-0.62*night);',
+      /* Clean view (Codriver-like): flatter, lighter walls (less shading) and soft daytime windows */
+      '  float sh=mix(vShade,0.82+0.18*vShade,clean);vec3 wall=mix(vCol,mix(vCol,vec3(0.93,0.92,0.89),0.18),clean)*sh*(1.0-0.62*night);',
       '  if(vUv.z<0.0){gl_FragColor=vec4(wall,al);return;}',
       '  vec2 cell=vec2(floor(vUv.x/3.2),floor(vUv.y/3.0));vec2 f=vec2(fract(vUv.x/3.2),fract(vUv.y/3.0));',
       '  float win=step(0.22,f.x)*step(f.x,0.78)*step(0.28,f.y)*step(f.y,0.80)*step(1.0,vUv.y);',
@@ -43,13 +44,15 @@ TN.Buildings.prototype.material=function(){
       '  vec3 warm=vec3(1.0,0.77,0.36);vec3 soft=vec3(1.0,0.93,0.78);vec3 cool=vec3(0.84,0.90,1.0);vec3 dimo=vec3(0.89,0.55,0.25);',
       '  vec3 lc=off>0.5?(r<0.35?soft:(r<0.75?cool:(r<0.92?warm:dimo))):(r<0.55?warm:(r<0.80?soft:(r<0.92?cool:dimo)));',
       '  lc*=0.7+0.3*hh(cell+vec2(sd*3.1,5.0));',
-      '  vec3 day=vec3(0.30,0.37,0.45);vec3 dark=vec3(0.07,0.08,0.11);',
+      '  vec3 day=mix(vec3(0.30,0.37,0.45),mix(wall,vec3(0.55,0.66,0.76),0.55),clean);vec3 dark=vec3(0.07,0.08,0.11);',
       '  vec3 wc=mix(day,mix(dark,lc,lit),night);',
       '  gl_FragColor=vec4(mix(wall,wc,win),al);}'].join('\n'),transparent:true
   });
   return this.mat;
 };
 TN.Buildings.prototype.setNight=function(nt){this.night=nt;if(this.mat) this.mat.uniforms.night.value=nt;};
+/* the Clean view's look, blended in smoothly (follows the camera's own blend) */
+TN.Buildings.prototype.setClean=function(){if(this.mat&&this.mat.uniforms.clean){const v=TN._ck||0;if(Math.abs(this.mat.uniforms.clean.value-v)>0.002) this.mat.uniforms.clean.value=v;}};
 /* building shapes of one area, from the map tiles already loaded */
 TN.Buildings.prototype.collect=function(ck){
   const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function') return [];
@@ -333,6 +336,7 @@ TN.lodApply=function(cells,lng,lat,far,getObj){
   return [shown,hidden];
 };
 TN.Buildings.prototype.update=function(lng,lat,fps){
+  try{this.setClean();}catch(e){}
   try{TN.lodTick(fps);if(performance.now()-(this.lodT||0)>500){this.lodT=performance.now();TN.lodApply(this.cells,lng,lat,TN.lodFar,e=>e&&e.mesh);}}catch(e){}
   if(!this.on||!this.scene.three) return;
   if(fps){
