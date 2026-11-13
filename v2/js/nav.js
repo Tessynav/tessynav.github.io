@@ -545,7 +545,7 @@ TN.Nav.prototype.plan=async function(reroute){
   try{
     const rt=await this.fetchRoute(from,to);this.wantAlts=false;
     if(this.alts&&this.alts.length>1&&rt.adjusted) this.alts=null;   /* (the route's end was corrected: compare nothing) */
-    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;this.viaParking=!!rt.viaParking;
+    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;this.viaParking=!!rt.viaParking;this.jam=null;this.jamSaid=null;this.fasterAt=Date.now();
     try{this.wxFetch(rt);}catch(e){}
     /* (for the trip recording: where this route really goes, to check a wrong destination) */
     try{const d=this.dest,to=TN.routeTo(d),C=rt.geometry.coordinates,e=C[C.length-1];
@@ -866,6 +866,87 @@ TN.wxKind=(code,pr,sn,vis)=>{
   if([45,48].includes(code)||(vis!=null&&vis<400)) return {k:'fog',ic:'\ud83c\udf2b',t:'Thick fog',sev:2};
   if(pr>=0.3||[51,53,55,61,63,80,81].includes(code)) return {k:'lrain',ic:'\ud83c\udf26',t:'Rain',sev:1};
   return {k:'ok',ic:'',t:'',sev:0};
+};
+/* ---- traffic jam ahead: a card with its length and the time it costs, and "See it": the camera zooms out along the
+   route to show the whole jam, then comes back to the car ---- */
+TN.Nav.prototype.jamUpdate=function(s,R){
+  if(!R||!R.cong||!R.cum||!this.active) return;
+  const j0=this.pi||0;let a=-1,b=-1,delay=0,last=-1;
+  const slow=c=>c==='heavy'||c==='severe';
+  for(let i=j0;i<R.pts.length-1;i++){const d=R.cum[i]-s;if(d<-50) continue;if(d>8000&&a<0) break;
+    const c=R.cong[i],seg=R.cum[i+1]-R.cum[i];
+    if(slow(c)||(a>=0&&c==='moderate')){if(a<0) a=i;b=i+1;last=R.cum[i+1];
+      delay+=seg*(1/({severe:2,heavy:4,moderate:8}[c]||8)-1/15);}
+    else if(a>=0&&R.cum[i]-last>250) break;}
+  if(a<0||R.cum[b]-R.cum[a]<600||delay<90){this.jam=null;return;}
+  const startIn=Math.max(0,R.cum[a]-s),len=R.cum[b]-R.cum[a],key=Math.round(R.cum[a]/500);
+  this.jam={a:a,b:b,startIn:startIn,len:len,delay:delay};
+  if(startIn<5000&&this.jamSaid!==key){this.jamSaid=key;this.jamCard();
+    try{this.note('traffic jam',{startIn:Math.round(startIn),km:+(len/1000).toFixed(1),min:Math.round(delay/60)});}catch(e){}
+    this.fasterAt=0;}   /* (and look for a faster way right away) */
+};
+TN.Nav.prototype.jamCard=function(){
+  const J=this.jam;if(!J||typeof document==='undefined') return;const fr=TN.LANG==='fr';
+  let el=document.getElementById('tn-jam');
+  if(!el){el=document.createElement('div');el.id='tn-jam';el.className='notr';document.body.appendChild(el);
+    const st=document.createElement('style');st.textContent='#tn-jam,#tn-faster{position:absolute;left:16px;bottom:120px;z-index:7;max-width:min(430px,calc(100vw - 32px));background:rgb(var(--tn-panel-rgb,24 26 30) / .95);color:var(--tn-text,#fff);border-radius:16px;padding:12px 14px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.3);border-left:5px solid #d93025}#tn-faster{border-left-color:#1e9e4a}#tn-jam .bt,#tn-faster .bt{display:flex;gap:8px;margin-top:8px}#tn-jam button,#tn-faster button{font:600 14px system-ui;padding:8px 16px;border-radius:10px;border:0;cursor:pointer}#tn-faster .bar{height:4px;border-radius:2px;background:#2f6fe4;margin-top:8px;transition:width linear}';document.head.appendChild(st);}
+  const km=(J.len/1000).toFixed(1),mn=Math.max(1,Math.round(J.delay/60));
+  el.innerHTML='<b>'+(fr?'Bouchon devant':'Traffic jam ahead')+'</b><div style="opacity:.85">'+km+' km · '+(fr?'environ ':'about ')+mn+' min '+(fr?'de plus':'slower')+'</div>'+
+    '<div class="bt"><button class="see" style="background:#2f6fe4;color:#fff">'+(fr?'Voir':'See it')+'</button><button class="cl" style="background:#3a3f47;color:#fff">'+(fr?'Fermer':'Close')+'</button></div>';
+  el.style.display='block';
+  el.querySelector('.cl').onclick=ev=>{ev.stopPropagation();el.style.display='none';};
+  el.querySelector('.see').onclick=ev=>{ev.stopPropagation();el.style.display='none';this.jamShow();};
+  clearTimeout(this.jamT);this.jamT=setTimeout(()=>{el.style.display='none';},20000);
+  try{if(TN.voice&&TN.voice.say) TN.voice.say((fr?'Bouchon de ':'Traffic jam ahead, ')+km.replace('.',fr?',':'.')+' km, '+(fr?'environ ':'about ')+mn+' minutes'+(fr?' de plus.':' slower.'),false);}catch(e){}
+};
+TN.Nav.prototype.jamShow=function(){
+  const J=this.jam,R=this.route,map=this.map;if(!J||!R||!map) return;
+  try{let w=1e9,e=-1e9,so=1e9,n=-1e9;const a=Math.max(0,(this.pi||0));
+    for(let i=a;i<=J.b&&i<R.pts.length;i++){const ll=TN.fromLocal(R.pts[i][0],R.pts[i][1]);if(ll[0]<w)w=ll[0];if(ll[0]>e)e=ll[0];if(ll[1]<so)so=ll[1];if(ll[1]>n)n=ll[1];}
+    if(this.api.setFollow) this.api.setFollow(false);
+    map.fitBounds([[w,so],[e,n]],{padding:{top:90,bottom:150,left:60,right:90},bearing:map.getBearing(),pitch:35,duration:1000,maxZoom:16});
+    try{this.note('jam view',{});}catch(e2){}
+    clearTimeout(this.jamBackT);this.jamBackT=setTimeout(()=>{try{if(this.api.setFollow) this.api.setFollow(true);}catch(e3){}},6000);}catch(e){}
+};
+/* ---- a faster way during traffic: every 4 minutes while navigating (right away when a jam appears ahead), the route
+   from where you are now is asked again; if it's at least 3 minutes quicker and really goes another way, Rocco
+   offers it (Take it / Stay; no answer in 15 s = you stay) ---- */
+TN.Nav.prototype.fasterCheck=async function(){
+  if(!this.active||this.fasterBusy||this.offer||!this.dest||!this.route||(this.leftM||0)<3000) return;
+  const now=Date.now();if(this.fasterAt&&now-this.fasterAt<240000) return;if(!this.fasterAt&&this.fasterAt!==0){this.fasterAt=now;return;}
+  this.fasterAt=now;this.fasterBusy=true;
+  try{const G=this.api.gps&&this.api.gps();if(!G||G.x==null) return;const from=TN.fromLocal(G.x,G.z);
+    const keep=this.alts,wa=this.wantAlts;this.wantAlts=false;
+    const rt=await this.fetchRouteOnce(from,TN.routeTo(this.dest));this.alts=keep;this.wantAlts=wa;
+    if(!rt||!this.active) return;
+    const save=(this.remainS||0)-rt.duration;
+    /* really another way: a good part of it more than 150 m from the current route */
+    const C=rt.geometry.coordinates,R=this.route;let off=0,tot=0;
+    for(let i=0;i<C.length;i+=Math.max(1,Math.floor(C.length/40))){tot++;const q=TN.toLocal(C[i][0],C[i][1]);let bd=1e18;
+      for(let k=0;k<R.pts.length;k+=3){const d=(R.pts[k][0]-q[0])**2+(R.pts[k][1]-q[1])**2;if(d<bd) bd=d;}if(bd>150*150) off++;}
+    try{this.note('faster check',{saveMin:Math.round(save/60),other:+(off/Math.max(1,tot)).toFixed(2)});}catch(e){}
+    if(save>=180&&off/Math.max(1,tot)>0.15) this.fasterOffer(rt,save);}
+  catch(e){}finally{this.fasterBusy=false;}
+};
+TN.Nav.prototype.fasterOffer=function(rt,save){
+  if(typeof document==='undefined') return;const fr=TN.LANG==='fr',map=this.map;this.offer=rt;
+  /* the faster way on the map, in grey */
+  try{const data={type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:rt.geometry}]};
+    if(map.getSource('tn-faster')) map.getSource('tn-faster').setData(data);
+    else{map.addSource('tn-faster',{type:'geojson',data:data});map.addLayer({id:'tn-faster',type:'line',source:'tn-faster',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#9aa0a6','line-width':8,'line-opacity':0.9}},map.getLayer('tn-route-casing')?'tn-route-casing':undefined);}}catch(e){}
+  let el=document.getElementById('tn-faster');if(!el){el=document.createElement('div');el.id='tn-faster';el.className='notr';document.body.appendChild(el);}
+  const via=(rt.legs&&rt.legs[0]&&rt.legs[0].summary)||'';const mn=Math.round(save/60);
+  el.innerHTML='<b>'+(fr?'Plus rapide : ':'Faster way: saves ')+mn+' min'+(fr?' de moins':'')+'</b>'+(via?'<div style="opacity:.85">'+(fr?'par ':'via ')+TN.esc(via)+'</div>':'')+
+    '<div class="bt"><button class="go" style="background:#1e9e4a;color:#fff">'+(fr?'Je le prends':'Take it')+'</button><button class="st" style="background:#3a3f47;color:#fff">'+(fr?'Je reste':'Stay')+'</button></div><div class="bar" style="width:100%"></div>';
+  el.style.display='block';const bar=el.querySelector('.bar');requestAnimationFrame(()=>{bar.style.transitionDuration='15s';bar.style.width='0%';});
+  const close=(take)=>{clearTimeout(this.offerT);el.style.display='none';this.offer=null;
+    try{if(map.getLayer('tn-faster')) map.removeLayer('tn-faster');if(map.getSource('tn-faster')) map.removeSource('tn-faster');}catch(e){}
+    try{this.note('faster offer',{take:!!take,saveMin:mn});}catch(e){}
+    if(take){try{this.plan(true);}catch(e){}}};
+  el.querySelector('.go').onclick=ev=>{ev.stopPropagation();close(true);};
+  el.querySelector('.st').onclick=ev=>{ev.stopPropagation();close(false);};
+  this.offerT=setTimeout(()=>close(false),15000);
+  try{if(TN.voice&&TN.voice.say) TN.voice.say(fr?('Un chemin plus rapide te sauve '+mn+' minutes. Tu le prends?'):('A faster way saves '+mn+' minutes. Take it?'),false);}catch(e){}
 };
 TN.Nav.prototype.wxFetch=async function(rt){
   if(!rt||!rt.geometry) return;const C=rt.geometry.coordinates;if(C.length<2) return;
@@ -1328,6 +1409,8 @@ TN.Nav.prototype.update=function(dt){
    if(slim!==this.bar.classList.contains('slim')){this.bar.classList.toggle('slim',slim);this.note('banner',{slim:slim,d:Math.round(dNext)});}
    if(!this.slimTap){this.slimTap=true;this.bar.addEventListener('click',ev=>{if(this.bar.classList.contains('slim')&&!ev.target.closest('.wchip,.dst')){ev.stopPropagation();this.barFullT=Date.now()+20000;this.bar.classList.remove('slim');}},true);}}
   try{this.wxUpdate(s,R);}catch(e){}
+  try{this.jamUpdate(s,R);}catch(e){}
+  try{this.fasterCheck();}catch(e){}
   if(this.jvStep==null&&this.lastIcon!==I.a){this.bar.querySelector('.a').innerHTML=TN.ICON(I.a,42,'currentColor');this.lastIcon=I.a;}
   this.bar.querySelector('.dist').textContent=nx.type==='arrive'&&dNext<30?'Arriving':fmtDist(dNext);
   /* the exit number as a green highway exit sign (where the map has one) */
@@ -1393,7 +1476,7 @@ TN.Nav.prototype.update=function(dt){
      pb.style.background='linear-gradient(90deg,'+stops.join(',')+')';}}
   /* speed limit here: from the route, otherwise from the road the car is on */
   {const lim=(R.lim&&R.lim[bi])||(c.w&&c.w.lim)||null;this.showLimit(lim,(G&&G.v!=null?G.v:(c.v||0))*3.6);}
-  const remain=R.dur*(left/Math.max(1,R.L)),arr=new Date(Date.now()+remain*1000);
+  const remain=R.dur*(left/Math.max(1,R.L)),arr=new Date(Date.now()+remain*1000);this.remainS=remain;this.leftM=left;
   this.bar.querySelector('.eta').innerHTML='<b>'+arr.toTimeString().slice(0,5)+'</b>'+Math.max(1,Math.round(remain/60))+' min \u00b7 '+fmtDist(left);
   /* the destination (and stops) as a button: tap it to see and change the trip */
   {const db=this.bar.querySelector('.dst'),n=this.stops.length;
