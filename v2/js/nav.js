@@ -1217,7 +1217,12 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      for(const st of R.steps){const dd=st.at-sNow;if(dd>-30&&dd<35&&st.type!=='depart'&&st.type!=='arrive'&&!/straight/.test(st.mod||'')){nearTurn=true;break;}}}
    let w=0;if(nearTurn){const dif=Math.abs(((gh-hd+540)%360)-180);w=Math.max(0,Math.min(1,(dif-8)/30));}
    this.turnW=(this.turnW||0)+(w-(this.turnW||0))*Math.min(1,dt*(w>(this.turnW||0)?6:2));
-   if(this.turnW>0.01){const tw=this.turnW;ox+=(L.x-ox)*tw;oz+=(L.z-oz)*tw;oh=(oh+(((gh-oh+540)%360)-180)*tw+360)%360;}}
+   /* (it follows the tracked car, which is kept on the road surface through turns, rather than the raw GPS point:
+      the GPS can be a few metres off, on the sidewalk, and the car went over the curb and back onto the line; and
+      never more than 4 m from the route line, within the street) */
+   if(this.turnW>0.01){const tw=this.turnW,TC=this.api.getCar&&this.api.getCar(),use=TC&&TC.x!=null&&TC.snapped!==false?TC:L;
+     let tx=ox+(use.x-ox)*tw,tz=oz+(use.z-oz)*tw;const dx=tx-ox,dz=tz-oz,dd=Math.hypot(dx,dz);if(dd>4){tx=ox+dx*4/dd;tz=oz+dz*4/dd;}
+     ox=tx;oz=tz;oh=(oh+(((gh-oh+540)%360)-180)*tw+360)%360;}}
   return Object.assign({},base,{x:ox,z:oz,hd:oh,y:y,onRoute:true});
 };
 /* the speed limit sign next to your speed (null hides it); red and pulsing when more than 3 km/h over */
