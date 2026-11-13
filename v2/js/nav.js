@@ -545,7 +545,7 @@ TN.Nav.prototype.plan=async function(reroute){
   try{
     const rt=await this.fetchRoute(from,to);this.wantAlts=false;
     if(this.alts&&this.alts.length>1&&rt.adjusted) this.alts=null;   /* (the route's end was corrected: compare nothing) */
-    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;this.viaParking=!!rt.viaParking;this.jam=null;this.jamSaid=null;this.fasterAt=Date.now();
+    this.setRoute(rt);this.curRt=rt;this.viaPlace=!!rt.viaPlace;this.viaParking=!!rt.viaParking;this.jam=null;this.jamSaid=null;this.jamEndS=null;this.fasterAt=Date.now();
     try{this.wxFetch(rt);}catch(e){}
     /* (for the trip recording: where this route really goes, to check a wrong destination) */
     try{const d=this.dest,to=TN.routeTo(d),C=rt.geometry.coordinates,e=C[C.length-1];
@@ -892,9 +892,12 @@ TN.Nav.prototype.jamUpdate=function(s,R){
   let heavyIn=false;if(a>=0) for(let i=a;i<b;i++){if(R.cong[i]==='heavy'||R.cong[i]==='severe'){heavyIn=true;break;}}
   const jl=a>=0?R.cum[b]-R.cum[a]:0;
   if(a<0||!((heavyIn&&jl>=600&&delay>=90)||(jl>=1500&&delay>=120))){this.jam=null;return;}
-  const startIn=Math.max(0,R.cum[a]-s),len=R.cum[b]-R.cum[a],key=Math.round(R.cum[a]/500);
+  const startIn=Math.max(0,R.cum[a]-s),len=R.cum[b]-R.cum[a];
   this.jam={a:a,b:b,startIn:startIn,len:len,delay:delay};
-  if(startIn<5000&&this.jamSaid!==key){this.jamSaid=key;this.jamCard();
+  /* (one card per jam: inside the jam its start moves along with you, and the card came back every minute or two; a new
+     card only for a jam that starts past the end of the one already announced) */
+  if(this.jamEndS!=null&&R.cum[a]<=this.jamEndS+300) this.jamEndS=Math.max(this.jamEndS,R.cum[b]);   /* (the same jam growing longer) */
+  if(startIn<5000&&R.cum[a]>(this.jamEndS==null?-1e9:this.jamEndS+300)){this.jamEndS=R.cum[b];this.jamCard();
     try{this.note('traffic jam',{startIn:Math.round(startIn),km:+(len/1000).toFixed(1),min:Math.round(delay/60)});}catch(e){}
     this.fasterAt=0;}   /* (and look for a faster way right away) */
 };
@@ -913,7 +916,7 @@ TN.Nav.prototype.jamCard=function(){
   try{if(TN.voice&&TN.voice.say) TN.voice.say((fr?'Bouchon de ':'Traffic jam ahead, ')+km.replace('.',fr?',':'.')+' km, '+(fr?'environ ':'about ')+mn+' minutes'+(fr?' de plus.':' slower.'),false);}catch(e){}
 };
 TN.Nav.prototype.jamShow=function(){
-  const J=this.jam,R=this.route,map=this.map;if(!J||!R||!map) return;
+  const J=this.jam,R=this.route,map=this.api.map;if(!J||!R||!map) return;   /* (it was this.map, which doesn't exist: See it did nothing) */
   try{let w=1e9,e=-1e9,so=1e9,n=-1e9;const a=Math.max(0,(this.pi||0));
     for(let i=a;i<=J.b&&i<R.pts.length;i++){const ll=TN.fromLocal(R.pts[i][0],R.pts[i][1]);if(ll[0]<w)w=ll[0];if(ll[0]>e)e=ll[0];if(ll[1]<so)so=ll[1];if(ll[1]>n)n=ll[1];}
     if(this.api.setFollow) this.api.setFollow(false);
@@ -942,7 +945,7 @@ TN.Nav.prototype.fasterCheck=async function(){
   catch(e){}finally{this.fasterBusy=false;}
 };
 TN.Nav.prototype.fasterOffer=function(rt,save){
-  if(typeof document==='undefined') return;const fr=TN.LANG==='fr',map=this.map;this.offer=rt;
+  if(typeof document==='undefined') return;const fr=TN.LANG==='fr',map=this.api.map;this.offer=rt;
   /* the faster way on the map, in grey */
   try{const data={type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:rt.geometry}]};
     if(map.getSource('tn-faster')) map.getSource('tn-faster').setData(data);
