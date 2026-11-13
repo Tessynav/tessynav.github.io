@@ -496,7 +496,11 @@ TN.Track.prototype.frame=function(now,dt){
     const u=Math.min(1,Math.abs(car.s-car.ease.s0)/(car.ease.len||35)),k=u*u*(3-2*u);
     car.lat=car.ease.lat0+(target-car.ease.lat0)*k;
     if(u>=1) car.ease=null;
-  }else car.lat+=(target-car.lat)*(1-Math.exp(-dt/0.9));
+  }else{let d=(target-car.lat)*(1-Math.exp(-dt/0.9));
+    /* (on highways the car moves across at most 0.6 m per second: each road piece's middle sits a little differently,
+       and re-centring on every piece swung the car left and right; now it drifts over gently instead) */
+    if(/^(motorway|trunk)/.test(w.cls||'')){const mx=0.6*dt;d=Math.max(-mx,Math.min(mx,d));}
+    car.lat+=d;}
   const p=this.pointOn(w,car.s,car.lat,dir);
   car.hd=(car.hd+TN.angDiff2(p.hd,car.hd)*Math.min(1,dt*8)*(1-(car.mw||0))+360)%360;   /* (no pull from the street during a manoeuvre) */
   /* corners of the road drawing (and turns from one road piece onto another) are rounded: the shown car follows
