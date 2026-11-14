@@ -1,4 +1,4 @@
-/* TessyNav v2 — music.js (v2: on narrow screens the card sits under Record/Trips instead of behind Report)
+/* TessyNav v2 — music.js (v3: tapping a playlist, artist or podcast opens its songs; Play all or tap a song)
    A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
    to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
    (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
@@ -97,6 +97,7 @@ TN.Music.prototype.ui=function(){
     '#tn-mpan .tabs{display:flex;gap:6px;padding:0 14px 8px}#tn-mpan .tabs button{border-radius:16px;padding:6px 14px;font-size:14px;background:rgba(127,127,127,.15)}#tn-mpan .tabs button.on{background:#1db954;color:#000}'+
     '#tn-mpan .ls{flex:1;overflow-y:auto;padding:0 8px 12px}#tn-mpan .it{display:flex;gap:12px;align-items:center;padding:8px;border-radius:10px;cursor:pointer}#tn-mpan .it:active{background:rgba(127,127,127,.2)}'+
     '#tn-mpan .it img{width:48px;height:48px;border-radius:6px;object-fit:cover;flex:none;background:#333}#tn-mpan .it div{min-width:0}#tn-mpan .it b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mpan .it span{font-size:13px;opacity:.65}'+
+    '#tn-mpan .dh{display:flex;align-items:center;gap:8px;padding:4px 6px 10px;position:sticky;top:0;background:rgb(var(--tn-panel-rgb,24 26 30));z-index:1}#tn-mpan .dh b{flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mpan .dh button{border-radius:16px;padding:7px 14px;font-size:14px;background:rgba(127,127,127,.18)}#tn-mpan .dh .pa{background:#1db954;color:#000;font-weight:600}'+
     '#tn-mpan .note{padding:20px;opacity:.7;text-align:center}#tn-mmsg{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);z-index:10;background:rgba(20,20,24,.92);color:#fff;padding:10px 16px;border-radius:12px;font:14px system-ui,sans-serif;display:none;max-width:80vw;text-align:center}';
   document.head.appendChild(st);
   const ic={p:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',z:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
@@ -108,9 +109,9 @@ TN.Music.prototype.ui=function(){
     '<div class="tabs"><button data-t="search" class="on">Search</button><button data-t="lists">Playlists</button><button data-t="recent">Recent</button><button data-t="liked">Liked</button></div><div class="ls"></div>';
   document.body.appendChild(pan);this.pan=pan;
   const inp=pan.querySelector('input');let tm=null;
-  inp.oninput=()=>{clearTimeout(tm);tm=setTimeout(()=>{this.setTab('search');this.search(inp.value);},350);};
+  inp.oninput=()=>{clearTimeout(tm);tm=setTimeout(()=>{this.detail=null;this.setTab('search');this.search(inp.value);},350);};
   pan.querySelector('.x').onclick=()=>this.close();
-  pan.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{this.setTab(b.dataset.t);this.list(b.dataset.t);});
+  pan.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{this.detail=null;this.setTab(b.dataset.t);this.list(b.dataset.t);});
   const m=document.createElement('div');m.id='tn-mmsg';document.body.appendChild(m);this.m=m;
   this.render();
 };
@@ -127,14 +128,35 @@ TN.Music.prototype.render=function(){
   this.el.querySelector('.t').onclick=()=>this.show();
   this.el.querySelector('.b').onclick=()=>this.cmd('prev');this.el.querySelector('.pp').onclick=()=>this.cmd('toggle');this.el.querySelector('.n').onclick=()=>this.cmd('next');
 };
-TN.Music.prototype.show=function(){this.open=true;this.pan.style.display='flex';this.list(this.tab);this.poll();};
+TN.Music.prototype.show=function(){this.open=true;this.pan.style.display='flex';if(this.detail) this.openList(this.detail);else this.list(this.tab);this.poll();};
 TN.Music.prototype.close=function(){this.open=false;this.pan.style.display='none';};
 TN.Music.prototype.setTab=function(t){this.tab=t;this.pan.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));};
-TN.Music.prototype.fill=function(items,note){
+TN.Music.prototype.fill=function(items,note,head){
   const ls=this.pan.querySelector('.ls'),e=TN.esc||(s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])));
-  if(!items||!items.length){ls.innerHTML='<div class="note">'+e(note||'Nothing here yet.')+'</div>';return;}
-  ls.innerHTML=items.map((x,i)=>'<div class="it" data-i="'+i+'">'+(x.img?'<img src="'+e(x.img)+'" alt="">':'<img alt="">')+'<div><b>'+e(x.t)+'</b><span>'+e(x.s)+'</span></div></div>').join('');
-  ls.querySelectorAll('.it').forEach(d=>d.onclick=()=>{const x=items[+d.dataset.i];this.cmd('play',x.ctx?{context_uri:x.ctx}:{uris:[x.uri]});this.msg('Playing: '+x.t);});
+  const top=head?'<div class="dh"><button class="bk">\u2190 Back</button><b>'+e(head.t)+'</b><button class="pa">\u25b6 Play all</button></div>':'';
+  if(!items||!items.length){ls.innerHTML=top+'<div class="note">'+e(note||'Nothing here yet.')+'</div>';}
+  else ls.innerHTML=top+items.map((x,i)=>'<div class="it" data-i="'+i+'">'+(x.img?'<img src="'+e(x.img)+'" alt="">':'<img alt="">')+'<div><b>'+e(x.t)+'</b><span>'+e(x.s)+(x.open?' \u203a':'')+'</span></div></div>').join('');
+  if(head){ls.querySelector('.bk').onclick=()=>{this.detail=null;this.list(this.tab);};
+    ls.querySelector('.pa').onclick=()=>{this.cmd('play',{context_uri:head.ctx});this.msg('Playing: '+head.t);};}
+  ls.querySelectorAll('.it').forEach(d=>d.onclick=()=>{const x=items[+d.dataset.i];
+    if(x.open){this.openList(x);return;}
+    /* a song inside a playlist or album plays from there, and the rest of the list follows */
+    const body=x.inCtx?{context_uri:x.inCtx,offset:{uri:x.uri}}:x.ctx?{context_uri:x.ctx}:{uris:[x.uri]};
+    this.cmd('play',body);this.msg('Playing: '+x.t);});
+  ls.scrollTop=0;
+};
+/* open a playlist, artist, album or podcast: its songs first, then Play all or tap one */
+TN.Music.prototype.openList=async function(x){
+  this.detail=x;this.fill([],'Loading\u2026',x);
+  const id=x.ctx.split(':').pop(),k=x.ctx.split(':')[1];let out=[],ok=false;
+  const tr=(t,ctx)=>t&&t.uri&&{t:t.name,s:(t.artists||[]).map(a=>a.name).join(', ')||(t.show?t.show.name:''),img:tnImg(t.album||t),uri:t.uri,inCtx:ctx};
+  if(k==='playlist'){for(const path of ['/playlists/'+id+'/items?limit=100','/playlists/'+id+'/tracks?limit=100']){
+      const r=await this.api(path);if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).map(i=>tr(i.track||i.item,x.ctx)).filter(Boolean);break;}}}
+  else if(k==='album'){const r=await this.api('/albums/'+id+'/tracks?limit=50');if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).map(t=>Object.assign(tr(t,x.ctx)||{},{img:x.img})).filter(o=>o.uri);}}
+  else if(k==='artist'){const r=await this.api('/artists/'+id+'/top-tracks?market=from_token');if(r.s===200&&r.j){ok=true;out=(r.j.tracks||[]).map(t=>tr(t,null)).filter(Boolean);}}
+  else if(k==='show'){const r=await this.api('/shows/'+id+'/episodes?limit=30&market=from_token');if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).filter(Boolean).map(ep=>({t:ep.name,s:(ep.release_date||''),img:tnImg(ep)||x.img,uri:ep.uri}));}}
+  if(this.detail!==x) return;   /* (closed or opened something else meanwhile) */
+  this.fill(out,ok?'This list is empty.':'Spotify doesn\u2019t show this list to the app. Use Play all.',x);
 };
 const tnImg=o=>{const im=(o&&o.images)||[];return im.length?im[im.length-1].url:null;};
 TN.Music.prototype.search=async function(q){
@@ -142,16 +164,16 @@ TN.Music.prototype.search=async function(q){
   const r=await this.api('/search?type=track,artist,playlist,show&limit=6&q='+encodeURIComponent(q));
   if(r.s!==200||!r.j){this.fill([],r.s===403?'Spotify doesn’t allow search for this app yet.':'Search didn’t work. Check the connection.');return;}
   const j=r.j,out=[];
-  ((j.artists&&j.artists.items)||[]).slice(0,2).forEach(a=>a&&out.push({t:a.name,s:'Artist',img:tnImg(a),ctx:a.uri}));
+  ((j.artists&&j.artists.items)||[]).slice(0,2).forEach(a=>a&&out.push({t:a.name,s:'Artist',img:tnImg(a),ctx:a.uri,open:true}));
   ((j.tracks&&j.tracks.items)||[]).forEach(t=>t&&out.push({t:t.name,s:t.artists.map(a=>a.name).join(', '),img:tnImg(t.album),uri:t.uri}));
-  ((j.playlists&&j.playlists.items)||[]).slice(0,3).forEach(p=>p&&out.push({t:p.name,s:'Playlist',img:tnImg(p),ctx:p.uri}));
-  ((j.shows&&j.shows.items)||[]).slice(0,2).forEach(p=>p&&out.push({t:p.name,s:'Podcast',img:tnImg(p),ctx:p.uri}));
+  ((j.playlists&&j.playlists.items)||[]).slice(0,3).forEach(p=>p&&out.push({t:p.name,s:'Playlist',img:tnImg(p),ctx:p.uri,open:true}));
+  ((j.shows&&j.shows.items)||[]).slice(0,2).forEach(p=>p&&out.push({t:p.name,s:'Podcast',img:tnImg(p),ctx:p.uri,open:true}));
   this.fill(out,'No results.');
 };
 TN.Music.prototype.list=async function(t){
   if(t==='search'){this.search(this.pan.querySelector('input').value);return;}
   this.fill([],'Loading…');
-  if(t==='lists'){const r=await this.api('/me/playlists?limit=40');this.fill(((r.j&&r.j.items)||[]).filter(Boolean).map(p=>({t:p.name,s:'Playlist',img:tnImg(p),ctx:p.uri})),r.s===200?'No playlists.':'Spotify doesn’t allow this for the app yet.');}
+  if(t==='lists'){const r=await this.api('/me/playlists?limit=40');this.fill(((r.j&&r.j.items)||[]).filter(Boolean).map(p=>({t:p.name,s:(p.tracks&&p.tracks.total!=null?p.tracks.total+' songs':(p.items&&p.items.total!=null?p.items.total+' songs':'Playlist')),img:tnImg(p),ctx:p.uri,open:true})),r.s===200?'No playlists.':'Spotify doesn’t allow this for the app yet.');}
   else if(t==='recent'){const r=await this.api('/me/player/recently-played?limit=30');const seen=new Set();
     this.fill(((r.j&&r.j.items)||[]).map(x=>x.track).filter(x=>x&&!seen.has(x.id)&&seen.add(x.id)).map(x=>({t:x.name,s:x.artists.map(a=>a.name).join(', '),img:tnImg(x.album),uri:x.uri})),r.s===200?'Nothing played recently.':'Spotify doesn’t allow this for the app yet.');}
   else if(t==='liked'){const r=await this.api('/me/tracks?limit=40');
