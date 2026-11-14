@@ -503,6 +503,10 @@ TN.Track.prototype.frame=function(now,dt){
     /* (on highways the car moves across at most 0.6 m per second: each road piece's middle sits a little differently,
        and re-centring on every piece swung the car left and right; now it drifts over gently instead) */
     if(/^(motorway|trunk)/.test(w.cls||'')){const mx=0.6*dt;d=Math.max(-mx,Math.min(mx,d));}
+    /* (city streets: at most 0.5 m per second while the car is on the road. Streets are split into many short pieces,
+       and switching between a two-way piece (car in the right half) and a one-way piece (car in the middle) slid the
+       car across 2 m and back, the zigzag on Nuns' Island and in Outremont. Off the road's edge it still comes back fast.) */
+    else if(Math.abs(car.lat)<=Math.max(0.5,W/2-0.8)){const mx=0.5*dt;d=Math.max(-mx,Math.min(mx,d));}
     car.lat+=d;}
   const p=this.pointOn(w,car.s,car.lat,dir);
   /* (on highways at speed the direction follows gently, over about half a second: heading jumps at road-piece joins
