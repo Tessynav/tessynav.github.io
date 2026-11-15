@@ -242,6 +242,17 @@ TN.Scene.prototype.loadCar=async function(){
   }catch(e){console.warn('car model',e.message);}
 };
 TN.Scene.prototype.carMat=function(md){
+  const m=this.carMat0(md),name=md.name||'';
+  /* (the car's surfaces touch each other: chrome window trim and white parts sit right on the paint. On the Tesla's
+     graphics the depth test is less precise, so the trim showed through the paint as white specks, worst in daylight.
+     The trim, chrome and lights are nudged a hair behind the paint so the paint always wins where they overlap; the
+     glass a hair in front. Both sides stay drawn: some parts of the model face inwards.) */
+  const push={chrome:2,lightwhite:2,trim:1,brake:1,rim:1,tire:1}[name],pull=name==='glass';
+  if(push){m.polygonOffset=true;m.polygonOffsetFactor=push;m.polygonOffsetUnits=push*2;}
+  else if(pull){m.polygonOffset=true;m.polygonOffsetFactor=-1;m.polygonOffsetUnits=-2;}
+  return m;
+};
+TN.Scene.prototype.carMat0=function(md){
   const pbr=md.pbrMetallicRoughness||{},c=pbr.baseColorFactor||[0.5,0.5,0.5,1],name=md.name||'';
   /* Tessy's real colour: Stealth Grey, a medium blue-grey with a soft metallic shine */
   if(name==='paint'){const m=new THREE.MeshStandardMaterial({color:0x60656c,metalness:0.5,roughness:0.34,side:THREE.DoubleSide});
