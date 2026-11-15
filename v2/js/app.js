@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=127;
+TN.APPBUILD=128;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -149,7 +149,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   function onPos(p){
     const c=p.coords,now=Date.now();
     rec.gps(c);
-    track.gps(now,c.longitude,c.latitude,c.accuracy,c.speed,c.heading);
+    track.gps(now,c.longitude,c.latitude,c.accuracy,c.speed==null?null:c.speed*(TN.replay?TN.replay.k:1),c.heading);   /* (a replay at 2x or 4x: the car moves that much faster) */
     $('speed').innerHTML=Math.round((c.speed||0)*3.6)+' <small>km/h</small>';
     const car=track.car;
     /* status pill: the road you're on, then the GPS accuracy */
@@ -169,7 +169,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
       try{map.easeTo({center:c||map.getCenter(),zoom:18.5,pitch:60,duration:900});}catch(e){}
     }
     if(watchId===null){gpsStartT=Date.now();
-      watchId=navigator.geolocation.watchPosition(p=>{try{localStorage.setItem('tn2_gpsok','1');}catch(e){}
+      watchId=navigator.geolocation.watchPosition(p=>{if(TN.replay) return;try{localStorage.setItem('tn2_gpsok','1');}catch(e){}
           gpsLastAcc=p.coords.accuracy;if(gpsLastAcc<100) gpsGoodT=Date.now();onPos(p);},
         ()=>{$('status').textContent='Location not available';},{enableHighAccuracy:true,maximumAge:0,timeout:15000});}
   }
@@ -177,7 +177,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   /* GPS watchdog: if the position stays rough (a network guess over 1 km) for more than 8 s, ask again;
      that makes the browser switch to the car's precise GPS */
   setInterval(()=>{
-    if(watchId===null) return;const now=Date.now();
+    if(watchId===null||TN.replay) return;const now=Date.now();
     if(now-gpsStartT>8000&&now-gpsGoodT>10000&&gpsLastAcc>1000&&gpsRestarts<5){gpsRestarts++;restartGps();}
   },4000);
   $('btn').onclick=()=>{if(watchId!==null&&gpsLastAcc>1000) restartGps();else startFollow();};
@@ -257,7 +257,79 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     const d=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]);return d.toLocaleDateString('en-CA',{month:'short',day:'numeric'})+' \u00b7 '+m[4]+':'+m[5];}
   function showTrip(n){
     panel('Trip name:<br><b style="font-size:22px;user-select:all">'+n+'</b><br><small>Send this name to Claude.</small>',
-      [['Copy',()=>{try{navigator.clipboard.writeText(n).then(()=>panel('Copied:<br><b>'+n+'</b>',[['Close',hide]]),()=>{});}catch(e){}}],['Back',showTrips],['Close',hide]]);
+      [['\u25b6 Replay',()=>replay(n)],['Copy',()=>{try{navigator.clipboard.writeText(n).then(()=>panel('Copied:<br><b>'+n+'</b>',[['Close',hide]]),()=>{});}catch(e){}}],['Back',showTrips],['Close',hide]]);
+  }
+  /* ---------- Replay: play a recorded drive back on this screen (for videos, and to look at a moment again) ----------
+     The recorded GPS goes through the same tracking, map and 3D as a live drive, so it looks like it did that day.
+     Play / pause, a timeline to jump anywhere, 1x 2x 4x, and Film mode: every button hidden, only the map, car and
+     buildings (tap the screen to bring the bar back for 3 s). The real GPS is ignored while replaying; X reloads the app. */
+  async function replay(n,passTry){
+    if(rec.rec){panel('Stop the recording first, then replay.',[['Close',hide]]);return;}
+    let pass=passTry||TN.up.get('pass');try{if(!pass) pass=sessionStorage.getItem('tn_rp_pass')||'';}catch(e){}
+    if(!pass){
+      panel('Trip password<br><small>The password the recordings are locked with (kept only until this page closes).</small><br><input id="tn-rpp" type="password" style="margin-top:10px;width:90%;font-size:18px;padding:10px;border-radius:10px;border:1px solid var(--tn-line);background:transparent;color:inherit">',
+        [['Open',()=>{const v=($('tn-rpp')||{}).value||'';if(v) replay(n,v);}],['Cancel',hide]]);
+      setTimeout(()=>{try{$('tn-rpp').focus();}catch(e){}},50);return;}
+    panel('Loading '+n+'…',[]);
+    let trip=null;
+    try{const r=await fetch('https://raw.githubusercontent.com/Tessynav/tessynav-trips/main/trips/'+n+'.json?t='+Date.now(),{cache:'no-store'});
+      if(!r.ok) throw new Error('not found ('+r.status+')');
+      const e=await r.json(),b=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+      const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);
+      const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b(e.salt),iterations:e.iter||200000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+      let d;try{d=new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:b(e.iv)},key,b(e.data)));}
+      catch(x){try{sessionStorage.removeItem('tn_rp_pass');}catch(y){}panel('That password doesn’t open this trip.',[['Try again',()=>replay(n,'')],['Close',hide]]);return;}
+      if(e.gz) d=new Uint8Array(await new Response(new Blob([d]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+      trip=JSON.parse(new TextDecoder().decode(d));
+      try{sessionStorage.setItem('tn_rp_pass',pass);}catch(x){}
+    }catch(err){panel('Couldn’t load this trip: '+String(err.message||err).replace(/[<>&]/g,''),[['Back',showTrips],['Close',hide]]);return;}
+    const g=(trip.g||[]).filter(r=>r&&r[1]!=null&&r[2]!=null);
+    if(g.length<10){panel('This trip has no GPS to replay.',[['Close',hide]]);return;}
+    hide();startReplay(g,n);
+  }
+  function resetTrack(){const f=new TN.Track(net);for(const k of Object.keys(track)) delete track[k];Object.assign(track,f);}
+  function startReplay(g,n){
+    try{if(watchId!==null&&watchId>=0) navigator.geolocation.clearWatch(watchId);}catch(e){}
+    watchId=-1;gpsLastAcc=5;   /* (the real GPS stays off; Recenter just recentres) */
+    const R=TN.replay={g:g,i:0,t:g[0][0],k:1,play:true,dur:g[g.length-1][0],n:n,film:false};
+    resetTrack();startFollow();
+    const st=document.createElement('style');
+    st.textContent='#tn-rp{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:18px;background:rgba(20,22,26,.92);color:#fff;font:600 14px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);width:min(760px,calc(100vw - 32px));box-sizing:border-box;transition:opacity .4s}'+
+      '#tn-rp button{background:rgba(255,255,255,.12);border:0;color:#fff;border-radius:12px;height:40px;min-width:44px;padding:0 10px;font:600 14px system-ui;cursor:pointer;flex:none}#tn-rp button.on{background:#2f6fe4}#tn-rp .tm{font-variant-numeric:tabular-nums;flex:none;min-width:92px;text-align:center}'+
+      '#tn-rp input{flex:1;min-width:60px;accent-color:#2f6fe4}#tn-rp .nm{position:absolute;left:14px;top:-22px;font-size:12px;opacity:.8;text-shadow:0 1px 3px #000}'+
+      'body.tn-film .hud,body.tn-film #panel,body.tn-film #tn-mus,body.tn-film #tn-mpan,body.tn-film #tn-mmsg,body.tn-film #tn-viewbtn,body.tn-film #tn-fbbtn,body.tn-film #tn-fb,body.tn-film #tn-fbn,body.tn-film #tn-alert,body.tn-film #tn-report,'+
+      'body.tn-film #tn-park,body.tn-film #tn-chgcard,body.tn-film #tn-gear,body.tn-film #tn-set,body.tn-film #tn-jam,body.tn-film #tn-faster,body.tn-film #tn-wcard,body.tn-film #tn-rbub,body.tn-film #tn-upd,body.tn-film #tn-updpill,body.tn-film #tn-updbar,'+
+      'body.tn-film #tn-savemenu,body.tn-film #tn-det,body.tn-film #tn-bar,body.tn-film #tn-hi,body.tn-film #tn-ring,body.tn-film .maplibregl-marker{visibility:hidden!important}body.tn-film #tn-rp.idle{opacity:0}';
+    document.head.appendChild(st);
+    const bar=document.createElement('div');bar.id='tn-rp';
+    bar.innerHTML='<span class="nm"></span><button class="pp" aria-label="Play or pause"></button><span class="tm">0:00 / 0:00</span><input type="range" min="0" max="1000" value="0" aria-label="Timeline">'+
+      '<button data-k="1" class="on">1×</button><button data-k="2">2×</button><button data-k="4">4×</button><button class="fm">Film</button><button class="x" aria-label="End replay">✕</button>';
+    document.body.appendChild(bar);
+    bar.querySelector('.nm').textContent='Replay · '+n;
+    const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
+    const sl=bar.querySelector('input'),tm=bar.querySelector('.tm'),pp=bar.querySelector('.pp');
+    let dragging=false;
+    const ui=()=>{tm.textContent=fmt(R.t-g[0][0])+' / '+fmt(R.dur-g[0][0]);if(!dragging) sl.value=Math.round(1000*(R.t-g[0][0])/Math.max(1,R.dur-g[0][0]));pp.innerHTML=R.play?'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';};
+    pp.onclick=()=>{if(R.i>=g.length) seek(0);R.play=!R.play;ui();};
+    bar.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{R.k=+b.dataset.k;bar.querySelectorAll('[data-k]').forEach(o=>o.classList.toggle('on',o===b));});
+    /* jumping on the timeline: the car starts fresh from there, like opening the app at that spot */
+    const seek=f=>{R.t=g[0][0]+f*(R.dur-g[0][0]);let i=0;while(i<g.length&&g[i][0]<R.t) i++;R.i=i;resetTrack();startFollow();ui();};
+    sl.oninput=()=>{dragging=true;tm.textContent=fmt(+sl.value/1000*(R.dur-g[0][0]))+' / '+fmt(R.dur-g[0][0]);};
+    sl.onchange=()=>{dragging=false;seek(+sl.value/1000);};
+    let idleT=null;const wake=()=>{bar.classList.remove('idle');clearTimeout(idleT);if(R.film) idleT=setTimeout(()=>bar.classList.add('idle'),3000);};
+    bar.querySelector('.fm').onclick=e=>{R.film=!R.film;document.body.classList.toggle('tn-film',R.film);e.target.classList.toggle('on',R.film);wake();};
+    document.addEventListener('pointerdown',wake,true);document.addEventListener('mousemove',wake,true);
+    bar.querySelector('.x').onclick=()=>{location.replace(location.pathname);};
+    /* the clock: recorded GPS fixes are given to the app at the moment they came in that day (times the speed) */
+    let last=performance.now(),uiT=0;
+    R.timer=setInterval(()=>{const now=performance.now(),dt=Math.min(250,now-last);last=now;
+      if(R.play&&!dragging){R.t+=dt*R.k;
+        while(R.i<g.length&&g[R.i][0]<=R.t){const r=g[R.i++];
+          onPos({coords:{latitude:r[1],longitude:r[2],accuracy:r[3]==null?5:r[3],speed:r[4],heading:r[5]}});}
+        if(R.i>=g.length){R.play=false;R.t=R.dur;}}
+      if(now-uiT>250){uiT=now;ui();}
+    },33);
+    ui();
   }
   async function showTrips(){
     let L=[];try{L=JSON.parse(localStorage.getItem('tn2_trips')||'[]');}catch(e){}
