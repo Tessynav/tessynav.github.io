@@ -454,6 +454,11 @@ TN.Track.prototype.frame=function(now,dt){
   /* like Codriver: no lane guessing (the GPS can't tell lanes apart). One-way roads and highways: the car rides in
      the middle of its carriageway. Two-way streets: in the middle of the right half. Steady, no lane jumps. */
   let target=w.ow?0:Math.max(1.2,W/4);
+  /* city streets without a route: the car follows the Tesla's own GPS across the road (steady and precise, about 2 m),
+     kept inside its side of the street. Where the map's line for a street bends differently from the real street (short
+     pieces at junctions, Nuns' Island, Outremont), riding the line drifted the car 3-4 m off and back: a zigzag. */
+  if(!TN.navActive&&!/^(motorway|trunk)/.test(w.cls||'')&&(L.acc||9)<=6&&car.gl!=null){
+    const lo=w.ow?-(W/2-1.0):0.6,hi=Math.max(lo,W/2-1.0);target=Math.max(lo,Math.min(hi,car.gl));}
   /* highways: the car keeps its line from one road piece to the next instead of re-centring on each one. Where lanes
      are added or dropped, each piece's middle shifts by a lane or two, and re-centring swung the car left and right
      (a zigzag on the A-15 and A-10). It only comes back inside the edges (1.8 m in) when a piece is narrower. */
