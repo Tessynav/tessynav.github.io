@@ -230,7 +230,9 @@ TN.Scene.prototype.loadCar=async function(){
         if(pr.indices!=null) g.setIndex(new THREE.BufferAttribute(acc(pr.indices),1));
         if(pr.attributes.NORMAL==null) g.computeVertexNormals();
         const md=(j.materials&&pr.material!=null)?j.materials[pr.material]:{};
-        const mesh=new THREE.Mesh(g,this.carMat(md));mesh.frustumCulled=false;
+        const mat=this.carMat(md),mesh=new THREE.Mesh(g,mat);mesh.frustumCulled=false;
+        /* the inside faces of each panel are drawn by a twin, nudged well behind (see carBack) */
+        const back=new THREE.Mesh(g,this.carBack(mat,md.name||''));back.frustumCulled=false;mesh.add(back);
         const wk=(nd.name||'').match(/^(Wheel[FR][LR])_/);
         if(wk){let w=this.wheels.find(x=>x.name===wk[1]);if(!w){w=new THREE.Group();w.name=wk[1];w.position.setFromMatrixPosition(M);body.add(w);this.wheels.push(w);}w.add(mesh);}
         else{mesh.applyMatrix4(M);body.add(mesh);}
@@ -247,10 +249,21 @@ TN.Scene.prototype.carMat=function(md){
      graphics the depth test is less precise, so the trim showed through the paint as white specks, worst in daylight.
      The trim, chrome and lights are nudged a hair behind the paint so the paint always wins where they overlap; the
      glass a hair in front. Both sides stay drawn: some parts of the model face inwards.) */
+  m.side=THREE.FrontSide;   /* (the inside is drawn by the twin, carBack) */
   const push={chrome:2,lightwhite:2,trim:1,brake:1,rim:1,tire:1}[name],pull=name==='glass';
   if(push){m.polygonOffset=true;m.polygonOffsetFactor=push;m.polygonOffsetUnits=push*2;}
   else if(pull){m.polygonOffset=true;m.polygonOffsetFactor=-1;m.polygonOffsetUnits=-2;}
   return m;
+};
+/* the inside of each panel (the roof seen from below, the far side of the glass): drawn only by this twin, pushed
+   back far enough that the outside always wins. On the Tesla's graphics the depth test steps are about 10 cm at
+   that distance, coarser than the panels are thick, so the bright inside showed through as white specks. Parts of
+   the model that face inwards still get drawn, by the twin, so there are no holes. */
+TN.Scene.prototype.carBack=function(m,name){
+  const b=m.clone();b.side=THREE.BackSide;b.color=m.color;if(m.emissive) b.emissive=m.emissive;
+  b.polygonOffset=true;b.polygonOffsetFactor=(m.polygonOffsetFactor||0)+4;b.polygonOffsetUnits=(m.polygonOffsetUnits||0)+16;
+  if(name==='tail') (this.tails=this.tails||[]).push(b);
+  return b;
 };
 TN.Scene.prototype.carMat0=function(md){
   const pbr=md.pbrMetallicRoughness||{},c=pbr.baseColorFactor||[0.5,0.5,0.5,1],name=md.name||'';
