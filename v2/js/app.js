@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=129;
+TN.APPBUILD=130;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -313,13 +313,20 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     pp.onclick=()=>{if(R.i>=g.length) seek(0);R.play=!R.play;ui();};
     bar.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{R.k=+b.dataset.k;bar.querySelectorAll('[data-k]').forEach(o=>o.classList.toggle('on',o===b));});
     /* jumping on the timeline: the car starts fresh from there, like opening the app at that spot */
-    const seek=f=>{R.t=g[0][0]+f*(R.dur-g[0][0]);let i=0;while(i<g.length&&g[i][0]<R.t) i++;R.i=i;resetTrack();startFollow();ui();};
+    const seek=f=>{R.t=g[0][0]+f*(R.dur-g[0][0]);let i=0;while(i<g.length&&g[i][0]<R.t) i++;R.i=i;resetTrack();frameBody.rpCar=null;
+      if(!R.play){R.play=true;setTimeout(()=>{R.play=false;ui();},1200);}   /* (paused: play 1 s so the car appears at the new spot, then hold) */
+      startFollow();ui();};
     sl.oninput=()=>{dragging=true;tm.textContent=fmt(+sl.value/1000*(R.dur-g[0][0]))+' / '+fmt(R.dur-g[0][0]);};
     sl.onchange=()=>{dragging=false;seek(+sl.value/1000);};
     let idleT=null;const wake=()=>{bar.classList.remove('idle');clearTimeout(idleT);if(R.film) idleT=setTimeout(()=>bar.classList.add('idle'),3000);};
     bar.querySelector('.fm').onclick=e=>{R.film=!R.film;document.body.classList.toggle('tn-film',R.film);e.target.classList.toggle('on',R.film);wake();};
     document.addEventListener('pointerdown',wake,true);document.addEventListener('mousemove',wake,true);
-    bar.querySelector('.x').onclick=()=>{location.replace(location.pathname);};
+    /* X: back to the live drive right away (no reload): the bar goes, the real GPS comes back */
+    bar.querySelector('.x').onclick=()=>{
+      clearInterval(R.timer);clearTimeout(idleT);bar.remove();st.remove();document.body.classList.remove('tn-film');
+      document.removeEventListener('pointerdown',wake,true);document.removeEventListener('mousemove',wake,true);
+      TN.replay=null;frameBody.rpCar=null;resetTrack();restartGps();
+      $('speed').innerHTML='0 <small>km/h</small>';};
     /* the clock: recorded GPS fixes are given to the app at the moment they came in that day (times the speed) */
     let last=performance.now(),uiT=0;
     R.timer=setInterval(()=>{const now=performance.now(),dt=Math.min(250,now-last);last=now;
@@ -576,7 +583,11 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(r.done){RW.sj=null;if(RW.sjVer===net.ver){try{RW.w.postMessage(r.value.msg,r.value.transfer);RW.syncVer=net.ver;RW.syncT=performance.now();}catch(e){if(TN.RWfail) TN.RWfail();}}}
       TN.prof('network',performance.now()-tn);}}
     const t0=performance.now();
-    let car=track.frame(Date.now(),dt);
+    /* (a paused replay: the car stays exactly where it is. The tracking otherwise kept moving it ahead on its last
+       speed for a few seconds, like a car whose GPS dropped out, and wobbled while it gave up) */
+    let car;
+    if(TN.replay&&!TN.replay.play&&frameBody.rpCar) car=Object.assign({},frameBody.rpCar);
+    else{car=track.frame(Date.now(),dt);if(TN.replay&&car) frameBody.rpCar=Object.assign({},car);}
     TN.prof('track',performance.now()-t0);
     if(car&&car.x!=null){
       /* navigating: the car is drawn on the route path (smooth turns like Google Maps / Waze) */
