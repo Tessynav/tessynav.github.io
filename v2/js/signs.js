@@ -138,7 +138,10 @@ TN.Signs.prototype.make=function(e,kind,pt){
   const postMat=new T.MeshLambertMaterial({color:0x9aa0a6});
   for(const px of [-PW*0.32,PW*0.32]){const ph=clear+PH*0.85;const p=new T.Mesh(new T.BoxGeometry(0.22,ph,0.22),postMat);p.position.set(px,ph/2,-0.15);grp.add(p);}
   /* on the right side of the road, facing the drivers coming toward it (turned a little toward the road) */
-  const off=TN.width(pt.w)/2+(onBridge?0.6:3.5),rx=-pt.uz,rz=pt.ux;
+  /* (on a bridge: the posts stand just outside the deck's edge and the board overhangs the shoulder by under a metre.
+     Before, the board was centred 0.6 m past the edge, so its left half and one post stood in the lanes: the Champlain
+     Bridge signs looked like they were in the middle of the road) */
+  const off=TN.width(pt.w)/2+(onBridge?PW/2-0.8:3.5),rx=-pt.uz,rz=pt.ux;
   const x=pt.x+rx*off,z=pt.z+rz*off;
   grp.position.set(x,pt.h,z);grp.rotation.y=Math.atan2(-pt.ux,-pt.uz)-0.12;
   grp.renderOrder=2;S.three.scene.add(grp);

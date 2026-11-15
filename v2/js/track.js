@@ -463,7 +463,10 @@ TN.Track.prototype.frame=function(now,dt){
      are added or dropped, each piece's middle shifts by a lane or two, and re-centring swung the car left and right
      (a zigzag on the A-15 and A-10). It only comes back inside the edges (1.8 m in) when a piece is narrower. */
   /* (not while navigating: the blue route line runs down the middle, and the car is drawn on it) */
-  if(!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&car.lat!=null){const edge=Math.max(0,W/2-1.8),drift=Math.sign(car.lat)*Math.min(Math.abs(car.lat),0.25*dt);target=Math.max(-edge,Math.min(edge,car.lat-drift));}   /* (and drifts back to the middle very slowly, 25 cm a second) */
+  if(!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&car.lat!=null){const edge=Math.max(0,W/2-1.8),drift=Math.sign(car.lat)*Math.min(Math.abs(car.lat),0.25*dt);/* (when the car has drifted more than 2.5 m from where the precise GPS says you are, it heads back to the GPS. The
+     hold above only moved the car back toward the middle at a few millimetres a second, so after the on-ramp merge onto
+     the Champlain Bridge it stayed 8 m out, beside the deck, for three minutes) */
+  const far=(L.acc||9)<=6&&car.gf!=null&&Math.abs(car.gf-car.lat)>2.5;target=Math.max(-edge,Math.min(edge,far?car.gf:car.lat-drift));}   /* (and drifts back to the middle very slowly, 25 cm a second) */
   /* optional (Settings -> Follow my lane on wide roads, off by default): on one-way roads with 3 lanes or more, the
      car takes the lane the GPS has clearly been in, whole lanes only, changing after 2 s near another lane's centre.
      Closer to your real lane on wide highways and bridges, but it moves sideways more than the steady middle. */
