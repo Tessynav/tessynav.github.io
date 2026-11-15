@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=128;
+TN.APPBUILD=129;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -391,8 +391,9 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   const label=s=>{const m=s.match(/js\/([\w-]+)\.js\?v=(\d+)/);return m?m[1]+' v'+m[2]:s;};
   /* the files as a tidy two-column table, sorted by name (instead of one long line) */
   const table=list=>{const it=list.map(f=>{const m=f.match(/js\/([\w-]+)\.js\?v=(\d+)/);return m?[m[1],'v'+m[2]]:[f,''];}).sort((x,y)=>x[0].localeCompare(y[0]));
-    return '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px;font-size:14px;text-align:left;margin:8px 0 2px">'+
-      it.map(x=>'<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid rgba(127,127,127,.18);padding:2px 0"><span>'+x[0]+'</span><span style="opacity:.6">'+x[1]+'</span></div>').join('')+'</div>';};
+    /* (4 narrow columns, scrolling if needed: the list grew past the height of the Tesla screen and the Close button was cut off) */
+    return '<div style="display:grid;grid-template-columns:repeat('+(innerWidth>620?4:2)+',minmax(0,1fr));gap:2px 12px;font-size:12.5px;text-align:left;margin:8px 0 2px;max-height:46vh;overflow:auto">'+
+      it.map(x=>'<div style="display:flex;justify-content:space-between;gap:6px;border-bottom:1px solid rgba(127,127,127,.18);padding:1px 0;white-space:nowrap"><span>'+x[0]+'</span><span style="opacity:.6">'+x[1]+'</span></div>').join('')+'</div>';};
   async function latest(){
     const parse=html=>[...html.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m=>m[1]);
     const api='https://api.github.com/repos/Tessynav/tessynav.github.io/contents/v2/index.html?t='+Date.now();
@@ -439,7 +440,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(now.join('|')!==mine.join('|')){
         const changed=now.filter(x=>mine.indexOf(x)<0).map(label).join(', ');
         panel('Update available: <b>'+changed+'</b><br><br>Running now:'+table(mine),[['Update now',()=>update(now)],['Later',hide]]);
-      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(64)+'</div>':'')+'<b>TessyNav</b> · build '+TN.APPBUILD+'<br><span style="font-size:14px">Heights: '+(TN.HV2?'new':'current')+'</span>'+table(mine)+'<br>You have the latest version.',[['Close',hide]]);
+      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(40)+'</div>':'')+'<b>TessyNav</b> · build '+TN.APPBUILD+'<br><span style="font-size:14px">Heights: '+(TN.HV2?'new':'current')+'</span>'+table(mine)+'<br>You have the latest version.',[['Close',hide]]);
     }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
   /* the app checks for updates by itself (20 s after opening, then every 10 minutes); a found update shows a dot on
