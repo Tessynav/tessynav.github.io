@@ -485,7 +485,10 @@ TN.Track.prototype.frame=function(now,dt){
      the car stays on the blue line, which already follows the right branch: on the Champlain Bridge, following the lane
      put the car beside the line) */
   if(car.laneK==null&&!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&L.v>12&&(L.acc||9)<=6&&Math.abs(car.gl)>W/2*0.75&&this.besideBranch(w,L)){
-    const lim=W/2+3;target=Math.sign(car.gl)*Math.min(Math.abs(car.gl),lim);}
+    /* (no further out than the middle of the outer lane. It used to allow 3 m past the road's edge, and on highways with a
+       parallel collector road the Tesla's GPS, often a couple of metres to the right, put the car on the edge line or the
+       shoulder for minutes, the A-15 and A-10 near La Prairie and Brossard) */
+    const nL=w.lanes||Math.max(1,Math.round(W/3.4)),lim=Math.max(0,W/2-W/(2*nL));target=Math.sign(car.gl)*Math.min(Math.abs(car.gl),lim);}
   /* splits drawn late (all roads, without a route): the map often puts the split at the end of the painted gore,
      100-150 m after the lanes really part (the Taschereau exit off the A-10). When a split is coming up within 180 m
      and the precise GPS is clearly over on the side of one of its branches, the car moves over with you (up to 8 m past
