@@ -1,4 +1,4 @@
-/* TessyNav v2 — music.js (v3: tapping a playlist, artist or podcast opens its songs; Play all or tap a song)
+/* TessyNav v2 — music.js (v4: the card sits right of the speed limit sign instead of over it)
    A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
    to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
    (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
@@ -87,7 +87,7 @@ TN.Music.prototype.cmd=async function(kind,body){
 /* ---------- screen ---------- */
 TN.Music.prototype.ui=function(){
   const st=document.createElement('style');
-  st.textContent='#tn-mus{left:180px;bottom:24px;display:flex;align-items:center;gap:10px;padding:8px 10px;max-width:min(420px,calc(100vw - 340px));height:44px;box-sizing:content-box}'+
+  st.textContent='#tn-mus{left:240px;bottom:24px;display:flex;align-items:center;gap:10px;padding:8px 10px;max-width:min(420px,calc(100vw - 400px));height:44px;box-sizing:content-box}'+
     '@media (max-width:700px){#tn-mus{left:16px;top:122px;bottom:auto;max-width:calc(100vw - 52px)}}'+
     '#tn-mus img{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none}#tn-mus .t{min-width:0;flex:1;cursor:pointer;line-height:1.25}'+
     '#tn-mus .t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mus .t span{display:block;font-size:12px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
