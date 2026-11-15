@@ -1,11 +1,12 @@
-/* TessyNav v2 — music.js (v4: the card sits right of the speed limit sign instead of over it)
+/* TessyNav v2 — music.js (v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
    A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
    to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
    (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
    and nothing goes through Tesla. Needs Spotify Premium; Spotify limits a personal app to 5 users.
    Separate from the map and the car: if anything fails here, only the card is affected. ?music=0 switches it off. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
-TN.SPOTIFY_ID='69e3fcb20ecc487da3512617ba29158f';
+TN.SPOTIFY_ID='69e3fcb20ecc487da3512617ba29158f';   /* TessyNav's own key: works for the people invited to it (Spotify allows 5) */
+TN.SPOTIFY_HELP='https://tessynav.github.io/v2/spotify.html';
 TN.Music=function(){
   this.on=typeof document!=='undefined'&&!/[?&]music=0/.test(location.search);
   if(!this.on) return;
@@ -22,6 +23,9 @@ TN.Music=function(){
 TN.Music.prototype.ls=function(k,v){try{if(v===undefined) return localStorage.getItem(k);if(v===null) localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}return null;};
 TN.Music.prototype.load=function(){try{return JSON.parse(this.ls('tn_sp_tok')||'null');}catch(e){return null;}};
 TN.Music.prototype.save=function(t){this.tok=t;this.ls('tn_sp_tok',t?JSON.stringify(t):null);};
+/* the key in use: the driver's own (Settings guide) or TessyNav's */
+TN.Music.prototype.cid=function(){const c=this.ls('tn_sp_cid');return c&&/^[0-9a-f]{32}$/i.test(c)?c:TN.SPOTIFY_ID;};
+TN.Music.prototype.own=function(){return this.cid()!==TN.SPOTIFY_ID;};
 TN.Music.prototype.clean=function(){try{history.replaceState(null,'',location.pathname);}catch(e){}};
 /* login: PKCE (code verifier stays in this browser) */
 TN.Music.prototype.login=async function(){
@@ -30,16 +34,16 @@ TN.Music.prototype.login=async function(){
   const dg=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ver));
   const ch=btoa(String.fromCharCode(...new Uint8Array(dg))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   this.ls('tn_sp_ver',ver);this.ls('tn_sp_state',st);
-  const p=new URLSearchParams({client_id:TN.SPOTIFY_ID,response_type:'code',redirect_uri:this.redirect,state:st,code_challenge_method:'S256',code_challenge:ch,
+  const p=new URLSearchParams({client_id:this.cid(),response_type:'code',redirect_uri:this.redirect,state:st,code_challenge_method:'S256',code_challenge:ch,
     scope:'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-read-recently-played user-library-read'});
   location.href='https://accounts.spotify.com/authorize?'+p;
 };
 TN.Music.prototype.finish=async function(code){
   this.clean();
   try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({grant_type:'authorization_code',code:code,redirect_uri:this.redirect,client_id:TN.SPOTIFY_ID,code_verifier:this.ls('tn_sp_ver')||''})});
+      body:new URLSearchParams({grant_type:'authorization_code',code:code,redirect_uri:this.redirect,client_id:this.cid(),code_verifier:this.ls('tn_sp_ver')||''})});
     const j=await r.json();if(!j.access_token) throw new Error(j.error_description||'no token');
-    this.save({a:j.access_token,r:j.refresh_token,e:Date.now()+(j.expires_in-60)*1000});this.msg('Spotify connected.');this.poll();
+    this.save({a:j.access_token,r:j.refresh_token,e:Date.now()+(j.expires_in-60)*1000,c:this.cid()});this.msg('Spotify connected'+(this.own()?' with your own key.':'.'));this.poll();
   }catch(e){this.msg('Spotify login failed: '+e.message);}
   this.ls('tn_sp_ver',null);this.ls('tn_sp_state',null);
 };
@@ -47,9 +51,9 @@ TN.Music.prototype.access=async function(){
   if(!this.tok) return null;
   if(Date.now()<this.tok.e) return this.tok.a;
   try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({grant_type:'refresh_token',refresh_token:this.tok.r,client_id:TN.SPOTIFY_ID})});
+      body:new URLSearchParams({grant_type:'refresh_token',refresh_token:this.tok.r,client_id:this.tok.c||this.cid()})});
     const j=await r.json();if(!j.access_token){this.save(null);this.render();return null;}
-    this.save({a:j.access_token,r:j.refresh_token||this.tok.r,e:Date.now()+(j.expires_in-60)*1000});return this.tok.a;
+    this.save({a:j.access_token,r:j.refresh_token||this.tok.r,e:Date.now()+(j.expires_in-60)*1000,c:this.tok.c});return this.tok.a;
   }catch(e){return null;}
 };
 /* one Web API call; returns {s: status, j: json or null} */
@@ -65,7 +69,10 @@ TN.Music.prototype.api=async function(path,opt){
 TN.Music.prototype.poll=async function(){
   clearTimeout(this.pollT);if(!this.tok||document.hidden){this.render();return;}
   const r=await this.api('/me/player?additional_types=episode');
-  this.now=r.s===200&&r.j?r.j:null;this.render();
+  this.now=r.s===200&&r.j?r.j:null;
+  /* a Spotify account not invited to TessyNav's key: Spotify answers 403; point to the own-key guide (once) */
+  if(r.s===403&&!this.own()&&!this.told403){this.told403=true;this.msg('This Spotify account isn\u2019t invited to TessyNav\u2019s key. Tap \u2699 in the music panel \u2192 Use my own Spotify key.');}
+  this.render();
   this.pollT=setTimeout(()=>this.poll(),this.open?5000:10000);
 };
 /* the car's Spotify (or whichever device is playing) */
@@ -105,12 +112,13 @@ TN.Music.prototype.ui=function(){
   this.ic=ic;
   const el=document.createElement('div');el.id='tn-mus';el.className='hud notr';document.body.appendChild(el);this.el=el;
   const pan=document.createElement('div');pan.id='tn-mpan';pan.className='notr';
-  pan.innerHTML='<div class="hd"><input placeholder="Search songs, artists, podcasts" enterkeyhint="search"><button class="x" aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'+
+  pan.innerHTML='<div class="hd"><input placeholder="Search songs, artists, podcasts" enterkeyhint="search"><button class="ky" aria-label="Spotify settings" style="font-size:20px">\u2699</button><button class="x" aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'+
     '<div class="tabs"><button data-t="search" class="on">Search</button><button data-t="lists">Playlists</button><button data-t="recent">Recent</button><button data-t="liked">Liked</button></div><div class="ls"></div>';
   document.body.appendChild(pan);this.pan=pan;
   const inp=pan.querySelector('input');let tm=null;
   inp.oninput=()=>{clearTimeout(tm);tm=setTimeout(()=>{this.detail=null;this.setTab('search');this.search(inp.value);},350);};
   pan.querySelector('.x').onclick=()=>this.close();
+  pan.querySelector('.ky').onclick=()=>{this.close();this.choose();};
   pan.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{this.detail=null;this.setTab(b.dataset.t);this.list(b.dataset.t);});
   const m=document.createElement('div');m.id='tn-mmsg';document.body.appendChild(m);this.m=m;
   this.render();
@@ -119,7 +127,7 @@ TN.Music.prototype.msg=function(t){if(!this.m) return;this.m.textContent=t;this.
 TN.Music.prototype.render=function(){
   if(!this.el) return;const e=TN.esc||(s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])));
   if(!this.tok){this.el.innerHTML='<button class="pp" aria-label="Connect Spotify" style="width:auto;border-radius:20px;padding:0 14px;font:600 14px system-ui">♫ Connect Spotify</button>';
-    this.el.querySelector('button').onclick=()=>this.login();return;}
+    this.el.querySelector('button').onclick=()=>this.choose();return;}
   const it=this.now&&this.now.item,pl=this.now&&this.now.is_playing;
   const img=it?((it.album||it.show||{}).images||[]).slice(-2)[0]:null;
   const title=it?it.name:'Nothing playing',sub=it?(it.artists?it.artists.map(a=>a.name).join(', '):(it.show?it.show.name:'')):'Tap to search Spotify';
@@ -178,5 +186,61 @@ TN.Music.prototype.list=async function(t){
     this.fill(((r.j&&r.j.items)||[]).map(x=>x.track).filter(x=>x&&!seen.has(x.id)&&seen.add(x.id)).map(x=>({t:x.name,s:x.artists.map(a=>a.name).join(', '),img:tnImg(x.album),uri:x.uri})),r.s===200?'Nothing played recently.':'Spotify doesn’t allow this for the app yet.');}
   else if(t==='liked'){const r=await this.api('/me/tracks?limit=40');
     this.fill(((r.j&&r.j.items)||[]).map(x=>x.track).filter(Boolean).map(x=>({t:x.name,s:x.artists.map(a=>a.name).join(', '),img:tnImg(x.album),uri:x.uri})),r.s===200?'No liked songs.':'Spotify doesn’t allow this for the app yet.');}
+};
+/* ---------- Spotify key: choose, guide, paste ---------- */
+TN.Music.prototype.box=function(html,btns){
+  let d=document.getElementById('tn-mkey');
+  if(!d){d=document.createElement('div');d.id='tn-mkey';d.className='notr';document.body.appendChild(d);
+    const st=document.createElement('style');
+    st.textContent='#tn-mkey{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:31;width:min(600px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;box-sizing:border-box;background:rgb(var(--tn-panel-rgb,24 26 30) / .98);color:var(--tn-text,#fff);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.45);font:15px/1.45 system-ui,sans-serif;padding:20px 22px}'+
+      '#tn-mkey h3{margin:0 0 4px;font-size:20px;display:flex;align-items:center;gap:10px}#tn-mkey .sp{width:26px;height:26px;border-radius:50%;background:#1db954;color:#000;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}'+
+      '#tn-mkey .sub{opacity:.7;font-size:14px;margin-bottom:12px}#tn-mkey .st{display:flex;gap:12px;margin:10px 0}#tn-mkey .n{flex:none;width:26px;height:26px;border-radius:50%;background:#2f6fe4;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}'+
+      '#tn-mkey code{background:rgba(127,127,127,.2);padding:2px 7px;border-radius:6px;font-size:13.5px;word-break:break-all}#tn-mkey .qr{float:right;margin:0 0 8px 14px;background:#fff;padding:8px;border-radius:10px;line-height:0;text-align:center}#tn-mkey .qr small{display:block;color:#333;font-size:11px;line-height:1.3;margin-top:4px}'+
+      '#tn-mkey input{width:100%;box-sizing:border-box;font:16px ui-monospace,monospace;padding:12px 14px;border-radius:12px;border:2px solid #2f6fe4;background:rgba(127,127,127,.12);color:inherit;margin-top:6px;outline:none}'+
+      '#tn-mkey .bt{display:flex;gap:10px;margin-top:16px;clear:both}#tn-mkey .bt button{flex:1;border:0;border-radius:14px;padding:12px;font:700 15px system-ui;cursor:pointer;background:rgba(127,127,127,.2);color:inherit}#tn-mkey .bt button.g{background:#1db954;color:#000}#tn-mkey .bt button:disabled{opacity:.4}'+
+      '#tn-mkey .ok{font-size:14px;margin-top:8px;min-height:20px}#tn-mkey .cp{border:0;background:#2f6fe4;color:#fff;border-radius:10px;padding:2px 9px;font:600 12px system-ui;margin-left:6px;cursor:pointer}';
+    document.head.appendChild(st);}
+  d.innerHTML=html+'<div class="bt">'+btns.map((b,i)=>'<button data-i="'+i+'"'+(b[2]?' class="'+b[2]+'"':'')+'>'+b[0]+'</button>').join('')+'</div>';
+  d.querySelectorAll('.bt button').forEach(x=>x.onclick=()=>btns[+x.dataset.i][1]());
+  d.style.display='block';return d;
+};
+TN.Music.prototype.unbox=function(){const d=document.getElementById('tn-mkey');if(d) d.style.display='none';};
+TN.Music.prototype.choose=function(){
+  const own=this.own(),hd='<h3><span class="sp">♫</span>Spotify</h3>';
+  if(this.tok) this.box(hd+'<div class="sub">Connected'+(own?' with <b>your own key</b>.':' with TessyNav’s key.')+'</div>',
+      [[own?'Change my key':'Use my own Spotify key',()=>this.guide(1)],['Disconnect',()=>{this.save(null);this.now=null;this.render();this.unbox();this.msg('Spotify disconnected.');}],['Close',()=>this.unbox()]]);
+  else this.box(hd+'<div class="sub">Control Spotify from TessyNav: what’s playing, search, your playlists. Needs <b>Spotify Premium</b>.</div>'+
+      (own?'<div>Your own key is saved. Tap <b>Connect</b> to log in to Spotify.</div>':'<div><b>Use my own Spotify key</b> works for everyone (about 5 minutes, once). <b>Quick connect</b> only works for Spotify accounts invited to TessyNav.</div>'),
+      own?[['Connect',()=>{this.unbox();this.login();},'g'],['Change my key',()=>this.guide(1)],['Remove my key',()=>{this.ls('tn_sp_cid',null);this.choose();}],['Cancel',()=>this.unbox()]]
+         :[['Use my own Spotify key',()=>this.guide(1),'g'],['Quick connect',()=>{this.unbox();this.login();}],['Cancel',()=>this.unbox()]]);
+};
+/* screen 1: the steps, with a QR code that opens the help page on the phone (easier than typing in the car) */
+TN.Music.prototype.guide=function(step){
+  const red=this.redirect,copy=t=>{try{navigator.clipboard.writeText(t);this.msg('Copied.');}catch(e){}};
+  if(step===1){
+    const d=this.box('<h3><span class="sp">♫</span>Connect your own Spotify</h3><div class="sub">For search and playlists. About 5 minutes, once. Needs Spotify Premium.</div>'+
+      '<div class="qr" id="tn-mqr"><small>Scan with<br>your phone</small></div>'+
+      '<div class="st"><div class="n">1</div><div>On your phone, scan the code (or open <b>developer.spotify.com/dashboard</b>) and log in with your Spotify account. Accept the terms.</div></div>'+
+      '<div class="st"><div class="n">2</div><div>Tap <b>Create app</b>. Name: <code>TessyNav</code><br>Can’t see it? Browser menu → <b>Desktop site</b>.</div></div>'+
+      '<div class="st"><div class="n">3</div><div>Redirect URI: <code>'+red+'</code><button class="cp" data-c="1">Copy</button><br>Tick <b>Web API</b>, then <b>Save</b>.</div></div>'+
+      '<div class="st"><div class="n">4</div><div>Open your app’s <b>Settings</b> and copy the <b>Client ID</b>.<br><span style="opacity:.7;font-size:13px">Never the Client Secret: it isn’t needed.</span></div></div>',
+      [['Next: paste the key',()=>this.guide(2),'g'],['Cancel',()=>this.unbox()]]);
+    d.querySelector('[data-c]').onclick=()=>copy(red);
+    const draw=()=>{const q=document.getElementById('tn-mqr');if(!q||typeof qrcode!=='function') return;
+      const g=qrcode(0,'M');g.addData(TN.SPOTIFY_HELP);g.make();q.insertAdjacentHTML('afterbegin',g.createSvgTag(4,0));};
+    if(typeof qrcode==='function') draw();
+    else{const s=document.createElement('script');s.src='js/qr.js?v=1';s.onload=draw;document.head.appendChild(s);}
+    return;}
+  /* screen 2: paste and connect (checked before it goes to Spotify) */
+  const d=this.box('<h3><span class="sp">♫</span>Paste your Client ID</h3><div class="sub">Step 5 of 5</div>'+
+    '<div>Paste the Client ID from your Spotify app:</div><input id="tn-mcid" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="32 letters and numbers">'+
+    '<div class="ok" id="tn-mok"></div><div style="font-size:12.5px;opacity:.65;margin-top:8px">Your key is saved only in this browser. TessyNav never sees your Spotify password: you log in on Spotify’s own page. Remove it any time with ⚙ in the music panel.</div>',
+    [['Back',()=>this.guide(1)],['Connect Spotify',()=>{const v=inp.value.trim();if(!/^[0-9a-f]{32}$/i.test(v)) return;
+      this.ls('tn_sp_cid',v.toLowerCase());this.save(null);this.unbox();this.login();},'g']]);
+  const inp=d.querySelector('#tn-mcid'),ok=d.querySelector('#tn-mok'),go=d.querySelector('.bt .g');
+  const chk=()=>{const v=inp.value.trim();const good=/^[0-9a-f]{32}$/i.test(v);go.disabled=!good;
+    ok.style.color=good?'#7ee2a0':'#ffb4a8';
+    ok.textContent=!v?'':good?'✓ Looks right (32 letters and numbers)':v.length!==32?'That’s '+v.length+' characters; a Client ID has 32.':'Only letters a–f and numbers 0–9.';};
+  inp.oninput=chk;const cur=this.ls('tn_sp_cid');if(cur) inp.value=cur;chk();setTimeout(()=>{try{inp.focus();}catch(e){}},50);
 };
 if(typeof document!=='undefined') TN.music=new TN.Music();
