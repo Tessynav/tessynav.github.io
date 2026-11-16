@@ -44,6 +44,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
   const landmarks=TN.Landmarks?new TN.Landmarks(scene):null;
+  const garage=TN.Garage?new TN.Garage({scene:scene,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;
   /* Can I park here? (City of Montréal parking signs, read when you stop) */
   const parking=TN.Parking?new TN.Parking({getCar:()=>track.car,getSpeed:()=>track.last?track.last.v:0,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;TN.parking=parking;
   const season=TN.Season?new TN.Season(scene,trees):null;
@@ -150,13 +151,15 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   function onPos(p){
     const c=p.coords,now=Date.now();
     rec.gps(c);
-    track.gps(now,c.longitude,c.latitude,c.accuracy,c.speed==null?null:c.speed*(TN.replay?TN.replay.k:1),c.heading);   /* (a replay at 2x or 4x: the car moves that much faster) */
+    track.gps(now,c.longitude,c.latitude,c.accuracy,c.speed==null?null:c.speed*(TN.replay?TN.replay.k:1),c.heading);
+    if(garage){try{garage.fix(c.accuracy,c.speed);}catch(e){}}   /* (a replay at 2x or 4x: the car moves that much faster) */
     $('speed').innerHTML=Math.round((c.speed||0)*3.6)+' <small>km/h</small>';
     const car=track.car;
     /* status pill: the road you're on, then the GPS accuracy */
     const esc=t=>String(t).replace(/[<>&]/g,'');
     const road=car&&car.snapped?(car.w&&car.w.name?esc(car.w.name):({motorway:'Highway',trunk:'Highway',primary:'Main street',secondary:'Street',tertiary:'Street',minor:'Street',service:'Service road'}[car.cls]||'Road')):null;
-    if(c.accuracy>60) $('status').innerHTML='Finding Tessy… <span class="g">GPS '+Math.round(c.accuracy)+' m</span>';
+    if(TN.inGarage) $('status').innerHTML='Underground parking <span class="g">· GPS paused</span>';
+    else if(c.accuracy>60) $('status').innerHTML='Finding Tessy… <span class="g">GPS '+Math.round(c.accuracy)+' m</span>';
     else $('status').innerHTML=(road||'Finding the road…')+' <span class="g">· GPS '+Math.round(c.accuracy)+' m'+(covered?'':' · outside the map')+'</span>';
     if(c.accuracy<100){try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
     wantPacks(c.longitude,c.latitude);
@@ -589,6 +592,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     let car;
     if(TN.replay&&!TN.replay.play&&frameBody.rpCar) car=Object.assign({},frameBody.rpCar);
     else{car=track.frame(Date.now(),dt);if(TN.replay&&car) frameBody.rpCar=Object.assign({},car);}
+    if(garage&&car){try{car=garage.frame(car,track.last?track.last.v:0);}catch(e){}}
     TN.prof('track',performance.now()-t0);
     if(car&&car.x!=null){
       /* navigating: the car is drawn on the route path (smooth turns like Google Maps / Waze) */
