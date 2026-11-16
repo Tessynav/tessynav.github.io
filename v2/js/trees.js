@@ -108,6 +108,12 @@ TN.Trees.prototype.sideFor=function(ck){
       const g=f.geometry;const list=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
       for(const rings of list){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}
         if(a1<lo0||a0>lo1||b1<la0||b0>la1) continue;urban.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
+  /* rivers, canals and lakes (no roadside trees in the water: they stood in the river beside the Bonaventure) */
+  const water=[];try{for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'water'})){
+      const g=f.geometry;const list=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
+      for(const rings of list){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}
+        if(a1<lo0||a0>lo1||b1<la0||b0>la1) continue;water.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
+  const wet=(lo,la)=>{for(const u of water){const b=u.bb;if(lo<b[0]||lo>b[1]||la<b[2]||la>b[3]) continue;if(TN.inPoly(lo,la,u.rings)) return true;}return false;};
   let h=(cx*83492791)^(cy*2971215073);const rnd=()=>{h^=h<<13;h^=h>>>17;h^=h<<5;return ((h>>>0)%10000)/10000;};
   const out=[];
   for(const w of net.ways.values()){
@@ -123,10 +129,10 @@ TN.Trees.prototype.sideFor=function(ck){
           if(x<x0||x>x1||z<z0||z>z1) continue;
           /* clear of every road (with 4 m to spare) */
           let near=false;net.near(x,z,0,(v,k)=>{if(v.tun) return;const r=TN.seg(v,k,x,z);if(r.d<TN.width(v)/2+4){near=true;return true;}});if(near) continue;
-          const ll=TN.fromLocal(x,z);let built=false;for(const u of urban){const b=u.bb;if(ll[0]<b[0]||ll[0]>b[1]||ll[1]<b[2]||ll[1]>b[3]) continue;if(TN.inPoly(ll[0],ll[1],u.rings)){built=true;break;}}if(built) continue;
+          const ll=TN.fromLocal(x,z);let built=false;for(const u of urban){const b=u.bb;if(ll[0]<b[0]||ll[0]>b[1]||ll[1]<b[2]||ll[1]>b[3]) continue;if(TN.inPoly(ll[0],ll[1],u.rings)){built=true;break;}}if(built) continue;if(wet(ll[0],ll[1])) continue;
           /* a small group: the tree and sometimes one or two more close by */
           const n=1+(rnd()<0.35?1:0)+(rnd()<0.15?1:0);
-          for(let g=0;g<n;g++) out.push(x+(g?(rnd()-0.5)*7:0),z+(g?(rnd()-0.5)*7:0),0.8+rnd()*0.6,Math.floor(rnd()*1024));
+          for(let g=0;g<n;g++){const gx=x+(g?(rnd()-0.5)*7:0),gz=z+(g?(rnd()-0.5)*7:0);if(g){const q=TN.fromLocal(gx,gz);if(wet(q[0],q[1])) continue;}out.push(gx,gz,0.8+rnd()*0.6,Math.floor(rnd()*1024));}
           if(out.length>=160*4) return out;}}}}
   return out;
 };
