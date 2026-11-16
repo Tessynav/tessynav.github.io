@@ -224,7 +224,10 @@ TN.Incidents.prototype.clear=function(){for(const m of this.markers.values()){tr
    followed through the road network (at each junction the most natural continuation, preferring the same street) */
 TN.Incidents.prototype.wayAhead=function(car,maxL){
   const nav=this.api.nav,R=nav&&nav.active?nav.route:null,pts=[],cum=[];
-  if(R){const i0=nav.idx||0,s0=R.cum[i0]||0;for(let i=i0;i<R.pts.length&&R.cum[i]-s0<=maxL+50;i++){pts.push(R.pts[i]);cum.push(R.cum[i]-s0);}return pts.length>1?{pts,cum}:null;}
+  /* (a point every 10 m is plenty: the route has one about every metre, and checking every incident against 1,500 of them,
+     4 times a second, slowed the highway with a route to about 50 fps) */
+  if(R){const i0=nav.idx||0,s0=R.cum[i0]||0;let lc=-1e9,i=i0;for(;i<R.pts.length&&R.cum[i]-s0<=maxL+50;i++){if(R.cum[i]-lc>=10){pts.push(R.pts[i]);cum.push(R.cum[i]-s0);lc=R.cum[i];}}
+    const j=Math.min(i,R.pts.length)-1;if(j>i0&&R.cum[j]!==lc){pts.push(R.pts[j]);cum.push(R.cum[j]-s0);}return pts.length>1?{pts,cum}:null;}
   const T=(this.api.getCar&&this.api.getCar())||car,net=this.api.net;let w=T.w||car.w,dir=T.dir||car.dir||1,s=T.w?T.s:car.s;
   if(!net||!w||!w.pts||s==null){
     /* (no road known right now, e.g. in the middle of a turn: a straight line ahead in your direction) */
