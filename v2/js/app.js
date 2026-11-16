@@ -152,7 +152,8 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     const c=p.coords,now=Date.now();
     rec.gps(c);
     track.gps(now,c.longitude,c.latitude,c.accuracy,c.speed==null?null:c.speed*(TN.replay?TN.replay.k:1),c.heading);
-    if(garage){try{garage.fix(c.accuracy,c.speed);}catch(e){}}   /* (a replay at 2x or 4x: the car moves that much faster) */
+    if(garage){try{garage.fix(c.accuracy,c.speed);}catch(e){}}
+    if(TN.habits){try{TN.habits.pos(c.longitude,c.latitude,c.speed,c.accuracy);}catch(e){}}   /* (a replay at 2x or 4x: the car moves that much faster) */
     $('speed').innerHTML=Math.round((c.speed||0)*3.6)+' <small>km/h</small>';
     const car=track.car;
     /* status pill: the road you're on, then the GPS accuracy */

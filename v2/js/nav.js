@@ -546,7 +546,7 @@ TN.Nav.prototype.plan=async function(reroute){
   const from=this.here(),to=TN.routeTo(this.dest);
   if(!reroute){this.ov.style.display='flex';this.ov.innerHTML='<div>Calculating the route\u2026</div>';}
   /* a new route (not a reroute, no stops): ask for the other good ways too, so Rocco can compare them */
-  this.alts=null;this.wantAlts=!reroute&&!(this.stops&&this.stops.length);if(!reroute) this.altSaid=false;
+  this.alts=null;this.wantAlts=!reroute&&!(this.stops&&this.stops.length);if(!reroute){this.altSaid=false;this.usualDone=false;}
   try{
     const rt=await this.fetchRoute(from,to);this.wantAlts=false;
     if(this.alts&&this.alts.length>1&&rt.adjusted) this.alts=null;   /* (the route's end was corrected: compare nothing) */
@@ -1625,8 +1625,15 @@ TN.Nav.prototype.showAlts=function(){
   else{tip=(fr?'Prends le trajet':'Take the route')+via+(fr?' : il te fait gagner '+gap+' min':' — it saves you '+gap+' min');
     if(others.some(x=>x.heavy>0.15)) tip+=others.length>1?(fr?', un autre trajet est très chargé en ce moment.':', another way has heavy traffic right now.'):(fr?', l’autre est très chargé en ce moment.':', the other way has heavy traffic right now.');else tip+='.';}
   if(info[best].busy>1.15) tip+=fr?' La circulation est plus dense que d’habitude.':' Traffic is heavier than usual right now.';
+  /* your usual way (learned from your drives, habits.js): chosen when it isn't clearly slower today */
+  let U=null,autoU=false;try{U=TN.habits?TN.habits.usual(A):null;}catch(e){U=null;}
+  if(U){const ok=A[U.i].duration-A[best].duration<=Math.max(180,0.15*A[best].duration),uv=info[U.i].via?(fr?' par '+info[U.i].via:' via '+info[U.i].via):'';
+    if(ok){tip=(fr?'Ton trajet habituel':'Your usual way')+uv+(fr?' : ':' \u2014 ')+info[U.i].min+' min'+(U.i!==best?(fr?' (l\u2019autre est '+(info[U.i].min-info[best].min)+' min plus rapide)':' (the other is '+(info[U.i].min-info[best].min)+' min quicker)'):'')+'.';
+      if(!this.usualDone&&A[U.i]!==cur) autoU=true;}
+    else tip=(fr?'Ton trajet habituel':'Your usual way')+uv+(fr?' est '+(info[U.i].min-info[best].min)+' min plus long aujourd\u2019hui. Prends le trajet':' is '+(info[U.i].min-info[best].min)+' min slower today. Take the route')+via+'.';
+    this.usualDone=true;try{this.note('usual way',{i:U.i,score:+U.score.toFixed(2),n:U.n,chosen:ok,best:best});}catch(e){}}
   const chips=A.map((r,i)=>'<button class="altc" data-a="'+i+'" style="border:'+(i===sel?'2px solid #3b82f6':'1px solid var(--tn-line,rgba(255,255,255,.2))')+';border-radius:10px;padding:8px 12px;background:transparent;color:inherit;font:600 14px system-ui,sans-serif;text-align:left;cursor:pointer">'+
-    info[i].min+' min'+(i===best&&gap>=2?' <span style="color:#3b82f6">\u2605</span>':'')+'<br><small style="font-weight:400;color:var(--tn-sub,#b9b6ae)">'+TN.esc(info[i].via||fmtDist(r.distance))+'</small></button>').join('');
+    info[i].min+' min'+(i===best&&gap>=2?' <span style="color:#3b82f6">\u2605</span>':'')+(U&&i===U.i?' <span style="font-size:11px;padding:1px 6px;border-radius:6px;background:#2f6fe4;color:#fff">'+(fr?'Habituel':'Usual')+'</span>':'')+'<br><small style="font-weight:400;color:var(--tn-sub,#b9b6ae)">'+TN.esc(info[i].via||fmtDist(r.distance))+'</small></button>').join('');
   const html='<div class="tn-alts notr" style="margin:8px 0;display:flex;flex-direction:column;gap:8px">'+
     '<div style="display:flex;gap:10px;align-items:center">'+(TN.roccoSVG?'<span style="flex:none">'+TN.roccoSVG(36)+'</span>':'')+'<span style="font-size:14px;line-height:1.4">'+TN.esc(tip)+'</span></div>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+chips+'</div></div>';
@@ -1634,6 +1641,7 @@ TN.Nav.prototype.showAlts=function(){
   /* (Rocco says it once per search, if the voice is on) */
   if(!this.altSaid){this.altSaid=true;try{if(TN.voice&&TN.voice.say) TN.voice.say(tip);}catch(e){}}
   const pickAlt=i=>{if(!A[i]||A[i]===this.curRt) return;this.setRoute(A[i]);this.curRt=A[i];this.drawRoute&&this.drawRoute();this.overview();};
+  if(autoU){pickAlt(U.i);return;}
   this.ov.querySelectorAll('.altc').forEach(b=>b.onclick=ev=>{ev.stopPropagation();pickAlt(+b.dataset.a);});
   /* the other routes on the map, in grey, under the chosen one; their times as small labels */
   try{
