@@ -445,6 +445,14 @@ TN.Scene.prototype.styleMap=function(){
         this.dayPaint.push([l.id,'line-color','#2f9fd6','#0e2a44']);}
     }catch(e){}
   }
+  /* city blocks: the map draws its residential land only when zoomed out (up to zoom 12) and has no layer at all for
+     commercial, industrial or retail land, so up close, streets of houses and shops sat on grass like fields. Our own
+     layer paints that land a light warm grey at every zoom, under the parks, woods and grass (so parks stay green) */
+  try{if(!map.getLayer('tn-city')&&map.getSource('openmaptiles')){const c='#c8c7bb',before=map.getLayer('park')?'park':(map.getLayer('landcover_wood')?'landcover_wood':undefined);
+    map.addLayer({id:'tn-city',type:'fill',source:'openmaptiles','source-layer':'landuse',minzoom:12,
+      filter:['match',['get','class'],['residential','commercial','industrial','retail','garages','railway'],true,false],
+      paint:{'fill-color':TN.seasonC(c),'fill-opacity':['interpolate',['linear'],['zoom'],12,0,13,1],'fill-antialias':false}},before);
+    this.dayPaint.push(['tn-city','fill-color',TN.seasonC(c),TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);}}catch(e){}
   this.lastNt=null;if(this.wxNt!=null) this.applyGround(this.wxNt);
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,
