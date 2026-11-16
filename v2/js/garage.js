@@ -1,4 +1,4 @@
-/* TessyNav v2 — garage.js (v1)
+/* TessyNav v2 — garage.js (v2: also notices a garage from the Tesla's weaker position estimate underground)
    Underground parking. GPS stops working underground, so when you drive down into a garage TessyNav:
    - notices it: you were on a garage ramp or parking lane (a service road the map marks as a tunnel or parking
      aisle) at parking speed, then the GPS went quiet or very rough for 6 s
@@ -9,43 +9,62 @@
    Nothing is downloaded and nothing runs while you're outside. ?garage=0 turns it off. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.Garage=function(o){
-  this.api=o;this.on=false;this.pose=null;this.good=null;this.candT=0;this.lastFixT=Date.now();this.roughSince=0;this.goodRun=0;this.grp=null;
+  this.api=o;this.mode='hold';this.hist=[];this.dropSince=0;this.on=false;this.pose=null;this.good=null;this.candT=0;this.lastFixT=Date.now();this.roughSince=0;this.goodRun=0;this.grp=null;
   this.off=typeof location!=='undefined'&&/[?&]garage=0/.test(location.search);
 };
 /* every GPS position (from the app) */
 TN.Garage.prototype.fix=function(acc,speed){
-  const now=Date.now();this.lastFixT=now;
-  if(acc>35){if(!this.roughSince) this.roughSince=now;this.goodRun=0;}
-  else{this.roughSince=0;this.goodRun++;}
-  if(this.on&&this.goodRun>=3) this.leave('gps back');
+  const now=Date.now();this.lastFixT=now;acc=acc==null?99:acc;speed=speed||0;
+  /* (the Tesla keeps estimating its position underground from its wheels and motion sensors: the GPS doesn't go
+     quiet, its accuracy just drops from about 2 m to 6-8 m. So that is also a sign: at parking speed, accuracy
+     suddenly 2.5 times worse than the last minute's (which was good, 3.5 m or better), for 8 s. Checked on your
+     recordings: it came on in the DIX30 garage and nowhere else.) */
+  if(this.on){
+    if(this.mode==='follow'){if(acc<=3.5||speed>11) this.leave('gps back');}
+    else{if(acc<=35) this.goodRun++;else this.goodRun=0;if(this.goodRun>=3) this.leave('gps back');}
+    return;}
+  if(acc>35){if(!this.roughSince) this.roughSince=now;this.goodRun=0;}else{this.roughSince=0;this.goodRun++;}
+  this.hist=(this.hist||[]).filter(h=>now-h[0]<=60000);
+  const base=this.hist.length>10?this.hist.map(h=>h[1]).sort((x,y)=>x-y)[this.hist.length>>1]:null;
+  if(this.snooze&&acc<=3.5) this.snooze=false;   /* (closed by hand: not again until the GPS has been good) */
+  const drop=!this.snooze&&base!=null&&base<=3.5&&acc>=6&&acc>=2.5*base&&speed<6;
+  if(drop){if(!this.dropSince) this.dropSince=now;if(now-this.dropSince>=8000&&!this.off) this.enter('follow');}
+  else{this.dropSince=0;this.hist.push([now,acc]);}
 };
 /* every frame: car = what the tracking shows. Returns the car to draw (the held one while underground) */
 TN.Garage.prototype.frame=function(car,v){
   if(this.off) return car;
   const now=Date.now();
-  if(this.on) return this.pose?Object.assign({},car||{},this.pose):car;
+  if(this.on){
+    /* following the car's own estimate underground: the garage moves along when you've driven 25 m from its middle */
+    if(this.mode==='follow'){if(this.wantFollow&&car&&car.x!=null){this.wantFollow=false;this.pose={x:car.x,z:car.z,y:car.y||0,hd:car.hd};try{this.build();}catch(e){}}
+      if(car&&car.x!=null&&this.pose&&Math.hypot(car.x-this.pose.x,car.z-this.pose.z)>25){this.pose={x:car.x,z:car.z,y:car.y||0,hd:car.hd};this.clearGrp();try{this.build();}catch(e){}}return car;}
+    return this.pose?Object.assign({},car||{},this.pose):car;}
   if(!car||car.x==null) return car;
   /* on a garage ramp or parking lane, slowly: remember it (for 20 s) and the last good spot */
   const w=car.w;
   if(w&&w.cls==='service'&&(w.tun||w.pa||(w.layer||0)<0)&&(v||0)<9) this.candT=now;
   if(!this.roughSince&&now-this.lastFixT<2500) this.good={x:car.x,z:car.z,y:car.y||0,hd:car.hd,w:car.w,cls:car.cls,snapped:car.snapped};
   const quiet=now-this.lastFixT>6000,rough=this.roughSince&&now-this.roughSince>6000;
-  if((quiet||rough)&&now-this.candT<20000&&this.good) this.enter();
+  if((quiet||rough)&&now-this.candT<20000&&this.good) this.enter('hold');
   return car;
 };
-TN.Garage.prototype.enter=function(){
-  this.on=true;this.pose=Object.assign({},this.good);this.goodRun=0;TN.inGarage=true;
-  try{this.api.note&&this.api.note('garage',{on:true});}catch(e){}
-  try{this.build();}catch(e){}
+TN.Garage.prototype.enter=function(mode){
+  this.on=true;this.mode=mode||'hold';this.goodRun=0;this.dropSince=0;TN.inGarage=true;
+  try{this.api.note&&this.api.note('garage',{on:true,mode:this.mode});}catch(e){}
+  /* hold: the car stays where the GPS was last good; follow: the car keeps moving with the Tesla's own estimate */
+  if(this.mode==='hold'){this.pose=Object.assign({},this.good);try{this.build();}catch(e){}}else this.wantFollow=true;
   try{this.card(true);}catch(e){}
-  try{document.getElementById('status').innerHTML='Underground parking <span class="g">· GPS paused</span>';}catch(e){}
+  TN.garageMsg='Underground parking <span class="g">· '+(this.mode==='follow'?'GPS estimated':'GPS paused')+'</span>';
+  try{document.getElementById('status').innerHTML=TN.garageMsg;}catch(e){}
 };
 TN.Garage.prototype.leave=function(why){
-  if(!this.on) return;this.on=false;TN.inGarage=false;this.candT=0;
+  if(!this.on) return;this.on=false;TN.inGarage=false;this.candT=0;if(why==='tapped') this.snooze=true;
   try{this.api.note&&this.api.note('garage',{on:false,why:why});}catch(e){}
-  if(this.grp){const sc=this.api.scene.three.scene;sc.remove(this.grp);this.grp.traverse(o=>{if(o.geometry) o.geometry.dispose();});this.grp=null;}
+  this.clearGrp();this.hist=[];
   try{this.card(false);}catch(e){}
 };
+TN.Garage.prototype.clearGrp=function(){if(this.grp){const sc=this.api.scene.three.scene;sc.remove(this.grp);this.grp.traverse(o=>{if(o.geometry) o.geometry.dispose();});this.grp=null;}};
 /* the garage around the held car, lined up with it */
 TN.Garage.prototype.build=function(){
   const S=this.api.scene;if(!S||!S.three||!this.pose) return;
@@ -83,6 +102,6 @@ TN.Garage.prototype.card=function(show){
   if(!el){el=document.createElement('div');el.id='tn-garage';el.className='hud notr';document.body.appendChild(el);
     el.style.cssText='position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:9;display:flex;align-items:center;gap:12px;padding:10px 16px;border-radius:14px;font:15px/1.35 system-ui,sans-serif;max-width:min(520px,calc(100vw - 32px));cursor:pointer';}
   el.innerHTML='<span style="flex:none;width:34px;height:34px;border-radius:9px;background:#2f6fe4;color:#fff;display:flex;align-items:center;justify-content:center;font:800 20px system-ui">P</span>'+
-    '<div><b>Underground parking</b><br><small style="opacity:.75">GPS paused: your car stays where the signal was lost. Back to normal outside. Tap to close.</small></div>';
+    '<div><b>Underground parking</b><br><small style="opacity:.75">'+(this.mode==='follow'?'GPS is weak here: your car\u2019s position is the Tesla\u2019s own estimate.':'GPS paused: your car stays where the signal was lost.')+' Back to normal outside. Tap to close.</small></div>';
   el.onclick=()=>this.leave('tapped');
 };

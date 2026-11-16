@@ -23,12 +23,22 @@ TN.Trees=function(scene,net){
 };
 TN.Trees.prototype.setup=function(){
   if(this.geo) return;
-  /* a faceted crown (like Codriver) and a short trunk, shared by every tree */
-  const crown=new THREE.IcosahedronGeometry(1,0);crown.translate(0,1,0);
-  const cone=new THREE.ConeGeometry(1,1,6);cone.translate(0,0.5,0);
-  const trunk=new THREE.CylinderGeometry(0.12,0.16,1,5);trunk.translate(0,0.5,0);
+  /* a rounder, leafier crown: a main ball and two smaller ones, gently lumpy, shaded darker underneath and lighter on
+     top (soft shading, not flat facets); conifers as three stacked tiers; a short trunk. Shared by every tree. */
+  const lumpy=(r,x,y,z,seed,det)=>{const g=new THREE.IcosahedronGeometry(r,det==null?1:det),p=g.attributes.position;
+    for(let i=0;i<p.count;i++){const vx=p.getX(i),vy=p.getY(i),vz=p.getZ(i),n=1+0.13*Math.sin(vx*5.1+seed)*Math.cos(vz*4.3-seed)+0.07*Math.sin(vy*6.7+seed*2);
+      p.setXYZ(i,vx*n+x,vy*n*0.9+y,vz*n+z);}return g;};
+  const merge=(parts)=>{let n=0;for(const g of parts) n+=g.attributes.position.count;const pos=new Float32Array(n*3),col=new Float32Array(n*3);let o=0;
+    for(const g0 of parts){const g=g0.index?g0.toNonIndexed():g0,p=g.attributes.position;
+      for(let i=0;i<p.count;i++){const y=p.getY(i);pos[o*3]=p.getX(i);pos[o*3+1]=y;pos[o*3+2]=p.getZ(i);
+        const k=0.62+0.38*Math.max(0,Math.min(1,(y-0.2)/1.7));col[o*3]=k;col[o*3+1]=k;col[o*3+2]=k;o++;}}
+    const G=new THREE.BufferGeometry();G.setAttribute('position',new THREE.BufferAttribute(pos.subarray(0,o*3),3));G.setAttribute('color',new THREE.BufferAttribute(col.subarray(0,o*3),3));G.computeVertexNormals();return G;};
+  const crown=merge([lumpy(0.95,0,1.05,0,1.3),lumpy(0.62,0.55,0.75,0.25,2.1,0),lumpy(0.58,-0.45,0.8,-0.35,3.7,0)]);   /* (about 120 triangles) */
+  const tier=(r,h,y)=>{const c=new THREE.ConeGeometry(r,h,8,1,true);c.translate(0,y+h/2,0);return c;};
+  const cone=merge([tier(1,0.55,0),tier(0.78,0.5,0.32),tier(0.52,0.45,0.6)]);
+  const trunk=new THREE.CylinderGeometry(0.1,0.16,1,6);trunk.translate(0,0.5,0);
   this.geo={crown:crown,cone:cone,trunk:trunk};
-  this.mats={crown:new THREE.MeshLambertMaterial({flatShading:true}),cone:new THREE.MeshLambertMaterial({flatShading:true}),
+  this.mats={crown:new THREE.MeshLambertMaterial({vertexColors:true}),cone:new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}),
     trunk:new THREE.MeshLambertMaterial({color:0x5b4636})};
   if(TN.cutPatch) for(const k in this.mats) TN.cutPatch(this.mats[k],{fade:true});
   /* seasons (Montreal): spring Apr-May, summer Jun-mid Sep, autumn mid Sep-Nov, winter Dec-Mar */

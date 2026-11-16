@@ -159,7 +159,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     /* status pill: the road you're on, then the GPS accuracy */
     const esc=t=>String(t).replace(/[<>&]/g,'');
     const road=car&&car.snapped?(car.w&&car.w.name?esc(car.w.name):({motorway:'Highway',trunk:'Highway',primary:'Main street',secondary:'Street',tertiary:'Street',minor:'Street',service:'Service road'}[car.cls]||'Road')):null;
-    if(TN.inGarage) $('status').innerHTML='Underground parking <span class="g">· GPS paused</span>';
+    if(TN.inGarage) $('status').innerHTML=TN.garageMsg||'Underground parking';
     else if(c.accuracy>60) $('status').innerHTML='Finding Tessy… <span class="g">GPS '+Math.round(c.accuracy)+' m</span>';
     else $('status').innerHTML=(road||'Finding the road…')+' <span class="g">· GPS '+Math.round(c.accuracy)+' m'+(covered?'':' · outside the map')+'</span>';
     if(c.accuracy<100){try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
