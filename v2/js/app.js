@@ -43,6 +43,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
+  const landmarks=TN.Landmarks?new TN.Landmarks(scene):null;
   /* Can I park here? (City of Montréal parking signs, read when you stop) */
   const parking=TN.Parking?new TN.Parking({getCar:()=>track.car,getSpeed:()=>track.last?track.last.v:0,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;TN.parking=parking;
   const season=TN.Season?new TN.Season(scene,trees):null;
@@ -723,6 +724,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       scene.update(ac.lng,ac.lat);
       if(trees){try{trees.update(ahead.lng,ahead.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(ahead.lng,ahead.lat,lastFps);}catch(e){}}
+      if(landmarks){try{landmarks.update(ac.lng,ac.lat);}catch(e){}}
       if(rem){try{const tr0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);TN.prof('rem',performance.now()-tr0);}catch(e){}}
       if(parking){try{parking.update(dt);}catch(e){}}
       if(water){try{water.update(dt,ahead.lng,ahead.lat);}catch(e){}}
@@ -757,6 +759,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       const c=map.getCenter();scene.update(c.lng,c.lat);
       if(trees){try{trees.update(c.lng,c.lat,lastFps);}catch(e){}}
       if(buildings){try{buildings.update(c.lng,c.lat,lastFps);}catch(e){}}
+      if(landmarks){try{landmarks.update(c.lng,c.lat);}catch(e){}}
       if(rem){try{const q=TN.toLocal(c.lng,c.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
       if(season){try{const q=TN.toLocal(c.lng,c.lat);season.update(dt,q[0],0,q[1],lastFps);}catch(e){}}
       if(water){try{water.update(dt,c.lng,c.lat);}catch(e){}}

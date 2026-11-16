@@ -1820,6 +1820,40 @@ TN.Net.prototype.drawDivider=function(L,w){
   flush();
 };
 TN.DIVIDERS=!(typeof location!=='undefined'&&/[?&]dividers=0/.test(location.search));
+/* ---- the Victoria Bridge's steel truss: the two road decks run outside the old railway truss, so from the car you
+   see the steel frame right beside you. Each deck draws the side of the truss next to it (toward the other deck): a
+   bottom and top chord, verticals every 8 m, alternating diagonals, a heavier portal every 80 m (one span), and
+   cross beams on top reaching halfway to the other side. Flat steel strips, all in the same road shape. ---- */
+TN.Net.prototype.drawTruss=function(L,w,P,N,hw,H){
+  const net=this,G=L.road,col=TN.C.steel||[0.27,0.29,0.30],dark=[col[0]*0.8,col[1]*0.8,col[2]*0.8];
+  const Lw=w.cum[w.cum.length-1];if(Lw<12) return;
+  /* which side the other deck is on, and how far (from the middle of this piece) */
+  const mi=Math.floor(P.length/2),mp=P[mi],mn=N[mi];let best=null;
+  net.near(mp[0],mp[1],40,(v,k)=>{if(v===w||!/^Pont Victoria$/.test(v.name||'')) return;const r=TN.seg(v,k,mp[0],mp[1]);if(r.d>4&&r.d<40&&(!best||r.d<best.d)) best={d:r.d,x:r.qx,z:r.qz};});
+  if(!best) return;
+  const sg=Math.sign((best.x-mp[0])*mn[0]+(best.z-mp[1])*mn[1])||1,gap=best.d;
+  const off=sg*(hw+0.7),TH=9.5,half=sg*Math.max(1,(gap-2*hw-1.4)/2);
+  /* a point on this deck's truss line at distance s along the way, h metres above the deck */
+  const at=(s,h,ex)=>{let i=0;while(i<w.cum.length-2&&w.cum[i+1]<s) i++;const s0=w.cum[i],s1=w.cum[i+1],u=s1>s0?Math.max(0,Math.min(1,(s-s0)/(s1-s0))):0;
+    const nx=N[i][0]+(N[i+1][0]-N[i][0])*u,nz=N[i][1]+(N[i+1][1]-N[i][1])*u,o=off+(ex||0);
+    return [P[i][0]+(P[i+1][0]-P[i][0])*u+nx*o,H(i)+(H(i+1)-H(i))*u+h,P[i][1]+(P[i+1][1]-P[i][1])*u+nz*o];};
+  /* a flat member from A to B, t wide, in the truss's own (vertical) plane */
+  const bar=(A,B,t,c)=>{const dx=B[0]-A[0],dy=B[1]-A[1],dz=B[2]-A[2],l=Math.hypot(dx,dy,dz)||1;
+    const hl=Math.hypot(dx,dz)||1,ux=dx/hl,uz=dz/hl;   /* (horizontal direction of the truss line) */
+    const ex=-(dy/l)*ux*t/2,ey=(hl/l)*t/2,ez=-(dy/l)*uz*t/2;   /* (perpendicular to the member, inside the plane) */
+    TN.quad(G,[A[0]-ex,A[1]-ey,A[2]-ez],[B[0]-ex,B[1]-ey,B[2]-ez],[B[0]+ex,B[1]+ey,B[2]+ez],[A[0]+ex,A[1]+ey,A[2]+ez],c);};
+  const step=8,n=Math.max(1,Math.round(Lw/step)),ds=Lw/n;
+  for(let k=0;k<n;k++){const s0=k*ds,s1=(k+1)*ds;
+    bar(at(s0,0.3),at(s1,0.3),0.6,col);              /* bottom chord */
+    bar(at(s0,TH-0.35),at(s1,TH-0.35),0.7,col);      /* top chord */
+    const portal=Math.round(w.cum[0]+s0)%80<ds;      /* (about one heavy post per 80 m span) */
+    bar(at(s0,0),at(s0,TH),portal?0.9:0.4,portal?dark:col);
+    if(k%2) bar(at(s0,0.3),at(s1,TH-0.35),0.35,col);else bar(at(s0,TH-0.35),at(s1,0.3),0.35,col);
+    /* a cross beam on top toward the middle of the truss (the other deck draws the other half) */
+    {const A=at(s0,TH-0.1),B=at(s0,TH-0.1,half);TN.quad(G,[A[0],A[1]-0.25,A[2]],[B[0],B[1]-0.25,B[2]],[B[0],B[1]+0.25,B[2]],[A[0],A[1]+0.25,A[2]],dark);}
+  }
+  const e=at(Lw,0);bar(at(Lw,0),[e[0],e[1]+TH,e[2]],0.4,col);
+};
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
   const H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
@@ -1849,10 +1883,32 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       const T0=t0+(t1-t0)*u0,T1=t0+(t1-t0)*u1,B0=b0+(b1-b0)*u0,B1=b0+(b1-b0)*u1;
       TN.quad(G,pt(u0,B0),pt(u1,B1),pt(u1,T1),pt(u0,T0),col);
     }}};
+  /* the railing along one edge (o: offset from the centre line), same places as the barrier walls */
+  const fence=(G,a,b,o)=>{const col=TN.C.rail||[0.40,0.43,0.47];
+    for(let i=a;i<b;i++){if(Math.max(H(i),H(i+1))<0.5) continue;
+      const len=Math.hypot(P[i+1][0]-P[i][0],P[i+1][1]-P[i][1]),n=Math.max(1,Math.ceil(len/4));if(len<0.05) continue;
+      const tx=(P[i+1][0]-P[i][0])/len,tz=(P[i+1][1]-P[i][1])/len;
+      const at=(u,off)=>{const nx=N[i][0]+(N[i+1][0]-N[i][0])*u,nz=N[i][1]+(N[i+1][1]-N[i][1])*u;
+        return [P[i][0]+(P[i+1][0]-P[i][0])*u+nx*off,P[i][1]+(P[i+1][1]-P[i][1])*u+nz*off];};
+      const oi=o(i),oj=o(i+1);
+      for(let k=0;k<n;k++){
+        const u0=k/n,u1=(k+1)/n,um=(u0+u1)/2,of=oi+(oj-oi)*um,sg=Math.sign(of)||1,hm=H(i)+(H(i+1)-H(i))*um;
+        const q1=at(um,of+sg*1.5),q2=at(um,of);
+        if(net.onOther(w,q1[0],q1[1],hm,1.8)||net.onOther(w,q2[0],q2[1],hm,1.8)) continue;
+        const hA=H(i)+(H(i+1)-H(i))*u0,hB=H(i)+(H(i+1)-H(i))*u1;
+        const pt=(u,h)=>{const q=at(u,oi+(oj-oi)*u);return [q[0],h,q[1]];};
+        /* two rails (thin bands), the top one at 2 m above the deck */
+        for(const [r0,r1] of [[1.46,1.52],[1.93,2.0]]) TN.quad(G,pt(u0,hA+r0),pt(u1,hB+r0),pt(u1,hB+r1),pt(u0,hA+r1),col);
+        /* a post at the start of each piece: two crossed thin faces, seen from any side */
+        const c=at(u0,oi+(oj-oi)*u0),nl=Math.hypot(N[i][0],N[i][1])||1,nx=N[i][0]/nl,nz=N[i][1]/nl,r=0.045;
+        TN.quad(G,[c[0]-nx*r,hA+1.0,c[1]-nz*r],[c[0]+nx*r,hA+1.0,c[1]+nz*r],[c[0]+nx*r,hA+2.0,c[1]+nz*r],[c[0]-nx*r,hA+2.0,c[1]-nz*r],col);
+        TN.quad(G,[c[0]-tx*r,hA+1.0,c[1]-tz*r],[c[0]+tx*r,hA+1.0,c[1]+tz*r],[c[0]+tx*r,hA+2.0,c[1]+tz*r],[c[0]-tx*r,hA+2.0,c[1]-tz*r],col);
+      }}};
   /* ---- painted exits: where a ramp leaves (or joins) a highway, the narrow wedge between the two roads is paved and
      painted, like the real ones (white edges and diagonal stripes): from the split point out to where the roads are
      about 9 m apart, at most 120 m. Drawn with the ramp. ---- */
   if((w.ramp||/_link$/.test(w.cls||''))&&!w.tun&&P.length>1&&!(TN.settings&&TN.settings.gores===false)) try{this.drawGore(L,w,P,N,hw,H);}catch(e){}
+  if(/^Pont Victoria$/.test(w.name||'')&&P.length>1) try{this.drawTruss(L,w,P,N,hw,H);}catch(e){}
   if(w.ow&&!w.ramp&&!w.tun&&/^(motorway|trunk)$/.test(w.cls||'')&&TN.DIVIDERS!==false&&!(TN.settings&&TN.settings.dividers===false)) try{this.drawDivider(L,w);}catch(e){}
   const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
     for(let i=a;i<b;i++){
@@ -1916,6 +1972,10 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       const bot=j=>w.br?Math.max(0,H(j)-1.2):Math.min(Math.max(0,H(j)-1.2),Math.max(0,(H(j)-3)*2));
       wall(L.road,a,b,j=>hwJ(j),0.04,bot,TN.C.side);wall(L.road,a,b,j=>-hwJ(j),0.04,bot,TN.C.side);
       wall(L.road,a,b,j=>hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);wall(L.road,a,b,j=>-hwJ(j),1.0,j=>H(j)+0.04,TN.C.barrier);
+      /* real bridges (named "Pont ..." / "... Bridge", not every overpass): a metal railing on top of the barrier,
+         posts about every 4 m and two rails, like the Champlain and Jacques-Cartier bridges. Built into the same road
+         shape, so it costs no extra drawing */
+      if(w.br&&TN.RAILINGS!==false&&/(^|\s)pont\b|bridge/i.test(w.name||'')){fence(L.road,a,b,j=>hwJ(j));fence(L.road,a,b,j=>-hwJ(j));}
     }
     /* tunnels: concrete walls on both sides (about 5 m, a darker band at the bottom) with a row of warm lights that
        glow at night; open wherever another road crosses at the surface (streets above the Ville-Marie tunnel); no

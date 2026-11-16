@@ -178,6 +178,9 @@ TN.Buildings.prototype.palette=function(H,seed,area,cls){
 TN.Buildings.prototype.addBuilding=function(G,b,J){
   let ring=b.ring;const n=ring.length;if(n<3) return;
   const map=this.scene.map,fs=b.id!=null?{source:'openmaptiles',sourceLayer:'building',id:b.id}:null;
+  /* a building where one of our landmark models stands (the stadium's stands, for example): left out */
+  if(TN.landmarkHide&&TN.landmarkHide.length){let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
+    if(TN.landmarkHide.some(h=>Math.hypot(cx-h.x,cz-h.z)<h.r)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}}
   /* a building standing in the river or a lake (like the house beside the Champlain Bridge): left out */
   if(this.inWater(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
   /* a station roof over the REM tracks, mapped as a solid building: left out (the REM station is drawn instead) */
