@@ -205,6 +205,26 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   /* zoom buttons (like Codriver's): they always work, even where the screen's pinch gesture doesn't reach the map */
   $('zin').onclick=()=>{userZoom=Math.min(3,userZoom+0.5);if(!follow) map.easeTo({zoom:map.getZoom()+0.5,duration:300});};
   $('zout').onclick=()=>{userZoom=Math.max(-4,userZoom-0.5);if(!follow) map.easeTo({zoom:map.getZoom()-0.5,duration:300});};
+  /* ---------- compass: a small round dial above Recenter. The red needle always points north and the letter shows the
+     direction you're heading (N, NE, E...). Tap it while looking around the map to turn the map north-up. It only
+     changes when the map turns (a tiny drawing), so it costs nothing noticeable. ?compass=0 hides it. ---------- */
+  if(!/[?&]compass=0/.test(location.search)) try{
+    const cs=document.createElement('style');cs.textContent='#tn-compass{position:absolute;right:24px;bottom:172px;width:48px;height:48px;border-radius:50%;z-index:5;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;border:0}'+
+      '#tn-compass b{position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);font:700 11px system-ui,sans-serif;color:var(--tn-text,#fff);text-shadow:0 1px 3px rgba(0,0,0,.6)}'+
+      'body.tn-film #tn-compass{visibility:hidden!important}@media (max-width:700px){#tn-compass{bottom:176px;right:20px}}';
+    document.head.appendChild(cs);
+    const el=document.createElement('button');el.id='tn-compass';el.className='hud notr';el.setAttribute('aria-label','Compass');
+    el.innerHTML='<svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="1.5"/>'+
+      '<path d="M20 4l5 16h-10z" fill="#e5534b"/><path d="M20 36l5-16h-10z" fill="currentColor" fill-opacity=".55"/><circle cx="20" cy="20" r="2.2" fill="currentColor"/>'+
+      '<text x="20" y="13.5" text-anchor="middle" font-size="7" font-weight="800" fill="#fff" font-family="system-ui,sans-serif">N</text></svg><b></b>';
+    document.body.appendChild(el);
+    const svg=el.querySelector('svg'),lab=el.querySelector('b'),DIRS=['N','NE','E','SE','S','SW','W','NW'];let lastB=null;
+    const upd=()=>{const b=map.getBearing();if(lastB!=null&&Math.abs(b-lastB)<0.5) return;lastB=b;
+      svg.style.transform='rotate('+(-b)+'deg)';lab.textContent=DIRS[Math.round((((b%360)+360)%360)/45)%8];};
+    map.on('rotate',upd);map.on('load',upd);upd();
+    el.onclick=ev=>{ev.stopPropagation();if(follow){lab.style.color='#2f6fe4';setTimeout(()=>{lab.style.color='';},600);return;}
+      map.easeTo({bearing:0,duration:600});};
+  }catch(e){}
   map.on('dragstart',e=>{if(e.originalEvent){follow=false;try{TN.setLite&&TN.setLite(false);}catch(e2){}}});
   for(const ev of ['zoomstart','rotatestart','pitchstart']) map.on(ev,e=>{if(e.originalEvent){follow=false;$('btn').classList.add('free');}});
   /* touching the map (finger or mouse) pauses following right away, so you can drag, pinch, rotate and tilt freely;
