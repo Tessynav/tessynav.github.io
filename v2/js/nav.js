@@ -563,7 +563,7 @@ TN.Nav.prototype.setRoute=function(rt){
   try{if(TN.prefetchRoute&&rt&&rt.geometry) TN.prefetchRoute(rt.geometry.coordinates);}catch(e){}   /* (the map data along the route, saved in advance) */
   /* a new route starts from scratch: where the car is along it, its lane, the release timers (a leftover position
      from a previous route made the car look for itself in the wrong part of the new one, for the whole trip) */
-  this.pi=0;this.ps=null;this.latS=null;this.laneI=null;this.latF=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;
+  this.blk=null;this.pi=0;this.ps=null;this.latS=null;this.laneI=null;this.latF=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;
   /* the route line in local metres, densified to about every 5 m, with distances along it */
   const C=rt.geometry.coordinates,pts=[];
   /* each corner of the route becomes a real arc, about as wide as a car drives (up to 12 m radius, tighter
@@ -1203,7 +1203,7 @@ TN.Nav.prototype.routeDist=function(x,z){
   return Math.sqrt(m);
 };
 TN.Nav.prototype.end=function(why){
-  TN.navActive=false;TN.routeNear=null;try{this.wx=null;this.wxSaid={};this.wxChip(null);this.bar.classList.remove('slim');}catch(e){}try{this.clearAlts();}catch(e){}this.alts=null;
+  TN.navActive=false;TN.routeNear=null;TN.blink=0;this.blk=null;try{this.wx=null;this.wxSaid={};this.wxChip(null);this.bar.classList.remove('slim');}catch(e){}try{this.clearAlts();}catch(e){}this.alts=null;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
@@ -1424,6 +1424,13 @@ TN.Nav.prototype.update=function(dt){
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
   const I=this.instr(nx),dNext=Math.max(0,nx.at-s);
+  /* automatic blinkers: on the side of the next turn, exit or fork, from about 5 s before it (40 to 300 m) until
+     20 m past it. Not for roundabouts, "straight" or slight bends that are only a new street name */
+  {const t=nx.type,m=nx.mod||'',G=this.api.gps?this.api.gps():null,v=G&&G.v||0;
+   const kind=/^(turn|end of road|off ramp|fork|on ramp|merge)$/.test(t)||(t==='continue'&&/^(left|right|sharp)/.test(m));
+   const side=!kind?0:m==='uturn'?-1:/left/.test(m)?-1:/right/.test(m)?1:0;
+   if(side&&dNext<Math.min(300,Math.max(40,v*5))) this.blk={side:side,until:nx.at+20};
+   TN.blink=this.blk&&s<this.blk.until?this.blk.side:0;}
   {const slim=dNext>2000&&nx.type!=='arrive'&&this.jvStep==null&&!(this.barFullT>Date.now());
    if(slim!==this.bar.classList.contains('slim')){this.bar.classList.toggle('slim',slim);this.note('banner',{slim:slim,d:Math.round(dNext)});}
    if(!this.slimTap){this.slimTap=true;this.bar.addEventListener('click',ev=>{if(this.bar.classList.contains('slim')&&!ev.target.closest('.wchip,.dst')){ev.stopPropagation();this.barFullT=Date.now()+20000;this.bar.classList.remove('slim');}},true);}}

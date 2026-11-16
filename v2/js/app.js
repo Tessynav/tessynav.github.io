@@ -740,6 +740,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
        if(braking) brk.hold=Date.now();
        const on=braking||Date.now()-(brk.hold||0)<800||(v<0.5&&Date.now()-brk.moved<600000);
        brk.k+=((on?1:0)-brk.k)*Math.min(1,dt*(on?12:5));try{scene.setBrake(Math.round(brk.k*20)/20);}catch(e){}}
+      try{scene.blinkTick(performance.now());}catch(e){}
       if(rec.rec&&Date.now()-lastRec>=500){
         lastRec=Date.now();rec.frame(car,map.getZoom(),follow);
         /* something looks wrong: take a snapshot right away */

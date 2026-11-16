@@ -372,6 +372,21 @@ TN.Scene.prototype.addBrakeGlow=function(body){
     gw.fillStyle=gg;gw.fillRect(0,0,64,64);const wt=new THREE.CanvasTexture(cw);
     this.headMat=new THREE.SpriteMaterial({map:wt,transparent:true,opacity:this.glowOp||0,depthWrite:false,blending:THREE.AdditiveBlending});
     for(const sx of [-1,1]){const sp=new THREE.Sprite(this.headMat);sp.scale.set(0.8,0.5,1);sp.position.set(c.x+sx*size.x*0.5,c.y-0.2,fz-back*0.05);body.add(sp);}
+    /* the turn signals: an amber glow at each rear corner (on the tail light) and each front corner, one set per side.
+       The car's front is toward -back, so its left side is -x when back>0. (Positions from the tail-light parts: the
+       whole body's box also holds the ground glow, which is bigger than the car.) */
+    {const ca=document.createElement('canvas');ca.width=ca.height=64;const ga=ca.getContext('2d');
+     const gb=ga.createRadialGradient(32,32,0,32,32,32);gb.addColorStop(0,'rgba(255,236,170,1)');gb.addColorStop(0.25,'rgba(255,170,30,0.9)');gb.addColorStop(1,'rgba(255,140,0,0)');
+     ga.fillStyle=gb;ga.fillRect(0,0,64,64);const at=new THREE.CanvasTexture(ca);
+     this.blinkMats={};for(const side of [-1,1]){const sx=side*(back>0?1:-1),ms=[];
+       for(const [px,py,pz,w,h] of [[c.x+sx*size.x*0.55,c.y+0.03,c.z+back*0.2,1.0,0.8],[c.x+sx*size.x*0.5,c.y-0.15,fz-back*0.08,0.8,0.6]]){
+         /* (flat glows facing back and front, not sprites: sprites don't show in the map's 3D layer) */
+         const m=new THREE.MeshBasicMaterial({map:at,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,toneMapped:false});
+         const pl=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);pl.position.set(px,py,pz);pl.renderOrder=6;body.add(pl);ms.push(m);}
+       /* and a soft amber light on the road beside the rear corner, easy to see from the camera above */
+       {const m=new THREE.MeshBasicMaterial({map:at,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-12});
+        const pl=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6),m);pl.rotation.x=-Math.PI/2;pl.position.set(c.x+sx*size.x*0.75,0.24,c.z+back*0.6);body.add(pl);m.userData.k=0.55;ms.push(m);}
+       this.blinkMats[side]=ms;}}
   }catch(e){}
 };
 /* brake lights: 0 = normal tail lights, 1 = braking (bright red, with glow) */
@@ -379,6 +394,12 @@ TN.Scene.prototype.setBrake=function(k){
   if(!this.tails||this.brakeK===k) return;this.brakeK=k;
   if(this.glows) for(const m of this.glows) m.opacity=(m===this.glowGround?0.6:0.85)*k;
   for(const m of this.tails){m.emissive.setRGB(0.35+0.65*k,0.02*(1-k),0.02*(1-k));m.emissiveIntensity=1+1.6*k;m.color.setRGB(0.48+0.5*k,0.05,0.06);}
+};
+/* turn signals: TN.blink is -1 (left), 1 (right) or 0, set by the navigation; about 1.5 flashes a second, like Tessy */
+TN.Scene.prototype.blinkTick=function(now){
+  if(!this.blinkMats) return;const sd=TN.blink||0;if(sd!==this.blinkSide){this.blinkSide=sd;this.blinkT0=now;}
+  const on=sd&&((now-this.blinkT0)%660)<330;
+  for(const k of [-1,1]){const o=on&&k===sd?1:0;for(const m of this.blinkMats[k]){const v=o*(m.userData.k||1);if(m.opacity!==v) m.opacity=v;}}
 };
 TN.Scene.prototype.placeCar=function(x,z,y,hd){
   if(!this.car3d) return;
