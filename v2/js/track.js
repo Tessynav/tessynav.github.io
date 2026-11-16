@@ -458,7 +458,7 @@ TN.Track.prototype.frame=function(now,dt){
      kept inside its side of the street. Where the map's line for a street bends differently from the real street (short
      pieces at junctions, Nuns' Island, Outremont), riding the line drifted the car 3-4 m off and back: a zigzag. */
   if(!TN.navActive&&!/^(motorway|trunk)/.test(w.cls||'')&&(L.acc||9)<=6&&car.gl!=null){
-    const lo=w.ow?-(W/2-1.0):0.6,hi=Math.max(lo,W/2-1.0);target=Math.max(lo,Math.min(hi,car.gl));}
+    const lo=w.ow?-Math.max(0,W/2-1.6):0.6,hi=Math.max(lo,W/2-1.6);   /* (1.6 m from the edge: the car's whole body stays inside the edge line; 1.0 m let half a wheel ride the curb) */target=Math.max(lo,Math.min(hi,car.gl));}
   /* highways: the car keeps its line from one road piece to the next instead of re-centring on each one. Where lanes
      are added or dropped, each piece's middle shifts by a lane or two, and re-centring swung the car left and right
      (a zigzag on the A-15 and A-10). It only comes back inside the edges (1.8 m in) when a piece is narrower. */
