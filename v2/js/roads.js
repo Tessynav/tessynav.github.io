@@ -1757,6 +1757,54 @@ TN.Net.prototype.drawGore=function(L,w,P,N,hw,H){
     for(let i=2;i<ptsM.length-2;i+=2){const a=ptsM[i],b=ptsR[Math.min(ptsR.length-1,i+1)];if(a[2]<1.5) continue;seg(a,b,0.45);}
   }
 };
+/* ---- dividers: where a highway's two directions run side by side with a narrow median (0-4.5 m between their
+   edges, like Turcot, the 15 or the 40), a low concrete barrier runs down the middle of the median. Drawn once, by
+   the piece with the smaller id. Wide grass medians get none. ?dividers=0 or Settings switch it off. ---- */
+TN.Net.prototype.oppAt=function(w,s,c,dx,dz,h,hw){
+  const net=this;let best=null;
+  for(const side of [1,-1]){
+    const pr=TN.wayPt(w,s,side*(hw+2.5));if(!pr) continue;
+    const look=(v,i)=>{
+      if(v===w||v.tun||v.ramp||!v.ow||!/^(motorway|trunk)$/.test(v.cls||'')) return;
+      const r=TN.seg(v,i,pr[0],pr[1]),hv=TN.width(v)/2;if(r.d>hv+3) return;
+      const a=v.pts[i],b=v.pts[i+1],l=Math.hypot(b[0]-a[0],b[1]-a[1])||1;
+      /* (driving directions: the piece's drawing direction times its one-way sign) */
+      const dot=((b[0]-a[0])*dx+(b[1]-a[1])*dz)/l*(v.ow||1)*(w.ow||1);if(dot>-0.75) return;
+      const vh=v.hs?v.hs[i]+((v.hs[i+1]||v.hs[i])-v.hs[i])*r.u:(v.br?v.H:0);if(Math.abs(vh-h)>1.2) return;
+      const gap=TN.seg(v,i,c[0],c[1]).d-hw-hv;if(gap<-1||gap>4.5) return;
+      if(!best||gap<best.gap) best={side:side,gap:gap,v:v};};
+    const G=net._sg;
+    if(G){const gx=Math.floor(pr[0]/10),gz=Math.floor(pr[1]/10);
+      for(let ax=-1;ax<=1;ax++) for(let az=-1;az<=1;az++){const l=G.get((gx+ax)*1e6+gz+az);if(l) for(const e of l) look(e[0],e[1]);}}
+    else net.near(pr[0],pr[1],3,(v,i)=>{look(v,i);});
+  }
+  return best;
+};
+TN.Net.prototype.drawDivider=function(L,w){
+  const hw=TN.width(w)/2,col=TN.C.side||[0.65,0.67,0.69],top=TN.C.barrier||col;   /* (darker sides, lighter top: reads as a raised barrier, not a painted strip) */
+  let run=[];
+  const flush=()=>{
+    if(run.length>=3) for(let i=0;i<run.length-1;i++){
+      const a=run[i],b=run[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l=Math.hypot(dx,dz);if(l<0.1||l>8) continue;
+      const nx=-dz/l,nz=dx/l,bw=0.32,tw=0.12,hh=0.8;
+      const P=(p,o,y)=>[p[0]+nx*o,p[2]+y,p[1]+nz*o];
+      /* two sloped sides and a narrow top, like a jersey barrier */
+      TN.quad(L.road,P(a,bw,0.02),P(b,bw,0.02),P(b,tw,hh),P(a,tw,hh),col);
+      TN.quad(L.road,P(b,-bw,0.02),P(a,-bw,0.02),P(a,-tw,hh),P(b,-tw,hh),col);
+      TN.quad(L.road,P(a,tw,hh),P(b,tw,hh),P(b,-tw,hh),P(a,-tw,hh),top);
+    }
+    run=[];};
+  for(let s=0;s<=w.L;s+=4){
+    const c=TN.wayPt(w,s,0),c2=TN.wayPt(w,Math.min(w.L,s+2),0),c1=TN.wayPt(w,Math.max(0,s-2),0);
+    if(!c||!c2||!c1){flush();continue;}
+    const dl=Math.hypot(c2[0]-c1[0],c2[1]-c1[1])||1,dx=(c2[0]-c1[0])/dl,dz=(c2[1]-c1[1])/dl,h=TN.heightAt(w,s);
+    const o=this.oppAt(w,s,c,dx,dz,h,hw);
+    if(!o||String(w.id)>String(o.v.id)){flush();continue;}
+    const p=TN.wayPt(w,s,o.side*(hw+Math.max(-0.5,o.gap)/2));run.push([p[0],p[1],h]);
+  }
+  flush();
+};
+TN.DIVIDERS=!(typeof location!=='undefined'&&/[?&]dividers=0/.test(location.search));
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
   const H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
@@ -1790,6 +1838,7 @@ TN.Net.prototype.drawWay=function(L,w,runs){
      painted, like the real ones (white edges and diagonal stripes): from the split point out to where the roads are
      about 9 m apart, at most 120 m. Drawn with the ramp. ---- */
   if((w.ramp||/_link$/.test(w.cls||''))&&!w.tun&&P.length>1&&!(TN.settings&&TN.settings.gores===false)) try{this.drawGore(L,w,P,N,hw,H);}catch(e){}
+  if(w.ow&&!w.ramp&&!w.tun&&/^(motorway|trunk)$/.test(w.cls||'')&&TN.DIVIDERS!==false&&!(TN.settings&&TN.settings.dividers===false)) try{this.drawDivider(L,w);}catch(e){}
   const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
     for(let i=a;i<b;i++){
       const s0=w.cum[i],s1=w.cum[i+1],len=s1-s0;if(len<0.05) continue;
