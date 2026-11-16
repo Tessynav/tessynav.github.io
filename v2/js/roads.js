@@ -1081,6 +1081,21 @@ TN.normals=function(pts){
   return N;
 };
 /* is a point on another road at about the same height? (then markings are left out there) */
+/* like onOther, but a road running alongside (within ~25 degrees, either direction) doesn't count: only a road that
+   crosses this one. Used for paint: where two pieces lie side by side and their surfaces overlap (ramps bundled
+   together at Turcot, a ramp beside the highway), their lane and edge lines stay; before, every line on the overlap was
+   dropped and the area showed as one big blank slab of asphalt. */
+TN.Net.prototype.onCrossing=function(way,x,z,h,dx,dz){
+  const G=this._sg,tol=1;let hit=false;
+  const test=(w,i)=>{if(w===way||w.tun) return false;
+    const r=TN.seg(w,i,x,z);if(r.d>=TN.width(w)/2-0.2) return false;
+    const wh=w.hs?w.hs[i]+(w.hs[i+1]-w.hs[i])*r.u:(w.br?w.H:0);if(Math.abs(wh-h)>=tol) return false;
+    const a=w.pts[i],b=w.pts[i+1],l=Math.hypot(b[0]-a[0],b[1]-a[1])||1;
+    return Math.abs(((b[0]-a[0])*dx+(b[1]-a[1])*dz)/l)<0.9;};
+  if(G){const l=G.get(Math.floor(x/10)*1e6+Math.floor(z/10));if(!l) return false;for(const e of l) if(test(e[0],e[1])) return true;return false;}
+  this.near(x,z,0,(w,i)=>{if(test(w,i)){hit=true;return true;}});
+  return hit;
+};
 TN.Net.prototype.onOther=function(way,x,z,h,tol){
   tol=tol||1;const G=this._sg;
   if(G){
@@ -1851,7 +1866,7 @@ TN.Net.prototype.drawWay=function(L,w,runs){
         const pt=u=>[P[i][0]+(P[i+1][0]-P[i][0])*u,P[i][1]+(P[i+1][1]-P[i][1])*u];
         const hh=u=>H(i)+(H(i+1)-H(i))*u+0.06;
         const A=pt(u0),B=pt(u1),um=(u0+u1)/2,o=oo(um),mx=(A[0]+B[0])/2+ux*o,mz=(A[1]+B[1])/2+uz*o;
-        if(net.onOther(w,mx,mz,hh(um)-0.06)) continue;
+        {const sx=P[i+1][0]-P[i][0],sz=P[i+1][1]-P[i][1],sl=Math.hypot(sx,sz)||1;if(net.onCrossing(w,mx,mz,hh(um)-0.06,sx/sl,sz/sl)) continue;}
         if(edgeOut&&net.onOther(w,mx+ux*edgeOut,mz+uz*edgeOut,hh(um)-0.06)) continue;
         if(edgeOut&&net.onOther(w,mx+ux*edgeOut*2,mz+uz*edgeOut*2,hh(um)-0.06)) continue;
         if(edgeOut&&nearJoin(s0+(d0+d1)/2-s0)) continue;
