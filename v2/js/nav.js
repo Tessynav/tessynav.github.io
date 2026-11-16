@@ -41,7 +41,9 @@ TN.Nav.prototype.build=function(){
    '#tn-ov{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:18px;padding:14px 18px;font-size:16px;z-index:8}'+
    '#tn-ov small{color:var(--tn-sub);font-size:14px}#tn-ov button,#tn-end{border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer}'+
    '#tn-ov .go{background:var(--tn-accent);color:var(--tn-on-accent)}#tn-ov .cancel,#tn-ov .stop{background:var(--tn-btn);color:var(--tn-text)}'+
-   '#tn-ov{flex-wrap:wrap;max-width:min(94vw,640px);max-height:calc(100vh - 110px);overflow-y:auto;box-sizing:border-box}#tn-ov .btns{display:flex;gap:10px;align-items:center}#tn-ov.tripbox{flex-direction:column;align-items:stretch}'+
+   '#tn-ov{flex-wrap:wrap;max-width:min(94vw,640px);max-height:calc(100vh - 110px);overflow-y:auto;box-sizing:border-box}'+
+   /* wide screens: the route planner sits on the left as a side panel (it covered most of the map, and the route behind it) */
+   '@media (min-width:701px){#tn-ov{left:16px;right:auto;top:128px;bottom:auto;transform:none;width:min(400px,46vw);max-width:none;max-height:calc(100vh - 152px);flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:12px}#tn-ov>*{flex:0 0 auto!important;min-width:0!important}#tn-ov .btns{flex-wrap:wrap}}#tn-ov .btns{display:flex;gap:10px;align-items:center}#tn-ov.tripbox{flex-direction:column;align-items:stretch}'+
    '#tn-ov .trip{margin-top:8px;display:flex;flex-direction:column;gap:4px}#tn-ov .row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border-radius:10px;padding:4px 6px}'+
    '#tn-ov .row .num{width:26px;height:26px;border-radius:50%;background:#f59e0b;color:#111;font:700 13px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;flex-shrink:0}#tn-ov .row .num.fin{background:transparent;font-size:18px}'+
    '#tn-ov .row .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}'+
@@ -1043,13 +1045,14 @@ TN.Nav.prototype.overview=function(){
   /* the overview position, worked out directly: the middle of the route, and the zoom at which the route fills
      the screen between the top and bottom panels (the map's own fit function gets this wrong with a tilted camera) */
   try{
-    const cv=api.map.getCanvas(),W=Math.max(300,cv.clientWidth-160),H=Math.max(200,cv.clientHeight-260);
+    /* (wide screens: the planner panel takes the left side, so the route is fitted into the space to its right) */
+    const cv=api.map.getCanvas(),side=cv.clientWidth>700?Math.min(400,cv.clientWidth*0.46)+32:0,W=Math.max(220,cv.clientWidth-side-70),H=Math.max(200,cv.clientHeight-(side?150:260));
     const midLat=(a[1]+b[1])/2,mx=(b[0]-a[0])*111320*Math.cos(midLat*Math.PI/180),my=(b[1]-a[1])*111320;
     const mpp=Math.max(mx/W,my/H,0.5);
     let z=Math.log2(156543.03*Math.cos(midLat*Math.PI/180)/mpp)-1;
     z=Math.max(10,Math.min(18,z-0.15));
     /* (clear the following camera's large top margin first, or the route is squeezed into a small strip) */
-    api.map.easeTo({center:[(a[0]+b[0])/2,(a[1]+b[1])/2],zoom:z,pitch:0,bearing:0,padding:{top:0,bottom:0,left:0,right:0},offset:[0,-30],duration:900});
+    api.map.easeTo({center:[(a[0]+b[0])/2,(a[1]+b[1])/2],zoom:z,pitch:0,bearing:0,padding:{top:0,bottom:0,left:0,right:0},offset:side?[side/2,10]:[0,-30],duration:900});
   }catch(e){}
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';

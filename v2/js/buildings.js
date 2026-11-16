@@ -124,6 +124,25 @@ TN.Buildings.prototype.crossesRoad=function(ring){
   net.near(cx,cz,r,test);
   return hit;
 };
+/* is this footprint in the water? (the map's rivers and lakes, read again every 30 s): its middle and 4 points
+   halfway to its corners are checked, and at least 4 of the 5 must be in water, so buildings on a pier or the shore stay */
+TN.Buildings.prototype.inWater=function(ring){
+  const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function'||ring.length<3) return false;
+  const now=performance.now();
+  if(!this.water||now-this.water.t>30000){const list=[];
+    try{for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'water'})){const g=f.geometry;
+      const P=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
+      for(const rings of P){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}list.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
+    this.water={t:now,list:list};}
+  const W=this.water.list;if(!W.length) return false;
+  let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=ring.length;cz/=ring.length;
+  const st=Math.max(1,Math.floor(ring.length/4)),pts=[[cx,cz]];for(let i=0;i<ring.length&&pts.length<5;i+=st) pts.push([(cx+ring[i][0])/2,(cz+ring[i][1])/2]);
+  const inPoly=(x,y,rings)=>{const inR=r=>{let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/((b[1]-a[1])||1e-12)+a[0])) c=!c;}return c;};
+    if(!inR(rings[0])) return false;for(let k=1;k<rings.length;k++) if(inR(rings[k])) return false;return true;};
+  let wet=0;for(const p of pts){const ll=TN.fromLocal(p[0],p[1]);
+    for(const u of W){const b=u.bb;if(ll[0]<b[0]||ll[0]>b[1]||ll[1]<b[2]||ll[1]>b[3]) continue;if(inPoly(ll[0],ll[1],u.rings)){wet++;break;}}}
+  return wet>=Math.min(4,pts.length);
+};
 TN.Buildings.prototype.overRem=function(ring){
   const net=this.net;if(!net||!net.rem||!net.rem.size) return false;
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
@@ -159,6 +178,8 @@ TN.Buildings.prototype.palette=function(H,seed,area,cls){
 TN.Buildings.prototype.addBuilding=function(G,b,J){
   let ring=b.ring;const n=ring.length;if(n<3) return;
   const map=this.scene.map,fs=b.id!=null?{source:'openmaptiles',sourceLayer:'building',id:b.id}:null;
+  /* a building standing in the river or a lake (like the house beside the Champlain Bridge): left out */
+  if(this.inWater(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
   /* a station roof over the REM tracks, mapped as a solid building: left out (the REM station is drawn instead) */
   if(this.overRem(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
   /* a building whose footprint crosses a street (a skybridge, a building over a road): room to drive underneath */
