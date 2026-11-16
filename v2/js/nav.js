@@ -171,12 +171,15 @@ TN.Nav.prototype.showStart=function(){
       if(pl){const tm=this.etaFor(k);items.push(pl);
         t+='<div class="tile" data-i="'+(items.length-1)+'">'+TN.ICON(k,22,col)+'<b>'+lab+'</b><small class="'+(tm?'eta':'')+'">'+(tm?tm+' min':fmtDist(TN.distLL(h,[pl.lng,pl.lat])))+'</small>'+(ed?'<i class="tx" data-del="'+k+'" title="Change">'+TN.ICON('x',14,'#ffffff')+'</i>':'')+'</div>';}
       else t+='<div class="tile unset" data-set="'+k+'">'+TN.ICON(k,22,col)+'<b>'+lab+'</b><small>Tap to set</small></div>';}
-    P.favs.forEach((f,fi)=>{items.push(f);
-      t+='<div class="tile" data-i="'+(items.length-1)+'">'+TN.ICON('star',22,'#fcd34d')+'<b>'+TN.esc(f.name)+'</b><small>'+fmtDist(TN.distLL(h,[f.lng,f.lat]))+'</small>'+(ed?'<i class="tx" data-fav="'+fi+'" title="Remove">'+TN.ICON('x',14,'#ffffff')+'</i>':'')+'</div>';});
     /* Montreal's bridges and tunnels (when you're within about 70 km of them) */
     if(TN.bridges&&!ed&&TN.bridges.near()) t+='<div class="tile tbr"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5dcaa5" stroke-width="2" stroke-linecap="round"><path d="M2 16h20M4 16V9M20 16V9M4 9c3 3 13 3 16 0M8 16v-4.6M12 16v-4M16 16v-4.6"/></svg><b>Bridges</b><small>Live status</small></div>';
-    if(P.home||P.work||P.favs.length) t+='<div class="tile tedit">'+TN.ICON(ed?'check':'edit',20,'#9fb3c8')+'<b>'+(ed?'Done':'Edit')+'</b></div>';
+    if(P.home||P.work) t+='<div class="tile tedit">'+TN.ICON(ed?'check':'edit',20,'#9fb3c8')+'<b>'+(ed?'Done':'Edit')+'</b></div>';
     html+='<div class="tiles">'+t+'</div>';}
+  /* favorites as a list (like Recent): star, name and address, distance, and a trash button that removes just that one */
+  if(!this.setting&&P.favs.length){
+    const fbin='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e5534b" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+    html+='<div class="hd">FAVORITES</div>';
+    P.favs.forEach((f,fi)=>{items.push(f);html+=row('fav','',f.name,f.sub,'<span class="d">'+fmtDist(TN.distLL(h,[f.lng,f.lat]))+'</span><i class="fdel" data-fav="'+fi+'" role="button" aria-label="Remove" style="flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin-left:4px;border-radius:10px;cursor:pointer">'+fbin+'</i>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON('star',22,'#fcd34d')+'</span>');});}
   /* recent places: each with a red trash button (removes just that place), and Clear all on the header, which asks first */
   if(this.recent.length){
     const bin='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e5534b" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
@@ -185,7 +188,7 @@ TN.Nav.prototype.showStart=function(){
     this.recent.forEach((r,ri)=>{items.push(r);html+=row('rec','',r.name,r.sub,'<span class="d">'+fmtDist(TN.distLL(h,[r.lng,r.lat]))+'</span><i class="rdel" data-rdel="'+ri+'" role="button" aria-label="Remove" style="flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin-left:4px;border-radius:10px;cursor:pointer">'+bin+'</i>',' data-i="'+(items.length-1)+'"').replace('<span></span>','<span>'+TN.ICON('recent',22,'#9fb3c8')+'</span>');});}
   if(!html){R.style.display='none';return;}
   this.results=items;R.innerHTML=html;R.style.display='block';
-  R.querySelectorAll('[data-i]').forEach(r=>r.onclick=ev=>{if(ev.target.closest('.tx,.rdel')) return;this.pick(items[+r.dataset.i]);});
+  R.querySelectorAll('[data-i]').forEach(r=>r.onclick=ev=>{if(ev.target.closest('.tx,.rdel,.fdel')) return;this.pick(items[+r.dataset.i]);});
   R.querySelectorAll('[data-rdel]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();const r=this.recent[+b.dataset.rdel];this.recent.splice(+b.dataset.rdel,1);
     try{localStorage.setItem('tn2_recent',JSON.stringify(this.recent));}catch(e){}this.toast((r?r.name:'Place')+' removed');this.showStart();});
   {const c1=R.querySelector('.rclr');if(c1) c1.onclick=ev=>{ev.stopPropagation();this.clearAsk=true;this.showStart();};
