@@ -405,8 +405,8 @@ TN.Scene.prototype.styleMap=function(){
     try{
       /* the land the map has nothing on (beside highways and ramps, empty lots, the space between roads): grass, with
          the same natural texture as the parks, like Codriver; city blocks keep their light ground (the map marks those) */
-      if(l.type==='background'){map.setPaintProperty(l.id,'background-color','#6cc24a');this.dayPaint.push([l.id,'background-color','#6cc24a',TN.NIGHTCOL['#6cc24a']||TN.mix('#6cc24a','#1a2030',0.8)]);
-        try{const gname=this.grassImg('#6cc24a','#6cc24a');if(gname){map.setPaintProperty(l.id,'background-pattern',gname);this.texLayers=this.texLayers||[];if(!this.texLayers.some(t=>t[1]==='#6cc24a'&&t[0]===l.id)) this.texLayers.push([l.id,'#6cc24a']);}}catch(e){}}
+      if(l.type==='background'){const gc=TN.seasonC('#6cc24a');map.setPaintProperty(l.id,'background-color',gc);this.dayPaint.push([l.id,'background-color',gc,TN.NIGHTCOL['#6cc24a']||TN.mix('#6cc24a','#1a2030',0.8)]);
+        try{const gname=this.grassImg('#6cc24a',gc);if(gname){map.setPaintProperty(l.id,'background-pattern',gname);this.texLayers=this.texLayers||[];if(!this.texLayers.some(t=>t[1]==='#6cc24a'&&t[0]===l.id)) this.texLayers.push([l.id,'#6cc24a']);}}catch(e){}}
       else if(l.type==='fill'){
         let c=null;
         if(/water|ocean|river|lake|basin|reservoir/.test(id)) c='#2f9fd6';
@@ -415,11 +415,11 @@ TN.Scene.prototype.styleMap=function(){
         else if(/grass|meadow|scrub|farmland|landcover|pitch|golf|village_green|recreation/.test(id)) c='#6cc24a';
         else if(/sand|beach/.test(id)) c='#e6d39b';
         else if(/residential|commercial|industrial|retail|school|hospital|railway|airport|parking|landuse/.test(id)) c='#c8c7bb';
-        if(c){map.setPaintProperty(l.id,'fill-color',c);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',c);}catch(e){}
-          this.dayPaint.push([l.id,'fill-color',c,TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);
+        if(c){const sc=TN.seasonC(c);map.setPaintProperty(l.id,'fill-color',sc);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',sc);}catch(e){}
+          this.dayPaint.push([l.id,'fill-color',sc,TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);
           /* grass, parks and woods: a natural texture instead of one flat green (lighter and darker patches, a little
              dry grass and soil showing through), like Codriver */
-          if(TN.GRASS[c]){const name=this.grassImg(c,c);if(name){try{map.setPaintProperty(l.id,'fill-pattern',name);this.texLayers=this.texLayers||[];this.texLayers.push([l.id,c]);}catch(e){}}}}
+          if(TN.GRASS[c]){const name=this.grassImg(c,sc);if(name){try{map.setPaintProperty(l.id,'fill-pattern',name);this.texLayers=this.texLayers||[];this.texLayers.push([l.id,c]);}catch(e){}}}}
       }else if(l.type==='line'&&/water|river|stream|canal/.test(id)){map.setPaintProperty(l.id,'line-color','#2f9fd6');solid(l.id,'line-opacity');
         this.dayPaint.push([l.id,'line-color','#2f9fd6','#0e2a44']);}
     }catch(e){}
@@ -437,6 +437,25 @@ TN.Scene.prototype.styleMap=function(){
 };
 /* ground, grass and water: day colours blend into their night colours */
 /* night shade of a road material: applied the moment it is created, so nothing starts in daytime colours at night */
+/* ---- ground colours through the year (Montreal): a muted green in spring and summer, turning gradually to dry
+   olive in the fall and a dull brown-grey in winter when there's no snow (snow still turns it white, from the live
+   weather). Changes a little every day, never all at once. Only the colours of grass, parks and woods; the textures
+   and everything else stay. ?ground=summer|fall|winter to see one, ?ground=bright for the old bright greens. ---- */
+TN.GSEASON={'#6cc24a':['#8fa86e','#a3a072','#9a9479'],'#5dbb44':['#7fa463','#949a68','#8f8e74'],'#3f9a3a':['#4f7d43','#5d6e3e','#56603f']};
+TN.groundSeason=function(dt){
+  const q=typeof location!=='undefined'?location.search:'',m=q.match(/[?&]ground=(\w+)/),o=m&&m[1];
+  if(o==='bright') return null;if(o==='summer') return [0,0];if(o==='fall') return [1,0];if(o==='winter') return [1,1];
+  dt=dt||new Date();const y=new Date(dt.getFullYear(),0,1),d=Math.floor((dt-y)/864e5)+1;
+  const ramp=(a,b)=>Math.max(0,Math.min(1,(d-a)/(b-a)));
+  /* [how far into fall, how far into winter] */
+  if(d>=105&&d<135) return [1-ramp(105,135),1-ramp(105,135)];    /* mid-April to mid-May: winter brown greens up */
+  if(d>=135&&d<244) return [0,0];                                  /* summer */
+  if(d>=244&&d<319) return [ramp(244,319),0];                      /* September to mid-November: turning */
+  if(d>=319&&d<349) return [1,ramp(319,349)];                      /* to mid-December: fading to winter */
+  return [1,1];
+};
+TN.seasonC=function(c){const t=TN.GSEASON[c];if(!t) return c;const f=TN.groundSeason();if(!f) return c;
+  return TN.mix(TN.mix(t[0],t[1],f[0]),t[2],f[1]);};
 TN.Scene.prototype.tintMat=function(k,m){
   const nt=this.night||0;m.color.set(TN.mix('#ffffff',k==='mark'?'#c9d0de':'#6f7686',nt));
 };
@@ -448,8 +467,8 @@ TN.Scene.prototype.applyGround=function(nt){
     const dd=sg>0&&!wat?TN.mix(d,'#eef2f5',0.9*sg):d,nn=sg>0&&!wat?TN.mix(n,'#394150',0.8*sg):n;
     try{this.map.setPaintProperty(id,prop,TN.mix(dd,nn,nt));}catch(e){}}
   /* the grass texture follows the same day/night and snow colours (redrawn only when the colour really changes) */
-  for(const [id,c] of (this.texLayers||[])){const n=TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8);
-    const dd=sg>0?TN.mix(c,'#eef2f5',0.9*sg):c,nn=sg>0?TN.mix(n,'#394150',0.8*sg):n;this.grassImg(c,TN.mix(dd,nn,nt),sg);}
+  for(const [id,c] of (this.texLayers||[])){const n=TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8),sc=TN.seasonC(c);
+    const dd=sg>0?TN.mix(sc,'#eef2f5',0.9*sg):sc,nn=sg>0?TN.mix(n,'#394150',0.8*sg):n;this.grassImg(c,TN.mix(dd,nn,nt),sg);}
 };
 /* grass texture: one seamless 256 px tile per kind of green (grass, park, wood), drawn from fixed noise so it never
    shimmers; only its colours change with night and snow */
