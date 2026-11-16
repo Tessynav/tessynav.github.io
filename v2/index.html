@@ -220,5 +220,18 @@ window.addEventListener('error',function(e){
   })();
 })();
 </script>
+<script>
+/* offline mode: a copy of TessyNav kept on the car (sw.js), so it opens and drives without internet; and a small
+   note while offline (search and routes need internet) */
+(function(){
+  try{if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')&&!/[?&]sw=0/.test(location.search))
+    window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}catch(e){}
+  function off(){var e=document.getElementById('tn-offline');if(navigator.onLine!==false){if(e) e.remove();return;}
+    if(e) return;e=document.createElement('div');e.id='tn-offline';e.className='hud notr';
+    e.style.cssText='position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:9;padding:8px 14px;border-radius:12px;font:14px/1.3 system-ui,sans-serif;white-space:nowrap';
+    e.textContent='Offline · the driving view works; search and routes need internet';document.body.appendChild(e);}
+  window.addEventListener('online',off);window.addEventListener('offline',off);setTimeout(off,3000);
+})();
+</script>
 </body>
 </html>
