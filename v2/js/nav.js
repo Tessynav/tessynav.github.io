@@ -1430,12 +1430,15 @@ TN.Nav.prototype.update=function(dt){
   let nx=null;for(const st of R.steps){if(st.at>s+8){nx=st;break;}}
   if(!nx) nx=R.steps[R.steps.length-1];
   const I=this.instr(nx),dNext=Math.max(0,nx.at-s);
-  /* automatic blinkers: on the side of the next turn, exit or fork, from about 5 s before it (40 to 300 m) until
+  /* automatic blinkers: on the side of the next turn, exit or fork, from well before it (see below) until
      20 m past it. Not for roundabouts, "straight" or slight bends that are only a new street name */
   {const t=nx.type,m=nx.mod||'',G=this.api.gps?this.api.gps():null,v=G&&G.v||0;
    const kind=/^(turn|end of road|off ramp|fork|on ramp|merge)$/.test(t)||(t==='continue'&&/^(left|right|sharp)/.test(m));
    const side=!kind?0:m==='uturn'?-1:/left/.test(m)?-1:/right/.test(m)?1:0;
-   if(side&&dNext<Math.min(300,Math.max(40,v*5))) this.blk={side:side,until:nx.at+20};
+   /* (how early: highway exits and forks about 10 s before, 200 to 350 m; city turns about 6 s, 50 to 120 m; it was
+      5 s everywhere, which came on only about 100 m before a highway exit) */
+   const hwy=t==='off ramp'||t==='fork'||v>19,start=hwy?Math.min(350,Math.max(200,v*10)):Math.min(120,Math.max(50,v*6));
+   if(side&&dNext<start) this.blk={side:side,until:nx.at+20};
    TN.blink=this.blk&&s<this.blk.until?this.blk.side:0;}
   {const slim=dNext>2000&&nx.type!=='arrive'&&this.jvStep==null&&!(this.barFullT>Date.now());
    if(slim!==this.bar.classList.contains('slim')){this.bar.classList.toggle('slim',slim);this.note('banner',{slim:slim,d:Math.round(dNext)});}
