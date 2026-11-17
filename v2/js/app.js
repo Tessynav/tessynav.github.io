@@ -559,16 +559,18 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       for(const [id,v0] of liteIds) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',on?'none':v0);
       liteState=on;try{if(rec&&rec.rec) rec.note('map lite',{on:on,layers:liteIds.length});}catch(e){}}catch(e){}};
   TN.setLite=setLite;
-  /* ---- the view button: Classic (today's look) / Clean (Codriver-like: higher camera, no falling leaves, a thicker route) */
-  TN.viewClean=!!(TN.settings&&TN.settings.view==='clean');
+  /* ---- the 3D/2D button (above the compass): 3D is the normal tilted view; 2D is a flat map seen from straight above,
+     heading-up, a bit zoomed out, with a thicker route and no falling leaves. (It replaces Classic/Clean; a saved 'clean' becomes 3D.)
+     TN.viewClean stays the name the other files check, now meaning 2D. */
+  TN.viewClean=!!(TN.settings&&TN.settings.view==='2d');
   const applyView=()=>{try{const thick=['interpolate',['linear'],['zoom'],12,6,16,14,20,30];
       if(map.getLayer('tn-route-line')){if(!TN._rw0) TN._rw0=map.getPaintProperty('tn-route-line','line-width');map.setPaintProperty('tn-route-line','line-width',TN.viewClean?thick:TN._rw0);}
-      const b=document.getElementById('tn-viewbtn');if(b){b.textContent=TN.viewClean?'Clean':'Classic';b.classList.toggle('on',TN.viewClean);}}catch(e){}};
+      const b=document.getElementById('tn-viewbtn');if(b){b.textContent=TN.viewClean?'2D':'3D';b.classList.toggle('on',TN.viewClean);}}catch(e){}};
   TN.applyView=applyView;
-  {const st=document.createElement('style');st.textContent='#tn-viewbtn{position:absolute;right:88px;bottom:110px;z-index:5;height:40px;padding:0 14px;border-radius:20px;font:600 14px system-ui,sans-serif}#tn-viewbtn.on{background:#2f6fe4!important;color:#fff!important}';document.head.appendChild(st);
-   const b=document.createElement('button');b.id='tn-viewbtn';b.className='hud';b.setAttribute('aria-label','Change the view');b.textContent=TN.viewClean?'Clean':'Classic';
-   b.onclick=ev=>{ev.stopPropagation();TN.viewClean=!TN.viewClean;try{if(settings&&settings.set) settings.set('view',TN.viewClean?'clean':'classic');}catch(e){}applyView();
-     try{if(rec&&rec.rec) rec.note('view',{clean:TN.viewClean});}catch(e){}};
+  {const st=document.createElement('style');st.textContent='#tn-viewbtn{position:absolute;right:24px;bottom:252px;z-index:5;width:48px;height:48px;padding:0;border-radius:50%;font:700 15px system-ui,sans-serif;cursor:pointer}#tn-viewbtn.on{background:#2f6fe4!important;color:#fff!important}body.tn-film #tn-viewbtn{visibility:hidden!important}@media (max-width:700px){#tn-viewbtn{bottom:256px;right:20px}}';document.head.appendChild(st);
+   const b=document.createElement('button');b.id='tn-viewbtn';b.className='hud notr';b.setAttribute('aria-label','Switch between 3D and 2D');b.textContent=TN.viewClean?'2D':'3D';
+   b.onclick=ev=>{ev.stopPropagation();TN.viewClean=!TN.viewClean;try{if(settings&&settings.set) settings.set('view',TN.viewClean?'2d':'3d');}catch(e){}applyView();
+     try{if(rec&&rec.rec) rec.note('view',{d2:TN.viewClean});}catch(e){}};
    document.body.appendChild(b);}
   map.on('load',()=>{scene.styleMap();ready=true;setTimeout(()=>{try{applyView();setLite(follow);}catch(e){}},500);if(settings){try{settings.applyAll();}catch(e){}}night();
     try{window.TN_PROGRESS&&window.TN_PROGRESS(90,'Building the streets…');}catch(e){}
@@ -724,19 +726,19 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
         /* the map can only aim at the ground. On a raised road the car is above the ground point, so it showed up
            too high on the screen (looking like it flies, or even off the top of the screen on the Champlain bridge).
            Aim at the ground point that lines up with the car instead: a little ahead, by height x tan(pitch). */
-        /* (the Clean view's camera angle, worked out here because the aim below needs the angle actually used: it used the
+        /* (the 2D/3D camera angle, worked out here because the aim below needs the angle actually used: it used the
            Classic angle, up to 74° with a route, against 52° in Clean, so on raised roads like the Champlain bridge the
            aim went 30 m too far ahead and the car slid off the bottom of the screen) */
         {const want=TN.viewClean?1:0;TN._ck=(TN._ck==null?want:TN._ck)+(want-(TN._ck==null?want:TN._ck))*Math.min(1,(dt||0.016)*2.5);}
-        const ck=TN._ck||0,pitchNow=gPitch+(57-gPitch)*ck;   /* (Clean: 57°, a little more toward the horizon; was 52°) */
+        const ck=TN._ck||0,pitchNow=gPitch*(1-ck);   /* (2D: flat, straight from above) */
         let aim=ll;
         if(camY>0.3){
           const d=camY*Math.tan(pitchNow*TN.R),hr=camHd*TN.R;
           aim=TN.fromLocal(car.x+Math.sin(hr)*d,car.z-Math.cos(hr)*d);
         }
         autoZoom=gZoom;
-        /* Clean view (Codriver-like): the camera a bit higher, looking down more at the road */
-        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-0.35*ck,pitch:pitchNow,padding:{top:Math.round(H*(0.56-0.06*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
+        /* 2D view: flat and 2 zoom levels out, the car a little lower than the middle so more road ahead shows */
+        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-2.0*ck,pitch:pitchNow,padding:{top:Math.round(H*(0.56-0.12*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
         map.jumpTo(view);
         if(ready) setLite(true);
       }
