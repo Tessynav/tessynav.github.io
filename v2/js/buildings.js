@@ -65,7 +65,7 @@ TN.Buildings.prototype.collect=function(ck){
   const moved=this.scan&&this.scan.at?Math.hypot((cp[0]-this.scan.at[0])*78000,(cp[1]-this.scan.at[1])*111000):0;
   if(this.scan&&nowT-this.scan.t<20000&&moved<800){var fs=this.scan.fs,byId=this.scan.byId,whole=this.scan.whole;}
   else{
-  var fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});}catch(e){return [];}
+  var fs=[];try{fs=TN.srcFeat(map,'building');}catch(e){return [];}
   var byId=new Map(),whole=new Map();
   for(const f of fs){if(f.id==null||!f.geometry) continue;const a=byId.get(f.id);if(a) a.push(f);else byId.set(f.id,[f]);}
   this.scan={t:nowT,fs:fs,byId:byId,whole:whole,at:cp.slice()};}
@@ -130,7 +130,7 @@ TN.Buildings.prototype.inWater=function(ring){
   const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function'||ring.length<3) return false;
   const now=performance.now();
   if(!this.water||now-this.water.t>30000){const list=[];
-    try{for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'water'})){const g=f.geometry;
+    try{for(const f of TN.srcFeat(map,'water')){const g=f.geometry;
       const P=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
       for(const rings of P){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}list.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
     this.water={t:now,list:list};}

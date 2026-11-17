@@ -58,7 +58,7 @@ TN.Water.prototype.setNight=function(nt){this.night=nt;if(this.mat) this.mat.uni
 TN.Water.prototype.collect=function(ck){
   const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function') return [];
   const [cx,cy]=ck.split(',').map(Number),out=[],seen=new Set();
-  let fs=[];try{fs=map.querySourceFeatures('openmaptiles',{sourceLayer:'water'});}catch(e){return [];}
+  let fs=[];try{fs=TN.srcFeat(map,'water');}catch(e){return [];}
   for(const f of fs){
     const g=f.geometry;if(!g) continue;
     const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];

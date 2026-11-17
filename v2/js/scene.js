@@ -761,3 +761,16 @@ TN.Scene.prototype.drawMoon=function(I){
 };
 /* timing per part (for recordings) */
 TN.PROF={};TN.prof=function(k,ms){TN.PROF[k]=(TN.PROF[k]||0)+ms;};
+/* the map's shapes of one kind (water, parks, land use, buildings...), shared by everything that needs them.
+   Asking the map for them unpacks every loaded map tile, which takes time: trees asked 5 times for each new area,
+   buildings, water and landmarks asked again on their own, and when several landed in the same moment the screen
+   stuttered (about once a minute on the highway). Now they're asked once and reused until a new map tile arrives
+   (or 20 s pass). The answer is shared: nobody changes it. */
+TN.srcFeat=function(map,layer){
+  if(!map||typeof map.querySourceFeatures!=='function') return [];
+  if(!map._tnSf){map._tnSf={v:0,c:{}};try{map.on('sourcedata',e=>{if(e&&e.sourceId==='openmaptiles'&&e.tile) map._tnSf.v++;});}catch(x){}}
+  const S=map._tnSf,e=S.c[layer],now=performance.now();
+  if(e&&e.v===S.v&&now-e.t<20000) return e.f;
+  const t0=performance.now();let f=[];try{f=map.querySourceFeatures('openmaptiles',{sourceLayer:layer});}catch(x){f=[];}
+  S.c[layer]={v:S.v,t:now,f:f};TN.prof('mapshapes',performance.now()-t0);return f;
+};

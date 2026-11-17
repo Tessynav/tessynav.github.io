@@ -87,10 +87,10 @@ TN.Trees.prototype.greenFor=function(ck){
     for(const rings of list){const r=rings[0];let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const p of r){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];}
       if(x1<lo0||x0>lo1||y1<la0||y0>la1) continue;polys.push({rings:rings,kind:kind,bb:[x0,x1,y0,y1]});}};
   try{
-    for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'landcover'})){const c=(f.properties||{}).class;
+    for(const f of TN.srcFeat(map,'landcover')){const c=(f.properties||{}).class;
       if(c==='wood'||c==='forest') add(f,'wood');else if(c==='grass') add(f,'grass');}
-    for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'park'})) add(f,'park');
-    for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'landuse'})){const c=(f.properties||{}).class;if(c==='cemetery'||c==='park') add(f,'park');}
+    for(const f of TN.srcFeat(map,'park')) add(f,'park');
+    for(const f of TN.srcFeat(map,'landuse')){const c=(f.properties||{}).class;if(c==='cemetery'||c==='park') add(f,'park');}
   }catch(e){return [];}
   if(!polys.length) return [];
   /* spacing (m) and chance per spot */
@@ -117,13 +117,13 @@ TN.Trees.prototype.sideFor=function(ck){
   const [cx,cy]=ck.split(',').map(Number),lo0=cx*TN.CELL,la0=cy*TN.CELL,lo1=lo0+TN.CELL,la1=la0+TN.CELL;
   const A=TN.toLocal(lo0,la0),B=TN.toLocal(lo1,la1),x0=Math.min(A[0],B[0]),x1=Math.max(A[0],B[0]),z0=Math.min(A[1],B[1]),z1=Math.max(A[1],B[1]);
   /* the built-up land (no roadside trees there) */
-  const urban=[];try{for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'landuse'})){const c=(f.properties||{}).class;
+  const urban=[];try{for(const f of TN.srcFeat(map,'landuse')){const c=(f.properties||{}).class;
       if(!/residential|commercial|industrial|retail|railway|school|hospital|university|college|stadium/.test(c||'')) continue;
       const g=f.geometry;const list=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
       for(const rings of list){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}
         if(a1<lo0||a0>lo1||b1<la0||b0>la1) continue;urban.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
   /* rivers, canals and lakes (no roadside trees in the water: they stood in the river beside the Bonaventure) */
-  const water=[];try{for(const f of map.querySourceFeatures('openmaptiles',{sourceLayer:'water'})){
+  const water=[];try{for(const f of TN.srcFeat(map,'water')){
       const g=f.geometry;const list=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
       for(const rings of list){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}
         if(a1<lo0||a0>lo1||b1<la0||b0>la1) continue;water.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
