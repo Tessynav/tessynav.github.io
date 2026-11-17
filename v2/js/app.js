@@ -559,8 +559,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       for(const [id,v0] of liteIds) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',on?'none':v0);
       liteState=on;try{if(rec&&rec.rec) rec.note('map lite',{on:on,layers:liteIds.length});}catch(e){}}catch(e){}};
   TN.setLite=setLite;
-  /* ---- the 3D/2D button (above the compass): 3D is the normal tilted view; 2D is a flat map seen from straight above,
-     heading-up, a bit zoomed out, with a thicker route and no falling leaves. (It replaces Classic/Clean; a saved 'clean' becomes 3D.)
+  /* ---- the 3D/2D button (above the compass): 3D is the normal tilted view; 2D is the calmer view (the old Clean camera, tilted 57°),
+     a bit zoomed out, with a thicker route and no falling leaves. (It replaces Classic/Clean; a saved 'clean' becomes 3D.)
      TN.viewClean stays the name the other files check, now meaning 2D. */
   TN.viewClean=!!(TN.settings&&TN.settings.view==='2d');
   const applyView=()=>{try{const thick=['interpolate',['linear'],['zoom'],12,6,16,14,20,30];
@@ -730,7 +730,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
            Classic angle, up to 74° with a route, against 52° in Clean, so on raised roads like the Champlain bridge the
            aim went 30 m too far ahead and the car slid off the bottom of the screen) */
         {const want=TN.viewClean?1:0;TN._ck=(TN._ck==null?want:TN._ck)+(want-(TN._ck==null?want:TN._ck))*Math.min(1,(dt||0.016)*2.5);}
-        const ck=TN._ck||0,pitchNow=gPitch*(1-ck);   /* (2D: flat, straight from above) */
+        const ck=TN._ck||0,pitchNow=gPitch+(57-gPitch)*ck;   /* (2D: the old Clean camera, 57°, tilted toward the horizon; flat from above was too much, Nov 17) */
         let aim=ll;
         if(camY>0.3){
           const d=camY*Math.tan(pitchNow*TN.R),hr=camHd*TN.R;
@@ -738,7 +738,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
         }
         autoZoom=gZoom;
         /* 2D view: flat and a little zoomed out (was 2 levels: too far, Nov 17), the car a little lower than the middle so more road ahead shows */
-        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-0.8*ck,pitch:pitchNow,padding:{top:Math.round(H*(0.56-0.12*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
+        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-0.35*ck,pitch:pitchNow,padding:{top:Math.round(H*(0.56-0.06*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
         map.jumpTo(view);
         if(ready) setLite(true);
       }
