@@ -676,6 +676,7 @@ TN.Nav.prototype.draw=function(from){
     const p=R.pts[i],q=R.pts[Math.min(R.pts.length-1,i+1)],o=R.pts[Math.max(0,i-1)];let ux=q[0]-o[0],uz=q[1]-o[1];const ul=Math.hypot(ux,uz)||1;ux/=ul;uz/=ul;
     const m=R.sm[i]||[0,0,0,0];let y=m[3]+0.22;let lo=m[0];
     if(this.latS!=null&&this.ps!=null){const ah=R.cum[i]-this.ps;if(ah<500){const t=Math.max(0,ah-400)/100,k=t*t*(3-2*t);lo=this.latS+(m[0]-this.latS)*k;}}
+    else if(this.latD!=null&&this.ps!=null){const ah=R.cum[i]-this.ps;if(ah<200){const t=Math.max(0,ah-60)/140,k=t*t*(3-2*t);lo=this.latD+(m[0]-this.latD)*k;}}
     const cx=p[0]+m[1]-uz*lo,cz=p[1]+m[2]+ux*lo;
     /* never under the road it lies on: where the line is moved over to your lane it can land on the piece beside
        (a lane joining on a climb, a few dozen cm higher), which hid it on the Champlain approach. Roads more than
@@ -1266,7 +1267,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
    /* in a tunnel the GPS is only the car's own estimate, often 15-20 m off the tunnel's curves: the route keeps the
       car (not let go at 18 m, which threw it back and forth between the route and the estimate) */
    const inTun=!!(base&&base.w&&base.w.tun)&&(L.acc||0)>4.5;this.inTun=inTun;
-   if(gd>(inTun?45:18)||this.relT>0.35||this.rerouting){if(this.ps!=null){this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.relAt=Date.now();}this.ps=null;return null;}}
+   if(gd>(inTun?45:18)||this.relT>0.35||this.rerouting){if(this.ps!=null){this.note('released',{gps:Math.round(gd),dir:Math.round(off)});this.relAt=Date.now();}this.ps=null;this.latD=null;return null;}}
   this.pi=bi;
   /* projection on the segment for a precise distance */
   const i0=Math.max(0,Math.min(R.pts.length-2,bi-(bi>0&&bi===R.pts.length-1?1:0)));
@@ -1312,6 +1313,13 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      if(this.latS==null) this.latS=tgt;else{const d=tgt-this.latS,st=1.2*dt;this.latS+=Math.abs(d)<st?d:Math.sign(d)*st;}}
    else if(!wide&&this.latS!=null){const d=lo-this.latS,st=1.2*dt;this.latS+=Math.abs(d)<st?d:Math.sign(d)*st;if(Math.abs(lo-this.latS)<0.05){this.latS=null;this.laneI=null;this.latF=null;}}
    if(this.latS!=null) lo=this.latS;}
+  /* the blue line in your lane (not glued): near the car the line is drawn where the car is across the road, so in a
+     turn lane or the left lane of a wide street the car sits on the line instead of beside it (Rue De Montbrun, Nov 17:
+     5 m apart). Smoothed over about a second; the line goes back to its normal place 60-200 m ahead. */
+  if(!(TN.settings&&TN.settings.glueRoute)&&this.latS==null&&base.x!=null){
+    const cx0=px+mi(1),cz0=pz+mi(2),lc=(base.x-cx0)*(-uz)+(base.z-cz0)*ux;
+    if(Math.abs(lc)<9){this.latD=this.latD==null?lc:this.latD+(lc-this.latD)*Math.min(1,dt*1.0);}else this.latD=null;}
+  else this.latD=null;
   let y=base.y!=null?base.y:mi(3);
   {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
   let ox=px+mi(1)-uz*lo,oz=pz+mi(2)+ux*lo,oh=hd;
@@ -1374,7 +1382,7 @@ TN.Nav.prototype.reroute=async function(){
   try{await this.plan(true);}catch(e){}
   this.note('rerouted',{ok:!!this.route&&this.route.L!==L0,km:this.route?+(this.route.L/1000).toFixed(2):null});
   if(this.mat) this.mat.opacity=0.85;
-  this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.gdH=[];
+  this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.latD=null;this.gdH=[];
 };
 /* how much the car should follow the route's curve right now (0 on straight roads, 1 in a turn): gluing starts
    70 m before a turn on the route, is full from 30 m before to 25 m after it, and ends 50 m after */
@@ -1421,8 +1429,8 @@ TN.Nav.prototype.update=function(dt){
   for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length,this.idx+400);i++){const d=(R.pts[i][0]-px)**2+(R.pts[i][1]-pz)**2;if(d<bd){bd=d;bi=i;}}
   const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;this.lastOff=off;
   this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,glued:!!(TN.settings&&TN.settings.glueRoute),drawn:this.drawn});}
-  const laneMoved=this.latS!=null&&Math.abs(this.latS-(this.drawLat==null?this.latS:this.drawLat))>0.35;
-  if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||(this.api.net.ver+':'+(this.api.net.hVer||0))!==this.drawVer||laneMoved){this.draw(Math.max(0,bi-4));this.drawLat=this.latS;}
+  const lnow=this.latS!=null?this.latS:this.latD,laneMoved=Math.abs((lnow==null?0:lnow)-(this.drawLat==null?0:this.drawLat))>(this.latS!=null?0.35:0.5);
+  if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||(this.api.net.ver+':'+(this.api.net.hVer||0))!==this.drawVer||laneMoved){this.draw(Math.max(0,bi-4));this.drawLat=this.latS!=null?this.latS:this.latD;}
   if(this.rerouting) return;
   /* a stop reached (passed its arrival point): dropped from the list, so a recalculation won't send you back */
   {const st=R.steps.find(q=>q.stop===1);if(st&&s>st.at+30&&this.stops.length){this.stops.shift();this.stopPins();for(const q of R.steps) if(q.stop) q.stop--;}}
