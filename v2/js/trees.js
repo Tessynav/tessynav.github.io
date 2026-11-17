@@ -37,9 +37,13 @@ TN.Trees.prototype.setup=function(){
   const tier=(r,h,y)=>{const c=new THREE.ConeGeometry(r,h,8,1,true);c.translate(0,y+h/2,0);return c;};
   const cone=merge([tier(1,0.55,0),tier(0.78,0.5,0.32),tier(0.52,0.45,0.6)]);
   const trunk=new THREE.CylinderGeometry(0.1,0.16,1,6);trunk.translate(0,0.5,0);
-  this.geo={crown:crown,cone:cone,trunk:trunk};
+  /* the simple shapes, for trees in the areas farther away: you can't see the difference from there,
+     and they are 6 times lighter to draw */
+  const crownLo=new THREE.IcosahedronGeometry(1,0);crownLo.translate(0,1,0);
+  const coneLo=new THREE.ConeGeometry(1,1,6);coneLo.translate(0,0.5,0);
+  this.geo={crown:crown,cone:cone,trunk:trunk,crownLo:crownLo,coneLo:coneLo};
   this.mats={crown:new THREE.MeshLambertMaterial({vertexColors:true}),cone:new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}),
-    trunk:new THREE.MeshLambertMaterial({color:0x5b4636})};
+    trunk:new THREE.MeshLambertMaterial({color:0x5b4636}),crownLo:new THREE.MeshLambertMaterial({flatShading:true}),coneLo:new THREE.MeshLambertMaterial({flatShading:true})};
   if(TN.cutPatch) for(const k in this.mats) TN.cutPatch(this.mats[k],{fade:true});
   /* seasons (Montreal): spring Apr-May, summer Jun-mid Sep, autumn mid Sep-Nov, winter Dec-Mar */
   const d=new Date(),m=d.getMonth()+1,day=d.getDate();
@@ -160,8 +164,14 @@ TN.Trees.prototype.build=function(ck){
   /* about one tree in four is a conifer; in winter leafy trees are bare (trunk and a thin brown crown) */
   let nc=0;for(let i=0;i<n;i++) if(keep[i*4+3]%4===0) nc++;
   const nd=n-nc,bare=this.season==='winter';
-  const crowns=nd?new THREE.InstancedMesh(this.geo.crown,this.mats.crown,nd):null;
-  const cones=nc?new THREE.InstancedMesh(this.geo.cone,this.mats.cone,nc):null;
+  /* the trees are drawn with the simple shapes for the whole area; the ones within about 170 m of the car get the
+     rounded shapes instead (in blocks of the area, swapped as you drive: see lodTrees) */
+  const crowns=nd?new THREE.InstancedMesh(this.geo.crownLo,this.mats.crownLo,nd):null;
+  const cones=nc?new THREE.InstancedMesh(this.geo.coneLo,this.mats.coneLo,nc):null;
+  const [gx,gy]=ck.split(',').map(Number),c0=TN.toLocal(gx*TN.CELL,gy*TN.CELL),c1=TN.toLocal((gx+1)*TN.CELL,(gy+1)*TN.CELL);
+  const bx0=Math.min(c0[0],c1[0]),bx1=Math.max(c0[0],c1[0]),bz0=Math.min(c0[1],c1[1]),bz1=Math.max(c0[1],c1[1]),NB=4;
+  const blk=(x,z)=>Math.max(0,Math.min(NB-1,Math.floor((x-bx0)/(bx1-bx0)*NB)))*NB+Math.max(0,Math.min(NB-1,Math.floor((z-bz0)/(bz1-bz0)*NB)));
+  const D={crown:{M:new Float32Array(nd*16),C:new Uint16Array(nd),B:new Uint8Array(nd)},cone:{M:new Float32Array(nc*16),C:new Uint16Array(nc),B:new Uint8Array(nc)}};
   const trunks=new THREE.InstancedMesh(this.geo.trunk,this.mats.trunk,n);
   const m=new THREE.Matrix4(),q=new THREE.Quaternion(),sc=new THREE.Vector3(),pos=new THREE.Vector3(),up=new THREE.Vector3(0,1,0);
   let id=0,ic=0;const shade=[];
@@ -171,13 +181,13 @@ TN.Trees.prototype.build=function(ck){
     if(seed%4===0){
       /* conifer: tall faceted cone on a short trunk */
       const r=1.6*s,h=6.5*s;
-      pos.set(x,0.8*s,z);sc.set(r,h,r);m.compose(pos,q,sc);cones.setMatrixAt(ic,m);
+      pos.set(x,0.8*s,z);sc.set(r,h,r);m.compose(pos,q,sc);cones.setMatrixAt(ic,m);m.toArray(D.cone.M,ic*16);D.cone.C[ic]=seed%this.conePalette.length;D.cone.B[ic]=blk(x,z);
       cones.setColorAt(ic,this.conePalette[seed%this.conePalette.length]);ic++;
       pos.set(x,0,z);sc.set(s,1.2*s,s);m.compose(pos,q,sc);trunks.setMatrixAt(i,m);
       shade.push({x:x,z:z,r:r*0.9,th:3.5*s});
     }else{
       const r=(bare?1.5:2.2)*s,h=3.2*s;
-      pos.set(x,h,z);sc.set(r,r*(bare?1.2:1.05),r);m.compose(pos,q,sc);crowns.setMatrixAt(id,m);
+      pos.set(x,h,z);sc.set(r,r*(bare?1.2:1.05),r);m.compose(pos,q,sc);crowns.setMatrixAt(id,m);m.toArray(D.crown.M,id*16);D.crown.C[id]=seed%this.palette.length;D.crown.B[id]=blk(x,z);
       crowns.setColorAt(id,this.palette[seed%this.palette.length]);id++;
       pos.set(x,0,z);sc.set(s,h+0.3,s);m.compose(pos,q,sc);trunks.setMatrixAt(i,m);
       shade.push({x:x,z:z,r:r*(bare?0.7:1.0),th:h});
@@ -185,8 +195,27 @@ TN.Trees.prototype.build=function(ck){
   }
   const grp=new THREE.Group();
   for(const o of [trunks,crowns,cones]) if(o){o.frustumCulled=false;grp.add(o);}
+  grp.userData.trees={D:D,lo:{crown:crowns,cone:cones},b:[bx0,bx1,bz0,bz1],NB:NB,hi:new Map()};
   if(TN.shadows&&TN.shadows.treeMesh){try{const sh=TN.shadows.treeMesh(shade);if(sh) grp.add(sh);}catch(e){}}   /* (their shadows) */
   return grp;
+};
+/* rounded trees near the car: blocks of an area (about 100 x 140 m) within 170 m of the car get their own small
+   set of rounded trees, and those trees are hidden in the simple set; farther blocks go back to the simple ones */
+TN.Trees.prototype.lodTrees=function(grp,p){
+  const T=grp&&grp.userData.trees;if(!T) return;const [bx0,bx1,bz0,bz1]=T.b,NB=T.NB,w=(bx1-bx0)/NB,h=(bz1-bz0)/NB;
+  const zero=new THREE.Matrix4().makeScale(0,0,0),m=new THREE.Matrix4();
+  for(let k=0;k<NB*NB;k++){
+    const x0=bx0+Math.floor(k/NB)*w,z0=bz0+(k%NB)*h,dd=Math.hypot(Math.max(0,x0-p[0],p[0]-(x0+w)),Math.max(0,z0-p[1],p[1]-(z0+h)));
+    const near=dd<170,have=T.hi.get(k);if(near===!!have) continue;
+    if(near){const set=[];
+      for(const kind of ['crown','cone']){const d=T.D[kind],lo=T.lo[kind];if(!lo) continue;const idx=[];for(let i=0;i<d.B.length;i++) if(d.B[i]===k) idx.push(i);if(!idx.length) continue;
+        const pal=kind==='crown'?this.palette:this.conePalette,hi=new THREE.InstancedMesh(this.geo[kind],this.mats[kind],idx.length);
+        idx.forEach((i,n)=>{m.fromArray(d.M,i*16);hi.setMatrixAt(n,m);hi.setColorAt(n,pal[d.C[i]]);lo.setMatrixAt(i,zero);});
+        lo.instanceMatrix.needsUpdate=true;hi.frustumCulled=false;grp.add(hi);set.push({kind:kind,hi:hi,idx:idx});}
+      T.hi.set(k,set.length?set:[]);}
+    else{for(const e of have){const d=T.D[e.kind],lo=T.lo[e.kind];for(const i of e.idx){m.fromArray(d.M,i*16);lo.setMatrixAt(i,m);}lo.instanceMatrix.needsUpdate=true;grp.remove(e.hi);e.hi.dispose();}
+      T.hi.delete(k);}
+  }
 };
 TN.Trees.prototype.free=function(ck){
   const e=this.cells.get(ck);if(!e) return;
@@ -198,6 +227,9 @@ TN.Trees.prototype.update=function(lng,lat,fps){
   /* trees are small: drawn up to 60% of the buildings' distance */
   try{if(TN.lodApply&&performance.now()-(this.lodT||0)>500){this.lodT=performance.now();TN.lodApply(this.cells,lng,lat,(TN.lodFar||900)*(TN.viewClean?0.45:0.6),e=>e&&e.grp);   /* (Clean view: trees a little less far, a calmer picture) */}}catch(e){}
   this.setup();this.load(lng,lat);
+  /* rounded trees only within about 170 m of the car (checked twice a second) */
+  if(performance.now()-(this.lodT2||0)>500&&this.geo){this.lodT2=performance.now();const p=TN.toLocal(lng,lat);
+    for(const e of this.cells.values()){if(e&&e.grp) this.lodTrees(e.grp,p);}}
   /* keep the screen smooth: fewer areas if slow, off if very slow */
   if(fps){
     if(fps<45){this.slowT+=1;}else this.slowT=Math.max(0,this.slowT-1);
@@ -230,5 +262,5 @@ TN.Trees.prototype.update=function(lng,lat,fps){
 TN.Trees.prototype.setNight=function(nt){
   if(!this.mats) return;
   const c=new THREE.Color(TN.mix('#ffffff','#7d879c',nt));
-  this.mats.crown.color.copy(c);this.mats.cone.color.copy(c);this.mats.trunk.color.copy(new THREE.Color(TN.mix('#5b4636','#2e2a2c',nt)));
+  this.mats.crown.color.copy(c);this.mats.cone.color.copy(c);if(this.mats.crownLo){this.mats.crownLo.color.copy(c);this.mats.coneLo.color.copy(c);}this.mats.trunk.color.copy(new THREE.Color(TN.mix('#5b4636','#2e2a2c',nt)));
 };

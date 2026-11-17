@@ -1435,11 +1435,13 @@ TN.Nav.prototype.update=function(dt){
   {const t=nx.type,m=nx.mod||'',G=this.api.gps?this.api.gps():null,v=G&&G.v||0;
    const kind=/^(turn|end of road|off ramp|fork|on ramp|merge)$/.test(t)||(t==='continue'&&/^(left|right|sharp)/.test(m));
    const side=!kind?0:m==='uturn'?-1:/left/.test(m)?-1:/right/.test(m)?1:0;
-   /* (how early: highway exits and forks about 10 s before, 200 to 350 m; city turns about 6 s, 50 to 120 m; it was
-      5 s everywhere, which came on only about 100 m before a highway exit) */
-   const hwy=t==='off ramp'||t==='fork'||v>19,start=hwy?Math.min(350,Math.max(200,v*10)):Math.min(120,Math.max(50,v*6));
+   /* (how early: highway exits and forks about 12 s before, 250 to 400 m; city turns about 6 s, 50 to 120 m) */
+   const hwy=t==='off ramp'||t==='fork'||v>19,start=hwy?Math.min(400,Math.max(250,v*12)):Math.min(120,Math.max(50,v*6));
    if(side&&dNext<start) this.blk={side:side,until:nx.at+20};
-   TN.blink=this.blk&&s<this.blk.until?this.blk.side:0;}
+   const nb=this.blk&&s<this.blk.until?this.blk.side:0;
+   /* (written in the recording when it comes on: how far before the turn, and how fast, so the timing can be checked) */
+   if(nb&&!TN.blink){try{this.note('blink',{side:nb<0?'left':'right',type:t,mod:m,d:Math.round(dNext),kmh:Math.round(v*3.6)});}catch(e){}}
+   TN.blink=nb;}
   {const slim=dNext>2000&&nx.type!=='arrive'&&this.jvStep==null&&!(this.barFullT>Date.now());
    if(slim!==this.bar.classList.contains('slim')){this.bar.classList.toggle('slim',slim);this.note('banner',{slim:slim,d:Math.round(dNext)});}
    if(!this.slimTap){this.slimTap=true;this.bar.addEventListener('click',ev=>{if(this.bar.classList.contains('slim')&&!ev.target.closest('.wchip,.dst')){ev.stopPropagation();this.barFullT=Date.now()+20000;this.bar.classList.remove('slim');}},true);}}
