@@ -1,4 +1,4 @@
-/* TessyNav v2 — garage.js (v4: no false alarms parked outside or stopped under an overpass; v3: also notices a garage from the Tesla's weaker position estimate underground, or from its "unknown" accuracy)
+/* TessyNav v2 — garage.js (v5: needs 8 s of driving after the GPS weakens, not parked; v4: no false alarms parked outside or stopped under an overpass; v3: also notices a garage from the Tesla's weaker position estimate underground, or from its "unknown" accuracy)
    Underground parking. GPS stops working underground, so when you drive down into a garage TessyNav:
    - notices it: you were on a garage ramp or parking lane (a service road the map marks as a tunnel or parking
      aisle) at parking speed, then the GPS went quiet or very rough for 6 s
@@ -36,8 +36,14 @@ TN.Garage.prototype.fix=function(acc,speed){
      from 2.5 to 9 m and it said "underground" for 12 s. The DIX30 garage was off the streets, so this keeps it.) */
   const onMain=now-(this.mainT||0)<5000;
   const drop=!this.snooze&&!onMain&&base!=null&&base<=3.5&&acc>=6&&acc>=2.5*base&&speed<6;
-  if(drop){if(!this.dropSince) this.dropSince=now;if(now-this.dropSince>=8000&&!this.off) this.enter('follow');}
-  else{this.dropSince=0;this.hist.push([now,acc]);}
+  /* (v5: the 8 s only count while the car keeps moving, at least 1 m/s: driving into a garage you go on down the ramp
+     and along the aisles. Parked outside on Nuns' Island, Nov 17, the accuracy also went from 2.5 to 10 m, but in the
+     last 3 s of stopping, and then it said "underground" while you were parked outside. DIX30 garage: 3-4 m/s.) */
+  if(drop){const dtm=this.dropLast?Math.min(1000,now-this.dropLast):0;this.dropLast=now;
+    if(!this.dropSince){this.dropSince=now;this.dropMove=0;}
+    if(speed>=1) this.dropMove=(this.dropMove||0)+dtm;
+    if(this.dropMove>=8000&&!this.off) this.enter('follow');}
+  else{this.dropSince=0;this.dropMove=0;this.dropLast=0;this.hist.push([now,acc]);}
 };
 /* every frame: car = what the tracking shows. Returns the car to draw (the held one while underground) */
 TN.Garage.prototype.frame=function(car,v){
