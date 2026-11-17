@@ -1947,7 +1947,9 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       TN.quad(G,pt(u0,B0),pt(u1,B1),pt(u1,T1),pt(u0,T0),col);
     }}};
   /* the railing along one edge (o: offset from the centre line), same places as the barrier walls */
-  const fence=(G,a,b,o)=>{const col=TN.C.rail||[0.40,0.43,0.47];
+  /* (Jacques-Cartier: its tall green safety fence, about 2.6 m, with close vertical bars - Nov 17) */
+  const jcF=/^Pont Jacques-Cartier$/.test(w.name||'');
+  const fence=(G,a,b,o)=>{const col=jcF?(TN.C.jcSteel||TN.JC.col):(TN.C.rail||[0.40,0.43,0.47]);
     for(let i=a;i<b;i++){if(Math.max(H(i),H(i+1))<0.5) continue;
       const len=Math.hypot(P[i+1][0]-P[i][0],P[i+1][1]-P[i][1]),n=Math.max(1,Math.ceil(len/4));if(len<0.05) continue;
       const tx=(P[i+1][0]-P[i][0])/len,tz=(P[i+1][1]-P[i][1])/len;
@@ -1961,11 +1963,15 @@ TN.Net.prototype.drawWay=function(L,w,runs){
         const hA=H(i)+(H(i+1)-H(i))*u0,hB=H(i)+(H(i+1)-H(i))*u1;
         const pt=(u,h)=>{const q=at(u,oi+(oj-oi)*u);return [q[0],h,q[1]];};
         /* two rails (thin bands), the top one at 2 m above the deck */
-        for(const [r0,r1] of [[1.46,1.52],[1.93,2.0]]) TN.quad(G,pt(u0,hA+r0),pt(u1,hB+r0),pt(u1,hB+r1),pt(u0,hA+r1),col);
+        for(const [r0,r1] of (jcF?[[0.25,0.35],[1.2,1.28],[2.5,2.62]]:[[1.46,1.52],[1.93,2.0]])) TN.quad(G,pt(u0,hA+r0),pt(u1,hB+r0),pt(u1,hB+r1),pt(u0,hA+r1),col);
         /* a post at the start of each piece: two crossed thin faces, seen from any side */
         const c=at(u0,oi+(oj-oi)*u0),nl=Math.hypot(N[i][0],N[i][1])||1,nx=N[i][0]/nl,nz=N[i][1]/nl,r=0.045;
         TN.quad(G,[c[0]-nx*r,hA+1.0,c[1]-nz*r],[c[0]+nx*r,hA+1.0,c[1]+nz*r],[c[0]+nx*r,hA+2.0,c[1]+nz*r],[c[0]-nx*r,hA+2.0,c[1]-nz*r],col);
         TN.quad(G,[c[0]-tx*r,hA+1.0,c[1]-tz*r],[c[0]+tx*r,hA+1.0,c[1]+tz*r],[c[0]+tx*r,hA+2.0,c[1]+tz*r],[c[0]-tx*r,hA+2.0,c[1]-tz*r],col);
+        if(jcF){/* the close bars: three more in each 4 m piece, deck to top, and the posts taller */
+          TN.quad(G,[c[0]-nx*0.06,hA+0.25,c[1]-nz*0.06],[c[0]+nx*0.06,hA+0.25,c[1]+nz*0.06],[c[0]+nx*0.06,hA+2.62,c[1]+nz*0.06],[c[0]-nx*0.06,hA+2.62,c[1]-nz*0.06],col);
+          for(const f of [0.25,0.5,0.75]){const uu=u0+(u1-u0)*f,q=at(uu,oi+(oj-oi)*uu),hq=H(i)+(H(i+1)-H(i))*uu;
+            TN.quad(G,[q[0]-tx*0.03,hq+0.3,q[1]-tz*0.03],[q[0]+tx*0.03,hq+0.3,q[1]+tz*0.03],[q[0]+tx*0.03,hq+2.5,q[1]+tz*0.03],[q[0]-tx*0.03,hq+2.5,q[1]-tz*0.03],col);}}
       }}};
   /* ---- painted exits: where a ramp leaves (or joins) a highway, the narrow wedge between the two roads is paved and
      painted, like the real ones (white edges and diagonal stripes): from the split point out to where the roads are
