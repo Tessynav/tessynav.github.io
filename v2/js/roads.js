@@ -1528,10 +1528,13 @@ TN.Net.prototype.stallNear=function(x,z,hd){
         for(const sd of [1,-1]){
           const mx=A[0]+ux*sm+nx*sd*(hw+depth/2),mz=A[1]+uz*sm+nz*sd*(hw+depth/2),d=Math.hypot(mx-x,mz-z);
           if(d>3.5||(best&&d>=best.d)) continue;
-          if(!lots.some(pk=>TN.pip(mx,mz,pk.pts))||this.nearOther(w,mx,mz,0.5)) continue;
+          /* (only a space that points the way the car points: Nov 17 the nearest space belonged to the next aisle,
+             at right angles, so the car turned 90° and lay across the painted lines) */
           let h1=(Math.atan2(nx*sd,-nz*sd)/TN.R+360)%360;const h2=(h1+180)%360;
           const ad=(a,b)=>{const d2=Math.abs(((a-b)%360+540)%360-180);return d2;};
-          best={x:mx,z:mz,d:d,hd:ad(h1,hd)<=ad(h2,hd)?h1:h2};
+          const hs=ad(h1,hd)<=ad(h2,hd)?h1:h2;if(ad(hs,hd)>35) continue;
+          if(!lots.some(pk=>TN.pip(mx,mz,pk.pts))||this.nearOther(w,mx,mz,0.5)) continue;
+          best={x:mx,z:mz,d:d,hd:hs};
         }
       }
     }

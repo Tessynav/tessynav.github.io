@@ -1,4 +1,4 @@
-/* TessyNav v2 — garage.js (v3: also notices a garage from the Tesla's weaker position estimate underground, or from its "unknown" accuracy)
+/* TessyNav v2 — garage.js (v4: no false alarms parked outside or stopped under an overpass; v3: also notices a garage from the Tesla's weaker position estimate underground, or from its "unknown" accuracy)
    Underground parking. GPS stops working underground, so when you drive down into a garage TessyNav:
    - notices it: you were on a garage ramp or parking lane (a service road the map marks as a tunnel or parking
      aisle) at parking speed, then the GPS went quiet or very rough for 6 s
@@ -14,7 +14,7 @@ TN.Garage=function(o){
 };
 /* every GPS position (from the app) */
 TN.Garage.prototype.fix=function(acc,speed){
-  const now=Date.now();this.lastFixT=now;acc=acc==null?99:acc;speed=speed||0;
+  const now=Date.now();this.lastFixT=now;acc=acc==null?99:acc;speed=speed||0;this.lastV=speed;
   /* (the Tesla keeps estimating its position underground from its wheels and motion sensors: the GPS doesn't go
      quiet, its accuracy just drops from about 2 m to 6-8 m. So that is also a sign: at parking speed, accuracy
      suddenly 2.5 times worse than the last minute's (which was good, 3.5 m or better), for 8 s. Checked on your
@@ -32,7 +32,10 @@ TN.Garage.prototype.fix=function(acc,speed){
   this.hist=(this.hist||[]).filter(h=>now-h[0]<=60000);
   const base=this.hist.length>10?this.hist.map(h=>h[1]).sort((x,y)=>x-y)[this.hist.length>>1]:null;
   if(this.snooze&&acc<=3.5) this.snooze=false;   /* (closed by hand: not again until the GPS has been good) */
-  const drop=!this.snooze&&base!=null&&base<=3.5&&acc>=6&&acc>=2.5*base&&speed<6;
+  /* (v4: not on a main street: stopped at a light under the A-10 overpass on Boulevard Leduc, the accuracy also went
+     from 2.5 to 9 m and it said "underground" for 12 s. The DIX30 garage was off the streets, so this keeps it.) */
+  const onMain=now-(this.mainT||0)<5000;
+  const drop=!this.snooze&&!onMain&&base!=null&&base<=3.5&&acc>=6&&acc>=2.5*base&&speed<6;
   if(drop){if(!this.dropSince) this.dropSince=now;if(now-this.dropSince>=8000&&!this.off) this.enter('follow');}
   else{this.dropSince=0;this.hist.push([now,acc]);}
 };
@@ -48,9 +51,12 @@ TN.Garage.prototype.frame=function(car,v){
   if(!car||car.x==null) return car;
   /* on a garage ramp or parking lane, slowly: remember it (for 20 s) and the last good spot */
   const w=car.w;
+  if(w&&/^(motorway|primary|secondary|tertiary)$/.test(w.cls)) this.mainT=now;
   if(w&&w.cls==='service'&&(w.tun||w.pa||(w.layer||0)<0)&&(v||0)<9) this.candT=now;
   if(!this.roughSince&&now-this.lastFixT<2500) this.good={x:car.x,z:car.z,y:car.y||0,hd:car.hd,w:car.w,cls:car.cls,snapped:car.snapped};
-  const quiet=now-this.lastFixT>6000,rough=this.roughSince&&now-this.roughSince>6000;
+  /* (v4: "quiet" only counts if you were still moving when the GPS stopped. The Tesla stops sending positions
+     when the car stands still, so parked in an outdoor lot it looked like a garage: Nov 17, end of the drive.) */
+  const quiet=now-this.lastFixT>6000&&(this.lastV||0)>=1.5,rough=this.roughSince&&now-this.roughSince>6000;
   if((quiet||rough)&&now-this.candT<20000&&this.good) this.enter('hold');
   return car;
 };
