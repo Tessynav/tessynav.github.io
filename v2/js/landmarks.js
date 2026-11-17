@@ -1,16 +1,21 @@
-/* TessyNav v2 — landmarks.js (v2)
+/* TessyNav v2 — landmarks.js (v4)
    Well-known places as their own 3D models, in TessyNav's style (simple shapes, flat colours, no photos, no logos):
    - Stade Saputo: the pitch with its markings and goals, stands on four sides (the main stand taller, two tiers),
      roofs over the two long stands, light rows along the roof edges
    - the Olympic Stadium: its oval concrete shell with the 34 ribs, the white roof, and the leaning Montréal Tower
      at the north end, rising and leaning out over the stadium, with the glass lookout at the top
+   - the Biosphère: the see-through steel lattice ball on Île Sainte-Hélène, with the museum inside
+   - the big orange on Décarie: the orange ball, three storeys high (no name or logo)
    Each model is built only when you come within about 2.5 km and removed again past 3.5 km: one drawing job each.
    The map's plain buildings standing where the model is are left out (see buildings.js). ?landmarks=0 turns them off. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.LANDMARKS=[
   {id:'saputo',name:'Stade Saputo',lng:-73.55285,lat:45.56265,bearing:150,kind:'stadium',r:120},
   /* the Olympic Stadium (its middle) and its leaning tower (the tower's foot, at the north end) */
-  {id:'olympic',name:'Olympic Stadium',lng:-73.551575,lat:45.557861,tower:[-73.551468,45.558941],kind:'olympic',r:165}
+  {id:'olympic',name:'Olympic Stadium',lng:-73.551575,lat:45.557861,tower:[-73.551468,45.558941],kind:'olympic',r:165},
+  /* the Biosphère (Expo 67 geodesic dome, 76 m wide, 62 m high) and the big orange on Décarie (12.3 m) */
+  {id:'biosphere',name:'Biosphère',lng:-73.531746,lat:45.514164,kind:'dome',r:48},
+  {id:'orange',name:'Big orange (Décarie)',lng:-73.6568,lat:45.4957,kind:'orange',r:12}
 ];
 TN.landmarkHide=[];   /* [{x,z,r}]: areas where the map's own buildings are left out */
 TN.Landmarks=function(scene){
@@ -114,7 +119,52 @@ TN.Landmarks.prototype.buildOlympic=function(L){
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();
   const m=new THREE.Mesh(g,this.material());m.name='landmark-'+L.id;const grp=new THREE.Group();grp.add(m);return grp;
 };
+/* simple meshes for the dome and the orange */
+TN.Landmarks.prototype.mesh=function(pos,col,id){
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();
+  const m=new THREE.Mesh(g,this.material());m.name='landmark-'+id;const grp=new THREE.Group();grp.add(m);return grp;
+};
+TN.Landmarks.prototype.buildDome=function(L){
+  const c=TN.toLocal(L.lng,L.lat),R=38,cy=62-R,pos=[],col=[],STEEL=[0.62,0.64,0.66],HUB=[0.50,0.52,0.55],MUS=[0.86,0.85,0.82],GL=[0.30,0.42,0.50];
+  TN.landmarkHide.push({id:L.id,x:c[0],z:c[1],r:L.r});
+  const tri=(a,b,d,k)=>{for(const p of [a,b,d]){pos.push(p[0],p[1],p[2]);col.push(k[0],k[1],k[2]);}};
+  const quad=(a,b,d,e,k)=>{tri(a,b,d,k);tri(a,d,e,k);};
+  /* the lattice: every edge of a finely divided sphere, as a thin steel strip (the sphere is cut off near the ground) */
+  const ico=new THREE.IcosahedronGeometry(R,3),pp=ico.attributes.position,seen=new Set();
+  const key=(a,b)=>{const k1=a.map(v=>v.toFixed(2)).join(','),k2=b.map(v=>v.toFixed(2)).join(',');return k1<k2?k1+'|'+k2:k2+'|'+k1;};
+  for(let i=0;i<pp.count;i+=3){const v=[0,1,2].map(j=>[pp.getX(i+j),pp.getY(i+j),pp.getZ(i+j)]);
+    for(const [a,b] of [[v[0],v[1]],[v[1],v[2]],[v[2],v[0]]]){const k=key(a,b);if(seen.has(k)) continue;seen.add(k);
+      if(a[1]+cy<1&&b[1]+cy<1) continue;
+      const A=[c[0]+a[0],Math.max(0,a[1]+cy),c[1]+a[2]],B=[c[0]+b[0],Math.max(0,b[1]+cy),c[1]+b[2]];
+      /* the strip is 0.5 m wide, turned to face out from the middle of the sphere */
+      const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,mz=(a[2]+b[2])/2,dx=B[0]-A[0],dy=B[1]-A[1],dz=B[2]-A[2];
+      let px=dy*mz-dz*my,py=dz*mx-dx*mz,pz=dx*my-dy*mx;const pl=Math.hypot(px,py,pz)||1;px*=0.25/pl;py*=0.25/pl;pz*=0.25/pl;
+      quad([A[0]-px,A[1]-py,A[2]-pz],[B[0]-px,B[1]-py,B[2]-pz],[B[0]+px,B[1]+py,B[2]+pz],[A[0]+px,A[1]+py,A[2]+pz],STEEL);}}
+  ico.dispose();
+  /* the ring at the bottom, and the museum building inside (a low box with a glass band) */
+  const bR=Math.sqrt(R*R-cy*cy),N=48;
+  for(let k=0;k<N;k++){const t0=k/N*Math.PI*2,t1=(k+1)/N*Math.PI*2,p=(t,r,y)=>[c[0]+Math.cos(t)*r,y,c[1]+Math.sin(t)*r];
+    quad(p(t0,bR,0),p(t1,bR,0),p(t1,bR,2.5),p(t0,bR,2.5),HUB);}
+  const box=(x0,x1,z0,z1,y0,y1,k)=>{const P=(x,y,z)=>[c[0]+x,y,c[1]+z];
+    quad(P(x0,y1,z0),P(x1,y1,z0),P(x1,y1,z1),P(x0,y1,z1),k);
+    for(const [a,b] of [[[x0,z0],[x1,z0]],[[x1,z0],[x1,z1]],[[x1,z1],[x0,z1]],[[x0,z1],[x0,z0]]]) quad(P(a[0],y0,a[1]),P(b[0],y0,b[1]),P(b[0],y1,b[1]),P(a[0],y1,a[1]),k);};
+  box(-18,18,-18,18,0,14,MUS);box(-18.2,18.2,-18.2,18.2,6,9,GL);box(-10,10,-10,10,14,22,MUS);
+  return this.mesh(pos,col,L.id);
+};
+TN.Landmarks.prototype.buildOrange=function(L){
+  const c=TN.toLocal(L.lng,L.lat),R=6.15,cy=R+1.6,pos=[],col=[],OR=[1.0,0.20,0.0],OR2=[0.85,0.16,0.0],BASE=[0.80,0.80,0.78];
+  TN.landmarkHide.push({id:L.id,x:c[0],z:c[1],r:L.r});
+  const tri=(a,b,d,k)=>{for(const p of [a,b,d]){pos.push(p[0],p[1],p[2]);col.push(k[0],k[1],k[2]);}};
+  /* the orange ball, with faint segment lines like an orange's skin, on a short white base */
+  const S=24,T=14,P=(i,j)=>{const th=i/S*Math.PI*2,ph=j/T*Math.PI;return [c[0]+R*Math.sin(ph)*Math.cos(th),cy+R*Math.cos(ph),c[1]+R*Math.sin(ph)*Math.sin(th)];};
+  for(let i=0;i<S;i++) for(let j=0;j<T;j++){const k=(i%3===0)?OR2:OR;tri(P(i,j),P(i+1,j),P(i+1,j+1),k);tri(P(i,j),P(i+1,j+1),P(i,j+1),k);}
+  const N=20;for(let k=0;k<N;k++){const t0=k/N*Math.PI*2,t1=(k+1)/N*Math.PI*2,q=(t,r,y)=>[c[0]+Math.cos(t)*r,y,c[1]+Math.sin(t)*r];
+    tri(q(t0,3.2,0),q(t1,3.2,0),q(t1,3.2,2.2),BASE);tri(q(t0,3.2,0),q(t1,3.2,2.2),q(t0,3.2,2.2),BASE);}
+  return this.mesh(pos,col,L.id);
+};
 TN.Landmarks.prototype.build=function(L){
+  if(L.kind==='dome') return this.buildDome(L);
+  if(L.kind==='orange') return this.buildOrange(L);
   if(L.kind==='olympic') return this.buildOlympic(L);
   if(L.kind!=='stadium') return null;
   const c0=TN.toLocal(L.lng,L.lat),fit=this.fit(L);
