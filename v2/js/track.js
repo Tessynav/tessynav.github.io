@@ -295,6 +295,14 @@ TN.Track.prototype.splitAhead=function(w,dir,s,D){
       if(Math.abs(lat)>2) sides.add(Math.sign(lat));}}
   const out=n>=2&&sides.size?sides:null;key.set(ck,out);if(key.size>400) key.clear();return out;
 };
+/* a ramp about to join a wider highway (within 80 m ahead): how much further from its line the GPS may be (0 if not) */
+TN.Track.prototype.mergeAhead=function(h){
+  const w=h.w,rem=h.dir>0?w.L-(h.r.s||0):(h.r.s||0);if(rem>80) return 0;
+  const endKey=h.dir>0?w.keys[w.keys.length-1]:w.keys[0];let mx=0;
+  for(const [v,vi] of (this.net.keys.get(endKey)||[])){if(v===w||!/^(motorway|trunk)/.test(v.cls||'')) continue;
+    const Wv=TN.width(v);if(Wv>TN.width(w)+3) mx=Math.max(mx,Wv/2+2);}
+  return mx;
+};
 /* the height of the road under a point (the matched road first, else the nearest road piece within its width);
    null when there's none */
 TN.Track.prototype.heightNear=function(x,z,h,y0){
@@ -335,7 +343,11 @@ TN.Track.prototype.frame=function(now,dt){
      road and follows its curves, instead of leaving it to follow the estimate (the Ville-Marie curve: the car swung
      between the road and the GPS, its heading jumping 40 degrees) */
   const inTun=!!h&&h.w.tun&&L.acc>4.5;
-  const snapped=!!h&&(h.side!=null?h.side:h.r.d)<=TN.width(h.w)/2+(inTun?30:6);
+  /* (a ramp in its last 80 m before it joins a wider highway: the map often joins it late, after you've already
+     moved over into the highway's lanes, 8-11 m beside the ramp's line; the car stays on the road instead of letting
+     go for a second and jumping across: the A-10 onto the Champlain Bridge, Nov 17) */
+  const mergeTol=h&&h.w.ramp&&this.mergeAhead?this.mergeAhead(h):0;
+  const snapped=!!h&&(h.side!=null?h.side:h.r.d)<=TN.width(h.w)/2+(inTun?30:6)+mergeTol;
   let car=this.car;
   /* turning at an intersection: when the car is near a junction and its real direction (filtered GPS) differs
      from the street's by more than 15 degrees, follow the actual path through the corner instead of the street;
@@ -496,6 +508,10 @@ TN.Track.prototype.frame=function(now,dt){
   {const sp=car.laneK==null&&!TN.navActive&&(L.acc||9)<=6&&L.v>3?this.splitAhead(w,dir,car.s,180):null;
    car.gf=car.gf==null?gl:car.gf+(gl-car.gf)*(1-Math.exp(-dt/0.5));
    if(sp&&sp.has(Math.sign(car.gf))&&Math.abs(car.gf)>Math.max(2,W/4)){const lim=W/2+8;target=Math.sign(car.gf)*Math.min(Math.abs(car.gf),lim);}}
+  /* a ramp joining a wider highway just ahead (80 m): the car moves over with you as you merge, following the precise
+     GPS, so it's already in the highway's lanes where the map joins the two */
+  if(w.ramp&&(L.acc||9)<=3&&L.v>8&&car.gf!=null&&Math.abs(car.gf)>2){const mt=this.mergeAhead(this.cur||{w:w,dir:dir,r:{s:car.s}});
+    if(mt>0) target=Math.sign(car.gf)*Math.min(Math.abs(car.gf),W/2+mt);}
   /* (gliding onto a new road piece: on highways up to 3 m past the edge, on city streets never onto the sidewalk) */
   {const eLim=/^(motorway|trunk)/.test(w.cls||'')?W/2+3:Math.max(0.5,W/2-0.8);
    if(car.ease&&car.ease.lat0!=null&&Math.abs(car.ease.lat0)>eLim) car.ease.lat0=Math.sign(car.ease.lat0)*eLim;}
@@ -513,7 +529,9 @@ TN.Track.prototype.frame=function(now,dt){
   }else{let d=(target-car.lat)*(1-Math.exp(-dt/0.9));
     /* (on highways the car moves across at most 0.6 m per second: each road piece's middle sits a little differently,
        and re-centring on every piece swung the car left and right; now it drifts over gently instead) */
-    if(/^(motorway|trunk)/.test(w.cls||'')){const mx=0.6*dt;d=Math.max(-mx,Math.min(mx,d));}
+    /* (a big gap, over 3 m from where the precise GPS says you are, e.g. after a ramp joins a highway: up to 2 m per
+       second, a smooth 3-4 s glide instead of a slow 13 s slide with the car beside you) */
+    if(/^(motorway|trunk)/.test(w.cls||'')){const big=Math.abs(target-car.lat)>3&&(L.acc||9)<=3&&car.gf!=null&&Math.abs(car.gf-car.lat)>3,mx=(big?2:0.6)*dt;d=Math.max(-mx,Math.min(mx,d));}
     /* (city streets: at most 0.5 m per second while the car is on the road. Streets are split into many short pieces,
        and switching between a two-way piece (car in the right half) and a one-way piece (car in the middle) slid the
        car across 2 m and back, the zigzag on Nuns' Island and in Outremont. Off the road's edge it still comes back fast.) */
