@@ -152,15 +152,22 @@ TN.Landmarks.prototype.buildDome=function(L){
   return this.mesh(pos,col,L.id);
 };
 TN.Landmarks.prototype.buildOrange=function(L){
-  const c=TN.toLocal(L.lng,L.lat),R=6.15,cy=R+1.6,pos=[],col=[],OR=[1.0,0.20,0.0],OR2=[0.85,0.16,0.0],BASE=[0.80,0.80,0.78];
+  /* like the photo: a smooth deep-orange ball sitting low, on a round ground floor (the counters) with a white rim
+     and warm light under its edge, a small round cap on top */
+  const c=TN.toLocal(L.lng,L.lat),R=6.15,cy=R+0.9,pos=[],col=[],OR=[0.95,0.20,0.0],RIM=[0.92,0.92,0.90],LIT=[1.0,0.72,0.35],CAP=[0.60,0.12,0.0];
   TN.landmarkHide.push({id:L.id,x:c[0],z:c[1],r:L.r});
   const tri=(a,b,d,k)=>{for(const p of [a,b,d]){pos.push(p[0],p[1],p[2]);col.push(k[0],k[1],k[2]);}};
-  /* the orange ball, with faint segment lines like an orange's skin, on a short white base */
-  const S=24,T=14,P=(i,j)=>{const th=i/S*Math.PI*2,ph=j/T*Math.PI;return [c[0]+R*Math.sin(ph)*Math.cos(th),cy+R*Math.cos(ph),c[1]+R*Math.sin(ph)*Math.sin(th)];};
-  for(let i=0;i<S;i++) for(let j=0;j<T;j++){const k=(i%3===0)?OR2:OR;tri(P(i,j),P(i+1,j),P(i+1,j+1),k);tri(P(i,j),P(i+1,j+1),P(i,j+1),k);}
-  const N=20;for(let k=0;k<N;k++){const t0=k/N*Math.PI*2,t1=(k+1)/N*Math.PI*2,q=(t,r,y)=>[c[0]+Math.cos(t)*r,y,c[1]+Math.sin(t)*r];
-    tri(q(t0,3.2,0),q(t1,3.2,0),q(t1,3.2,2.2),BASE);tri(q(t0,3.2,0),q(t1,3.2,2.2),q(t0,3.2,2.2),BASE);}
-  return this.mesh(pos,col,L.id);
+  const ring=(r0,r1,y0,y1,k)=>{const N=36;for(let n=0;n<N;n++){const t0=n/N*Math.PI*2,t1=(n+1)/N*Math.PI*2,q=(t,r,y)=>[c[0]+Math.cos(t)*r,y,c[1]+Math.sin(t)*r];
+    tri(q(t0,r0,y0),q(t1,r0,y0),q(t1,r1,y1),k);tri(q(t0,r0,y0),q(t1,r1,y1),q(t0,r1,y1),k);}};
+  ring(5.2,5.2,0,1.6,LIT);          /* the lit ground floor, under the ball's edge */
+  ring(5.2,6.3,1.6,1.9,RIM);        /* the white rim around it */
+  ring(6.3,6.3,1.9,2.2,RIM);
+  ring(0.0,1.1,cy+R+0.35,cy+R+0.35,CAP);ring(1.1,1.1,cy+R-0.1,cy+R+0.35,CAP);   /* the small cap on top */
+  const grp=this.mesh(pos,col,L.id);
+  /* the ball itself, smooth (not faceted), a little glossy */
+  if(!this.orangeMat) this.orangeMat=new THREE.MeshPhongMaterial({color:new THREE.Color().setRGB(OR[0],OR[1],OR[2]),shininess:40,specular:0x553311});
+  const ball=new THREE.Mesh(new THREE.SphereGeometry(R,40,24),this.orangeMat);ball.position.set(c[0],cy,c[1]);grp.add(ball);
+  return grp;
 };
 TN.Landmarks.prototype.build=function(L){
   if(L.kind==='dome') return this.buildDome(L);
