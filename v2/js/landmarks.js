@@ -24,13 +24,24 @@ TN.Landmarks.prototype.material=function(){
 };
 TN.Landmarks.prototype.update=function(lng,lat){
   if(!this.on||!this.scene||!this.scene.three) return;
+  /* the map's own building boxes where a model stands are hidden directly too (also the far, plain ones, which the
+     building code only reaches up close: the Olympic tower showed as a big grey box next to the model), again every
+     5 s for map tiles that arrive later */
+  if(performance.now()-(this.hideT||0)>5000){this.hideT=performance.now();try{this.hideMap();}catch(e){}}
   for(const L of TN.LANDMARKS){
     const d=TN.distLL([lng,lat],[L.lng,L.lat]),have=this.built.get(L.id);
     if(d<2500&&!have){let grp=null;try{grp=this.build(L);}catch(e){grp=null;}
-      this.built.set(L.id,grp||'none');if(grp) this.scene.three.scene.add(grp);}
+      this.built.set(L.id,grp||'none');if(grp){this.scene.three.scene.add(grp);try{this.hideMap();}catch(e){}}}
     else if(d>3500&&have){if(have!=='none'){this.scene.three.scene.remove(have);have.traverse(o=>{if(o.geometry) o.geometry.dispose();});}
       this.built.delete(L.id);TN.landmarkHide=TN.landmarkHide.filter(h=>h.id!==L.id);}
   }
+};
+TN.Landmarks.prototype.hideMap=function(){
+  const map=this.scene.map,H=TN.landmarkHide;if(!map||!H.length) return;
+  for(const f of TN.srcFeat(map,'building')){if(f.id==null) continue;const g=f.geometry;if(!g) continue;
+    const r=g.type==='Polygon'?g.coordinates[0]:g.type==='MultiPolygon'?g.coordinates[0][0]:null;if(!r||!r.length) continue;
+    let x=0,y=0;for(const q of r){x+=q[0];y+=q[1];}const c=TN.toLocal(x/r.length,y/r.length);
+    if(H.some(h=>Math.hypot(c[0]-h.x,c[1]-h.z)<h.r)) try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:f.id},{hide:true});}catch(e){}}
 };
 /* the real centre and direction of the pitch, from the map (its largest pitch near the landmark), when the map has it */
 TN.Landmarks.prototype.fit=function(L){
@@ -65,7 +76,7 @@ TN.Landmarks.prototype.buildOlympic=function(L){
   /* long axis: from the map's outline, or toward the tower */
   let ux,uz;if(fit){ux=fit.ux;uz=fit.uz;}else{const dx=T0[0]-cx,dz=T0[1]-cz,l=Math.hypot(dx,dz)||1;ux=dx/l;uz=dz/l;}
   const vx=-uz,vz=ux,A=fit?Math.min(150,Math.max(100,fit.a)):135,B=fit?Math.min(130,Math.max(85,fit.b)):115;
-  TN.landmarkHide.push({id:L.id,x:cx,z:cz,r:Math.max(A,B)+15},{id:L.id,x:T0[0],z:T0[1],r:45});
+  TN.landmarkHide.push({id:L.id,x:cx,z:cz,r:Math.max(A,B)+15},{id:L.id,x:T0[0],z:T0[1],r:80});
   const pos=[],col=[];
   const P=(u,y,v)=>[cx+ux*u+vx*v,y,cz+uz*u+vz*v];
   const tri=(a,b,c,k)=>{for(const p of [a,b,c]){pos.push(p[0],p[1],p[2]);col.push(k[0],k[1],k[2]);}};

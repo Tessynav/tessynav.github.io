@@ -160,7 +160,10 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     const esc=t=>String(t).replace(/[<>&]/g,'');
     const road=car&&car.snapped?(car.w&&car.w.name?esc(car.w.name):({motorway:'Highway',trunk:'Highway',primary:'Main street',secondary:'Street',tertiary:'Street',minor:'Street',service:'Service road'}[car.cls]||'Road')):null;
     if(TN.inGarage) $('status').innerHTML=TN.garageMsg||'Underground parking';
-    else if(c.accuracy>60) $('status').innerHTML='Finding Tessy… <span class="g">GPS '+Math.round(c.accuracy)+' m</span>';
+    /* (the Tesla says 10000 m for a second or two under overpasses while its position is still fine: the status
+       keeps what it said, instead of flashing "Finding Tessy… GPS 10000 m") */
+    else if(c.accuracy>=9999&&road){}
+    else if(c.accuracy>60) $('status').innerHTML='Finding Tessy… <span class="g">GPS '+(c.accuracy>=9999?'searching':Math.round(c.accuracy)+' m')+'</span>';
     else $('status').innerHTML=(road||'Finding the road…')+' <span class="g">· GPS '+Math.round(c.accuracy)+' m'+(covered?'':' · outside the map')+'</span>';
     if(c.accuracy<100){try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
     wantPacks(c.longitude,c.latitude);

@@ -1,4 +1,4 @@
-/* TessyNav v2 — garage.js (v2: also notices a garage from the Tesla's weaker position estimate underground)
+/* TessyNav v2 — garage.js (v3: also notices a garage from the Tesla's weaker position estimate underground, or from its "unknown" accuracy)
    Underground parking. GPS stops working underground, so when you drive down into a garage TessyNav:
    - notices it: you were on a garage ramp or parking lane (a service road the map marks as a tunnel or parking
      aisle) at parking speed, then the GPS went quiet or very rough for 6 s
@@ -24,6 +24,11 @@ TN.Garage.prototype.fix=function(acc,speed){
     else{if(acc<=35) this.goodRun++;else this.goodRun=0;if(this.goodRun>=3) this.leave('gps back');}
     return;}
   if(acc>35){if(!this.roughSince) this.roughSince=now;this.goodRun=0;}else{this.roughSince=0;this.goodRun++;}
+  /* (and in some garages, like DIX30, the Tesla says it doesn't know its accuracy at all (10000 m), also when the app is
+     opened inside the garage. Under an overpass that lasts a second or two at speed; 8 s at parking speed means a
+     garage. Checked on your recordings: only the start of your Nov 16 drive out of the DIX30 garage matches.) */
+  if(acc>=9999&&speed<6){if(!this.unkSince) this.unkSince=now;else if(now-this.unkSince>=8000&&!this.snooze&&!this.off){this.unkSince=0;this.enter('follow');return;}}
+  else this.unkSince=0;
   this.hist=(this.hist||[]).filter(h=>now-h[0]<=60000);
   const base=this.hist.length>10?this.hist.map(h=>h[1]).sort((x,y)=>x-y)[this.hist.length>>1]:null;
   if(this.snooze&&acc<=3.5) this.snooze=false;   /* (closed by hand: not again until the GPS has been good) */
