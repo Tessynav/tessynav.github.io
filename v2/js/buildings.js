@@ -182,7 +182,7 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   if(TN.landmarkHide&&TN.landmarkHide.length){let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
     if(TN.landmarkHide.some(h=>Math.hypot(cx-h.x,cz-h.z)<h.r)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}}
   /* a building standing in the river or a lake (like the house beside the Champlain Bridge): left out */
-  if(this.inWater(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
+  if(this.inWater&&this.inWater(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
   /* a station roof over the REM tracks, mapped as a solid building: left out (the REM station is drawn instead) */
   if(this.overRem(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
   /* a building whose footprint crosses a street (a skybridge, a building over a road): room to drive underneath */

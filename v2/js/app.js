@@ -737,8 +737,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
           aim=TN.fromLocal(car.x+Math.sin(hr)*d,car.z-Math.cos(hr)*d);
         }
         autoZoom=gZoom;
-        /* 2D view: flat and 2 zoom levels out, the car a little lower than the middle so more road ahead shows */
-        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-2.0*ck,pitch:pitchNow,padding:{top:Math.round(H*(0.56-0.12*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
+        /* 2D view: flat and a little zoomed out (was 2 levels: too far, Nov 17), the car a little lower than the middle so more road ahead shows */
+        const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-0.8*ck,pitch:pitchNow,padding:{top:Math.round(H*(0.56-0.12*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
         map.jumpTo(view);
         if(ready) setLite(true);
       }

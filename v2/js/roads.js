@@ -1868,9 +1868,28 @@ TN.Net.prototype.drawJC=function(L,w,P,N,hw,H){
   /* where the main span starts and ends along this road: the points nearest the two shores */
   const near=ll=>{const q=TN.toLocal(ll[0],ll[1]);let bs=null,bd=1e9;for(let i=0;i<P.length-1;i++){const r=TN.seg(w,i,q[0],q[1]);if(r.d<bd){bd=r.d;bs=r.s;}}return bd<80?bs:null;};
   /* (the cantilever section is 590 m long, from the pier on the Montréal wharf to the pier on the island shore) */
-  const sa=near(TN.JC.a),sb=near(TN.JC.b);if(sb==null) return;
-  let s0,s1;if(sa==null||sa<sb){s0=sb-590;s1=sb;}else{s0=sb;s1=sb+590;}
-  s0=Math.max(0,s0);s1=Math.min(Lw,s1);const len=s1-s0;if(len<150) return;
+  const sa=near(TN.JC.a),sb=near(TN.JC.b);
+  let s0=-1,s1=-1;if(sb!=null){if(sa==null||sa<sb){s0=sb-590;s1=sb;}else{s0=sb;s1=sb+590;}s0=Math.max(0,s0);s1=Math.min(Lw,s1);}
+  /* ---- the rest of the bridge (over Île Sainte-Hélène and the channel to Longueuil, over Route 132): its green
+     steel is underneath, seen when you drive below it - two deep girders under the deck edges, with X bracing
+     between them and a cross beam every 10 m. Only where the deck is at least 6 m up. (Nov 17: under it on the
+     Longueuil side it was plain grey.) ---- */
+  {const gd=3.2,go=hw+0.08,stp=10;
+    for(let i=0;i<P.length-1;i++){const a0=w.cum[i],a1=w.cum[i+1];
+      for(let x=Math.ceil(a0/stp)*stp;x<a1;x+=stp){const xa=x,xb=Math.min(a1,x+stp);if(xb-xa<1) continue;
+        if(s1>s0&&xb>s0&&xa<s1) continue;   /* (the main span has its own frame) */
+        const ha=H(i)+(H(i+1)-H(i))*((xa-a0)/(a1-a0||1));if(ha<6) continue;
+        const pt=(ss,h,off)=>{const u=(ss-a0)/(a1-a0||1),nx=N[i][0]+(N[i+1][0]-N[i][0])*u,nz=N[i][1]+(N[i+1][1]-N[i][1])*u;
+          return [P[i][0]+(P[i+1][0]-P[i][0])*u+nx*off,H(i)+(H(i+1)-H(i))*u+h,P[i][1]+(P[i+1][1]-P[i][1])*u+nz*off];};
+        for(const sg of [-1,1]){const o=sg*go;   /* girder faces (both sides of each, so they show from anywhere) */
+          TN.quad(G,pt(xa,-0.3,o),pt(xb,-0.3,o),pt(xb,-gd,o),pt(xa,-gd,o),col);
+          TN.quad(G,pt(xa,-gd,o),pt(xb,-gd,o),pt(xb,-0.3,o),pt(xa,-0.3,o),col);}
+        /* a cross beam and one diagonal of the X bracing (alternating), seen from below */
+        const A=pt(xa,-gd+0.4,-go),B=pt(xa,-gd+0.4,go);TN.quad(G,[A[0],A[1]-0.35,A[2]],[B[0],B[1]-0.35,B[2]],[B[0],B[1]+0.35,B[2]],[A[0],A[1]+0.35,A[2]],dark);
+        const sgn=Math.round(xa/stp)%2?1:-1,C=pt(xa,-gd+0.2,-go*sgn),D=pt(xb,-gd+0.2,go*sgn);
+        TN.quad(G,[C[0],C[1]-0.25,C[2]],[D[0],D[1]-0.25,D[2]],[D[0],D[1]+0.25,D[2]],[C[0],C[1]+0.25,C[2]],dark);
+        TN.quad(G,[C[0],C[1]+0.25,C[2]],[D[0],D[1]+0.25,D[2]],[D[0],D[1]-0.25,D[2]],[C[0],C[1]-0.25,C[2]],dark);}}}
+  if(s1<0) return;const len=s1-s0;if(len<150) return;
   /* height of the top of the frame along the span (0 = the Montréal end, 1 = the island end) */
   const top=f=>{const g=f<0.5?f:1-f;return g<0.24?12+36*Math.sin(g/0.24*Math.PI/2):24+24*Math.cos((g-0.24)/0.26*Math.PI/2);};
   const at=(s,h,off)=>{let i=0;while(i<w.cum.length-2&&w.cum[i+1]<s) i++;const a0=w.cum[i],a1=w.cum[i+1],u=a1>a0?Math.max(0,Math.min(1,(s-a0)/(a1-a0))):0;
