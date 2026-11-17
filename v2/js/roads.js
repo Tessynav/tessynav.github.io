@@ -1854,6 +1854,47 @@ TN.Net.prototype.drawTruss=function(L,w,P,N,hw,H){
   }
   const e=at(Lw,0);bar(at(Lw,0),[e[0],e[1]+TH,e[2]],0.4,col);
 };
+/* ---- the Jacques-Cartier Bridge's main span: the big green steel cantilever over the river's main channel, the
+   road running through it. The frame rises from about 12 m at its ends to its peaks (about 48 m) over the two main
+   piers, dips to about 24 m in the middle (the hanging span), with verticals and diagonals, beams across the top,
+   and the four small ornamental towers ("the Eiffel Towers", about 4.6 m) on the peaks. Only over the main channel (between the Montréal shore and
+   Île Sainte-Hélène); the rest of the bridge has its steel underneath. ---- */
+TN.JC={a:[-73.5470,45.5240],b:[-73.5376,45.5212],col:[0.085,0.19,0.13]};   /* (a deep steel green; the colours here are before the screen brightens them) */
+TN.Net.prototype.drawJC=function(L,w,P,N,hw,H){
+  const G=L.road,col=TN.C.jcSteel||TN.JC.col,dark=[col[0]*0.78,col[1]*0.78,col[2]*0.78],Lw=w.cum[w.cum.length-1];
+  /* where the main span starts and ends along this road: the points nearest the two shores */
+  const near=ll=>{const q=TN.toLocal(ll[0],ll[1]);let bs=null,bd=1e9;for(let i=0;i<P.length-1;i++){const r=TN.seg(w,i,q[0],q[1]);if(r.d<bd){bd=r.d;bs=r.s;}}return bd<80?bs:null;};
+  /* (the cantilever section is 590 m long, from the pier on the Montréal wharf to the pier on the island shore) */
+  const sa=near(TN.JC.a),sb=near(TN.JC.b);if(sb==null) return;
+  let s0,s1;if(sa==null||sa<sb){s0=sb-590;s1=sb;}else{s0=sb;s1=sb+590;}
+  s0=Math.max(0,s0);s1=Math.min(Lw,s1);const len=s1-s0;if(len<150) return;
+  /* height of the top of the frame along the span (0 = the Montréal end, 1 = the island end) */
+  const top=f=>{const g=f<0.5?f:1-f;return g<0.24?12+36*Math.sin(g/0.24*Math.PI/2):24+24*Math.cos((g-0.24)/0.26*Math.PI/2);};
+  const at=(s,h,off)=>{let i=0;while(i<w.cum.length-2&&w.cum[i+1]<s) i++;const a0=w.cum[i],a1=w.cum[i+1],u=a1>a0?Math.max(0,Math.min(1,(s-a0)/(a1-a0))):0;
+    const nx=N[i][0]+(N[i+1][0]-N[i][0])*u,nz=N[i][1]+(N[i+1][1]-N[i][1])*u;
+    return [P[i][0]+(P[i+1][0]-P[i][0])*u+nx*off,H(i)+(H(i+1)-H(i))*u+h,P[i][1]+(P[i+1][1]-P[i][1])*u+nz*off];};
+  const bar=(A,B,t,c)=>{const dx=B[0]-A[0],dy=B[1]-A[1],dz=B[2]-A[2],l=Math.hypot(dx,dy,dz)||1,hl=Math.hypot(dx,dz)||1,ux=dx/hl,uz=dz/hl;
+    const ex=-(dy/l)*ux*t/2,ey=(hl/l)*t/2,ez=-(dy/l)*uz*t/2;
+    TN.quad(G,[A[0]-ex,A[1]-ey,A[2]-ez],[B[0]-ex,B[1]-ey,B[2]-ez],[B[0]+ex,B[1]+ey,B[2]+ez],[A[0]+ex,A[1]+ey,A[2]+ez],c);};
+  const flat=(A,B,C,D,c)=>TN.quad(G,A,B,C,D,c);
+  const n=Math.max(8,Math.round(len/14)),ds=len/n,side=hw+0.9;
+  for(const sg of [-1,1]){const o=sg*side;
+    for(let k=0;k<n;k++){const sa=s0+k*ds,sb=sa+ds,fa=k/n,fb=(k+1)/n,ha=top(fa),hb=top(fb);
+      bar(at(sa,0.6,o),at(sb,0.6,o),1.3,col);                 /* bottom chord, beside the road */
+      bar(at(sa,ha,o),at(sb,hb,o),1.8,col);                   /* top chord, following the profile */
+      bar(at(sa,0,o),at(sa,ha,o),k%4===0?2.0:1.0,k%4===0?dark:col);   /* verticals */
+      if(k%2) bar(at(sa,0.6,o),at(sb,hb,o),0.9,col);else bar(at(sa,ha,o),at(sb,0.6,o),0.9,col);   /* diagonals */
+    }
+    bar(at(s1,0,o),at(s1,top(1),o),2.0,dark);}
+  /* beams across the top, every other panel, wherever the frame is high enough above the traffic */
+  for(let k=0;k<=n;k+=2){const s=s0+k*ds,h=top(k/n);if(h<9) continue;const A=at(s,h,-side),B=at(s,h,side);
+    flat([A[0],A[1]-0.6,A[2]],[B[0],B[1]-0.6,B[2]],[B[0],B[1]+0.6,B[2]],[A[0],A[1]+0.6,A[2]],dark);}
+  /* the four small towers on the peaks (one on each side of each peak) */
+  for(const f of [0.24,0.76]) for(const sg of [-1,1]){const s=s0+f*len,h=top(f),c=at(s,h,sg*side),d=1.3;
+    const lo=c[1],hi=c[1]+3,pts=[[-d,-d],[d,-d],[d,d],[-d,d]],X=(p,y)=>{const q=at(s+p[0],0,sg*side+p[1]);return [q[0],y,q[2]];};
+    for(let i=0;i<4;i++){const p=pts[i],q=pts[(i+1)%4];flat(X(p,lo),X(q,lo),X(q,hi),X(p,hi),col);
+      TN.quad(G,X(p,hi),X(q,hi),[c[0],hi+1.8,c[2]],[c[0],hi+1.8,c[2]],dark);}}
+};
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
   const H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
@@ -1909,6 +1950,7 @@ TN.Net.prototype.drawWay=function(L,w,runs){
      about 9 m apart, at most 120 m. Drawn with the ramp. ---- */
   if((w.ramp||/_link$/.test(w.cls||''))&&!w.tun&&P.length>1&&!(TN.settings&&TN.settings.gores===false)) try{this.drawGore(L,w,P,N,hw,H);}catch(e){}
   if(/^Pont Victoria$/.test(w.name||'')&&P.length>1) try{this.drawTruss(L,w,P,N,hw,H);}catch(e){}
+  if(/^Pont Jacques-Cartier$/.test(w.name||'')&&P.length>1) try{this.drawJC(L,w,P,N,hw,H);}catch(e){}
   if(w.ow&&!w.ramp&&!w.tun&&/^(motorway|trunk)$/.test(w.cls||'')&&TN.DIVIDERS!==false&&!(TN.settings&&TN.settings.dividers===false)) try{this.drawDivider(L,w);}catch(e){}
   const line=(G,a,b,of,dash,gap,col,half,edgeOut)=>{
     for(let i=a;i<b;i++){
