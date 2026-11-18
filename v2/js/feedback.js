@@ -1,4 +1,4 @@
-/* TessyNav v2 — feedback.js (v7)
+/* TessyNav v2 — feedback.js (v8: the tester's name, and details for sorting reports by type: garage, Spotify)
    While driving (a route, or moving): one tap on the button SENDS the moment right away (screenshot, time, street,
    position, what the app was doing) and Rocco confirms it clearly; no typing on the road. After the trip, Rocco asks
    whether to add details, which are added to that same report (a comment on the same issue). The app keeps a light
@@ -65,6 +65,8 @@ TN.Feedback.prototype.button=function(){
   b.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>Report</span>';b.setAttribute('aria-label','Report a problem');b.title='Report a problem';
   b.onclick=()=>{if(this.driving()) this.moment();else if(this.pend.some(m=>!m.asked)) this.details();else this.open();};document.body.appendChild(b);
 };
+/* the beta tester's name (typed once in the form, kept in this browser; shown on their reports) */
+TN.Feedback.prototype.tester=function(){try{return localStorage.getItem('tn2_tester')||'';}catch(e){return '';}};
 TN.Feedback.prototype.open=function(){
   let P=document.getElementById('tn-fb');if(!P){P=document.createElement('div');P.id='tn-fb';document.body.appendChild(P);}
   /* (the screenshot is taken now, before the form covers the map) */
@@ -73,6 +75,7 @@ TN.Feedback.prototype.open=function(){
   P.innerHTML='<h3>Send feedback</h3><div class="s">Tell us what happened. A tap on Send is enough: the details are added for you.</div>'+
     '<div class="k">'+kinds.map(k=>'<button data-k="'+k[0]+'" class="'+(k[0]==='bug'?'on':'')+'">'+k[1]+'</button>').join('')+'</div>'+
     '<textarea placeholder="What happened? (optional)"></textarea>'+
+    '<input class="tst" maxlength="24" placeholder="Your name (beta testers, optional)" value="'+fbEsc(this.tester())+'" style="width:100%;box-sizing:border-box;margin-top:8px;border-radius:12px;border:1px solid rgba(127,127,127,.35);background:rgba(0,0,0,.15);color:inherit;padding:10px;font:15px system-ui,sans-serif">'+
     '<label><input type="checkbox" class="sh" checked> Include a screenshot</label>'+
     '<label><input type="checkbox" class="lo" checked> Include my location</label>'+
     '<div class="row"><button class="cancel">Cancel</button><button class="send">Send</button></div>';
@@ -97,7 +100,8 @@ TN.Feedback.prototype.report=function(withLoc){
   const info={build:TN.APPBUILD,files:(window.TN_FILES||[]).map(f=>f.replace('js/','')),lang:TN.LANG,ua:navigator.userAgent,screen:[window.innerWidth,window.innerHeight,window.devicePixelRatio],
     time:new Date().toString(),settings:safe,tesla:!!(TN.tesla&&TN.tesla.connected()),car:TN.carInfo||null,
     route:r?{active:!!nav.active,dest:nav.dest&&nav.dest.name,km:+(r.L/1000).toFixed(2),at:nav.ps!=null?Math.round(nav.ps):null}:null,
-    gps:g?{acc:g.acc!=null?Math.round(g.acc):null,speed:Math.round((g.v||0)*3.6)}:null,snapped:!!(c&&c.snapped)};
+    gps:g?{acc:g.acc!=null?Math.round(g.acc):null,speed:Math.round((g.v||0)*3.6)}:null,snapped:!!(c&&c.snapped),
+    tester:this.tester(),garage:!!TN.inGarage,spotify:(()=>{try{return !!localStorage.getItem('tn_sp_tok');}catch(e){return false;}})()};
   if(withLoc&&c&&c.x!=null&&TN.fromLocal){const ll=TN.fromLocal(c.x,c.z);info.position=[+ll[1].toFixed(5),+ll[0].toFixed(5)];}
   return {info:info,errors:this.errs.slice(),events:this.log.slice(-400),seconds:this.sec.slice(-1800),gps:withLoc?this.gps.slice(-600):[],
     auto:this.auto.map(a=>({t:a.t,why:a.why,place:a.place}))};
@@ -106,6 +110,7 @@ TN.Feedback.prototype.send=async function(P){
   const btn=P.querySelector('.send'),say=m=>{if(TN.toast) TN.toast(m);else if(this.api.nav&&this.api.nav.toast) this.api.nav.toast(m);};
   btn.disabled=true;btn.textContent='Sending…';
   if(!this.shot&&P.querySelector('.sh').checked) await new Promise(r=>setTimeout(r,600));
+  {const tv=P.querySelector('.tst');if(tv){try{localStorage.setItem('tn2_tester',tv.value.trim().slice(0,24));}catch(e){}}}
   this.loc=P.querySelector('.lo').checked;try{localStorage.setItem('tn2_fbloc',JSON.stringify(this.loc));}catch(e){}
   const cl=P.querySelector('.sh').checked?await this.clipData():{img:[],t:[]};
   const body={kind:this.kind,text:P.querySelector('textarea').value.slice(0,2000),report:Object.assign(this.report(this.loc),{clipT:cl.t}),
