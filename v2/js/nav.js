@@ -1315,10 +1315,16 @@ TN.Nav.prototype.place=function(base,L,now,dt){
    if(this.latS!=null) lo=this.latS;}
   /* the blue line in your lane (not glued): near the car the line is drawn where the car is across the road, so in a
      turn lane or the left lane of a wide street the car sits on the line instead of beside it (Rue De Montbrun, Nov 17:
-     5 m apart). Smoothed over about a second; the line goes back to its normal place 60-200 m ahead. */
+     5 m apart). The line goes back to its normal place 60-200 m ahead. */
   if(!(TN.settings&&TN.settings.glueRoute)&&this.latS==null&&base.x!=null){
     const cx0=px+mi(1),cz0=pz+mi(2),lc=(base.x-cx0)*(-uz)+(base.z-cz0)*ux;
-    if(Math.abs(lc)<9){this.latD=this.latD==null?lc:this.latD+(lc-this.latD)*Math.min(1,dt*1.0);}else this.latD=null;}
+    /* (v2, Nov 18: it followed every small sideways wobble, so the line hopped half a metre now and then, and with the
+       car 8 m off in a parking lot it jumped right over to it. Now: within 1.3 m of the line's lane the line stays put;
+       a real other lane (1.3-5 m) moves it there, gliding at 1.2 m/s; further than 5 m is somewhere else (a lot, a
+       service road), and the line stays on the route) */
+    const dd=lc-lo,tgt=Math.abs(dd)<1.3||Math.abs(dd)>5?lo:lc,cur=this.latD==null?lo:this.latD,df=tgt-cur,st=1.2*dt;
+    const nx=cur+(Math.abs(df)<st?df:Math.sign(df)*st);
+    this.latD=(tgt===lo&&Math.abs(nx-lo)<0.05)?null:nx;}
   else this.latD=null;
   let y=base.y!=null?base.y:mi(3);
   {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
