@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=131;
+TN.APPBUILD=132;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -227,6 +227,13 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
       map.jumpTo({center:O.c,zoom:O.z,pitch:O.p,bearing:O.b});};
     requestAnimationFrame(step);
   })();
+  /* ---- blinker test (?blinktest=1): for filming. The 3D car signals left for 4 s, pauses, then right for 4 s, over and
+     over, without navigation. Works parked, and during a trip replay (the car drives with its blinkers going). */
+  if(/[?&]blinktest=1/.test(location.search)){
+    const seq=[[-1,4000],[0,1200],[1,4000],[0,1200]];let si=0;
+    const nextB=()=>{if(!(TN.navActive)){TN.blink=seq[si][0];}const d=seq[si][1];si=(si+1)%seq.length;setTimeout(nextB,d);};
+    setTimeout(nextB,2000);
+  }
   (function autoStart(){
     if(TN.ORBIT) return;   /* (filming mode: no GPS, the camera circles a landmark instead) */
     let ok=false;try{ok=localStorage.getItem('tn2_gpsok')==='1';}catch(e){}
