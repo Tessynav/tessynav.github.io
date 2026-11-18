@@ -112,7 +112,7 @@ window.TN_PROGRESS=function(){};
 })();
 /* (the real opening plays after an update too, with a thin progress line under it, instead of the old
    "Updating TessyNav" screen with a faded picture of the map from before) */
-(function(){let on=true;try{if(/[?&](intro=0|orbit=)/.test(location.search)) on=false;
+(function(){let on=true;try{if(/[?&]intro=0/.test(location.search)) on=false;
   const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');if(st&&st.intro===false) on=false;}catch(e){}
   const b=document.getElementById('tn-boot');
   if(!on){b.parentNode.removeChild(b);return;}
@@ -153,7 +153,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/landmarks.js?v=5"></script>
 <script src="js/garage.js?v=5"></script>
 <script src="js/habits.js?v=1"></script>
-<script src="js/intro.js?v=9"></script>
+<script src="js/intro.js?v=8"></script>
 <script src="js/rem.js?v=13"></script>
 <script src="js/parking.js?v=3"></script>
 <script src="js/season.js?v=6"></script>
@@ -162,7 +162,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/weather.js?v=2"></script>
 <script src="js/settings.js?v=37"></script>
 <script src="js/voice.js?v=5"></script>
-<script src="js/nav.js?v=104"></script>
+<script src="js/nav.js?v=105"></script>
 <script src="js/incidents.js?v=20"></script>
 <script src="js/chargers.js?v=3"></script>
 <script src="js/tesla.js?v=6"></script>
@@ -171,7 +171,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/tunnel.js?v=3"></script>
 <script src="js/feedback.js?v=8"></script>
 <script src="js/rec.js?v=4"></script>
-<script src="js/app.js?v=143"></script>
+<script src="js/app.js?v=140"></script>
 <script src="js/music.js?v=6"></script>
 </template>
 <script>
