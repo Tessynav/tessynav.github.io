@@ -56,7 +56,7 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .rk{display:none;align-items:center;gap:6px;margin-left:10px;flex:none}#tn-bar .rk.on{display:inline-flex}'+
    '#tn-bar .rk .bub{background:#fff;color:#1d2b3a;border:1px solid #d6dbe1;border-radius:12px;padding:2px 10px;font:600 13px system-ui,sans-serif;white-space:nowrap;transition:opacity .6s}'+
    '#tn-bar .rk .bub.off{opacity:0}#tn-bar .rk svg{display:block}'+
-   '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:var(--tn-sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}'+
+   '#tn-bar{padding-bottom:22px!important}#tn-bar .then{font-size:13px;color:var(--tn-sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-bar .then:empty{display:none}#tn-bar .then.soon{font-size:16px;font-weight:700;color:var(--tn-accent);margin-top:5px}'+
    /* far from the next turn: a slim one-line pill (more road on screen); full again ~2 km before the turn */
    '#tn-bar.slim{padding:6px 16px!important;gap:10px;border-radius:999px;right:auto;max-width:min(620px,calc(100vw - 120px))}#tn-bar.slim .a{width:26px}#tn-bar.slim .a svg{width:24px;height:24px}'+
    '#tn-bar.slim .t{display:flex;align-items:center;gap:10px}#tn-bar.slim .dist{font-size:17px}#tn-bar.slim .ins{font-size:14px}#tn-bar.slim .then,#tn-bar.slim .lanes,#tn-bar.slim .rk,#tn-bar.slim .dst,#tn-bar.slim .pb{display:none!important}'+
@@ -1349,6 +1349,20 @@ TN.Nav.prototype.showLimit=function(lim,kmh){
   el.classList.toggle('over',kmh>lim+3);
 };
 /* ---------- while driving ---------- */
+/* the move right after this one, when it comes within 500 m (two forks close together: exit 22 on the A-10 East, then
+   keep left toward Chambly 200 m later on the ramp, Nov 18: the second one was only announced on the ramp, 10 s
+   before). Said and shown together from the start: "Take exit 22, then keep left toward Chambly". */
+TN.Nav.prototype.thenStep=function(nx){
+  const R=this.route;if(!R||!nx||nx.type==='arrive') return null;
+  const k=R.steps.indexOf(nx),n2=k>=0?R.steps[k+1]:null;
+  if(!n2||n2.type==='arrive'||n2.at-nx.at>500) return null;
+  if(n2.type==='new name'||(n2.type==='continue'&&(!n2.mod||n2.mod==='straight'))) return null;
+  const I2=this.instr(n2);let t=I2.t.charAt(0).toLowerCase()+I2.t.slice(1);
+  const d=String(n2.dest||'');
+  if((n2.type==='fork'||n2.type==='off ramp')&&d) t+=' toward '+d.split(':').pop().split(',')[0].trim();
+  else if(I2.where) t+=' onto '+I2.where;
+  return {s:n2,t:t};
+};
 TN.Nav.prototype.instr=function(s){
   const m=s.mod,side=m.indexOf('left')>=0?'left':m.indexOf('right')>=0?'right':'';
   const arrow={'left':'left','right':'right','slight left':'sleft','slight right':'sright','sharp left':'left','sharp right':'right','straight':'straight','uturn':'uturn'}[m]||'straight';
@@ -1501,11 +1515,14 @@ TN.Nav.prototype.update=function(dt){
         [{d:400,text:'In 400 metres, '+t+w},{d:150,text:'In 150 metres, '+t+w},{d:30,text:I2.t+w}];}
     let due=null;for(const an of anns){const key=k+':'+an.d;if(this.said.has(key)) continue;if(dNext<=an.d+5){this.said.add(key);due=an;}}
     /* (only the latest one due is spoken, so nothing piles up after a pause) */
-    if(due&&dNext>-10&&!(due.d>dNext+250)){const lastD=Math.min(...anns.map(x=>x.d));TN.voice.say(due.text,true,due.d===lastD&&nx.type!=='arrive');}}   /* (the last one for a turn, at the turn, may get the chime) */
+    if(due&&dNext>-10&&!(due.d>dNext+250)){const lastD=Math.min(...anns.map(x=>x.d));let tx=due.text;
+      const tn=this.thenStep(nx);if(tn&&!/\b(then|puis)\b/i.test(tx)) tx=tx.replace(/[.\s]+$/,'')+(TN.LANG==='fr'?', puis ':', then ')+tn.t;
+      TN.voice.say(tx,true,due.d===lastD&&nx.type!=='arrive');}}   /* (the last one for a turn, at the turn, may get the chime) */
   /* the following turn ("Then: ...") */
   {const k=R.steps.indexOf(nx),n2=k>=0?R.steps[k+1]:null;
    let th='';if(n2&&nx.type!=='arrive'){const I2=this.instr(n2);th='Then: '+(n2.type==='arrive'?'arrive':I2.t.charAt(0).toLowerCase()+I2.t.slice(1))+(I2.where&&n2.type!=='arrive'?' onto '+I2.where:'');}
-   const te=this.bar.querySelector('.then');if(te.textContent!==th) te.textContent=th;}
+   const tn=this.thenStep(nx),soon=!!tn;if(tn) th=(TN.LANG==='fr'?'Juste après : ':'Right after: ')+tn.t;
+   const te=this.bar.querySelector('.then');if(te.textContent!==th) te.textContent=th;if(soon!==te.classList.contains('soon')) te.classList.toggle('soon',soon);}
   /* progress: done part grey, the part ahead coloured by traffic (refreshed every few seconds), the car as a dot */
   {const f=Math.max(0,Math.min(1,s/Math.max(1,R.L))),pb=this.bar.querySelector('.pb');
    pb.querySelector('.car').style.left=(f*100).toFixed(2)+'%';
