@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=130;
+TN.APPBUILD=131;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -191,7 +191,44 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   $('btn').onclick=()=>{if(watchId!==null&&gpsLastAcc>1000) restartGps();else startFollow();};
   /* start following Tessy by itself when location is already allowed (no Start tap needed);
      the first time on a new device, the Start button asks for permission as before */
+  /* ---- filming mode (?orbit=olympic): for the TikTok / Reels videos. The camera circles one landmark slowly, like a
+     drone shot, with every button and panel hidden and no GPS. Tap the screen to pause / resume the turn.
+     Names: olympic, saputo, biosphere, julep, champlain, jacquescartier, victoria.
+     Extras: &spin=8 (degrees a second, minus turns the other way; 6 by default), &zoom=16.5, &pitch=65. */
+  TN.ORBITS={
+    olympic:{c:[-73.551575,45.557861],z:16.4,p:62},
+    saputo:{c:[-73.55285,45.56265],z:16.9,p:60},
+    biosphere:{c:[-73.531746,45.514164],z:17.4,p:60},
+    julep:{c:[-73.6568,45.4957],z:18.4,p:62},
+    champlain:{c:[-73.5048,45.4679],z:16.0,p:66},
+    jacquescartier:{c:[-73.53973,45.52231],z:16.0,p:64},
+    victoria:{c:[-73.52114,45.49441],z:16.0,p:64}
+  };
+  TN.ORBITS.orange=TN.ORBITS.julep;TN.ORBITS.cartier=TN.ORBITS.jacquescartier;TN.ORBITS.stadium=TN.ORBITS.olympic;
+  TN.ORBIT=null;
+  (function orbitMode(){
+    const q=location.search,m=q.match(/[?&]orbit=([a-z]+)/i);if(!m) return;
+    const S=TN.ORBITS[m[1].toLowerCase()];if(!S) return;
+    const num=(k,d)=>{const r=q.match(new RegExp('[?&]'+k+'=(-?[0-9.]+)'));const v=r?parseFloat(r[1]):NaN;return isFinite(v)?v:d;};
+    const O=TN.ORBIT={c:S.c,z:num('zoom',S.z),p:Math.min(80,num('pitch',S.p)),spin:num('spin',6),b:num('bearing',0),paused:false};
+    document.body.classList.add('tn-orbit');
+    const st=document.createElement('style');
+    st.textContent='body.tn-orbit>*:not(#map):not(script):not(template):not(style){display:none!important}';
+    document.head.appendChild(st);
+    try{for(const h of ['dragPan','dragRotate','scrollZoom','touchZoomRotate','doubleClickZoom','keyboard','touchPitch']) map[h]&&map[h].disable();}catch(e){}
+    map.jumpTo({center:O.c,zoom:O.z,pitch:O.p,bearing:O.b});
+    map.getCanvasContainer().addEventListener('click',()=>{O.paused=!O.paused;});
+    let t0=0,startAt=0;
+    const step=t=>{requestAnimationFrame(step);
+      if(!ready) return;
+      if(!startAt){startAt=t+2500;wantPacks(O.c[0],O.c[1]);}
+      const dt=t0?Math.min(0.1,(t-t0)/1000):0;t0=t;
+      if(t>startAt&&!O.paused) O.b=(O.b+O.spin*dt+360)%360;
+      map.jumpTo({center:O.c,zoom:O.z,pitch:O.p,bearing:O.b});};
+    requestAnimationFrame(step);
+  })();
   (function autoStart(){
+    if(TN.ORBIT) return;   /* (filming mode: no GPS, the camera circles a landmark instead) */
     let ok=false;try{ok=localStorage.getItem('tn2_gpsok')==='1';}catch(e){}
     /* start once the map has loaded, plus a moment (like a natural tap on Start), so the GPS answers precisely */
     const go=()=>{$('status').textContent='Finding Tessy…';const st=()=>setTimeout(()=>{if(watchId===null) startFollow();},1500);
