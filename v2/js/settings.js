@@ -5,7 +5,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.ACCOUNT_URL='https://tessynav.github.io/account.html';   /* (the TessyNav website's Account page; tessynav.com once the domain is set up) */
-TN.SETDEF={habits:true,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={habits:false,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -121,7 +121,9 @@ TN.Settings.prototype.build=function(){
        const car=!!(t&&t.refresh),nm=(t&&t.name)||(car?'My Tesla':'TessyNav driver'),hb=!!(TN.settings&&TN.settings.habits);
        const chip=(okk,txt)=>'<span class="chip'+(okk?' ok':'')+'">'+(okk?'\u25cf ':'\u25cb ')+txt+'</span>';
        const tr=p.querySelector('.ttlrow');if(tr) tr.insertAdjacentHTML('afterend','<div id="tn-acct"><div class="av">'+TN.esc(nm.charAt(0).toUpperCase())+'</div><div class="nm"><b>'+TN.esc(nm)+'</b><span>Free account</span></div><button class="mg">Manage \u2197</button></div>'+
-         '<div id="tn-chips">'+chip(car,car?'Car linked':'No car linked')+chip(sp,sp?'Spotify linked':'No Spotify')+chip(hb,hb?'Usual routes on':'Usual routes off')+'</div>');
+         '<div id="tn-chips">'+chip(car,car?'Car linked':'No car linked')+chip(sp,sp?'Spotify linked':'No Spotify')+chip(hb,hb?'Usual routes on':'Usual routes off')+'</div>'+
+         '<div id="tn-legal" style="margin:2px 0 8px;font-size:13px;opacity:.7"><a data-u="https://tessynav.com/">tessynav.com</a> \u00b7 <a data-u="https://tessynav.com/privacy.html">Privacy</a> \u00b7 <a data-u="https://tessynav.com/terms.html">Terms</a> \u00b7 support@tessynav.com</div>');
+       p.querySelectorAll('#tn-legal a').forEach(a=>{a.style.cursor='pointer';a.style.textDecoration='underline';a.onclick=()=>{const u=a.dataset.u;try{if(!window.open(u,'_blank')) location.href=u;}catch(e){location.href=u;}};});
        const go=()=>{try{const w=window.open(TN.ACCOUNT_URL,'_blank');if(!w) location.href=TN.ACCOUNT_URL;}catch(e){location.href=TN.ACCOUNT_URL;}};
        const ac=p.querySelector('#tn-acct');if(ac) ac.onclick=go;}
       /* the red dot on Rocco means an update is ready: say so at the top, with a button */
