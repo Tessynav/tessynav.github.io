@@ -2,7 +2,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
-TN.APPBUILD=132;
+TN.APPBUILD=133;
 /* reloading after an update keeps the address's other settings (like ?heights=v2), only the cache-buster changes */
 TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split('&').filter(x=>x&&!/^r=/.test(x));q.push(add);return '?'+q.join('&');};
 
@@ -412,7 +412,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   }
   async function showTrips(){
     let L=[];try{L=JSON.parse(localStorage.getItem('tn2_trips')||'[]');}catch(e){}
-    let more=null;const shaOf={};
+    let more=null,repoErr='';const shaOf={};
     /* deleting a trip: from this car's list and from the trips repository (so it's gone everywhere) */
     const delTrip=async(n,row)=>{
       L=L.filter(x=>x.n!==n);try{localStorage.setItem('tn2_trips',JSON.stringify(L));}catch(e){}
@@ -430,7 +430,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     const render=()=>{
       const mine=new Set(L.map(x=>x.n));
       const rows=L.map(x=>({n:x.n,sub:tripLabel(x.n)+(x.d?' \u00b7 '+x.d+' min':'')+' \u00b7 this car'})).concat((more||[]).filter(n=>!mine.has(n)).map(n=>({n:n,sub:tripLabel(n)})));
-      if(!rows.length){panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:6px">'+TN.roccoSVG(64)+'</div>':'')+'No recordings yet.<br><small>Use Record on a drive, then they show up here. Rocco is waiting for your first one.</small>',[['Close',hide]]);return;}
+      if(!rows.length){panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:6px">'+TN.roccoSVG(64)+'</div>':'')+'<div id="tn-trips-empty">'+(more===null?'Looking for your recordings…':'No recordings yet.')+'<br><small>'+(repoErr?repoErr:more===null?'Checking the trips repository.':'Use Record on a drive, then they show up here. Rocco is waiting for your first one.')+'</small></div>',[['Close',hide]]);return;}
       const bin='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
       panel('<b>Recordings</b><div id="tn-trips" style="max-height:50vh;overflow:auto;margin-top:10px;text-align:left">'+
         rows.slice(0,30).map((r,i)=>'<div data-row="'+i+'" style="display:flex;align-items:center;gap:8px;padding:8px 6px 8px 10px;border-bottom:1px solid var(--tn-line)">'+
@@ -454,7 +454,11 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       const r=await fetch('https://api.github.com/repos/Tessynav/tessynav-trips/contents/trips?t='+Date.now(),{headers:h,cache:'no-store'});
       if(r.ok){const j=await r.json();for(const f of j) shaOf[f.name.replace(/\.json$/,'')]=f.sha;
         more=j.map(f=>f.name.replace(/\.json$/,'')).filter(n=>/^trip-/.test(n)).sort().reverse().slice(0,30);
-        if($('tn-trips')) render();}}catch(e){}
+        if($('tn-trips')||$('tn-trips-empty')) render();}
+      /* (the list from the trips repository couldn't be read: say why, instead of "No recordings yet") */
+      else{more=[];repoErr=(r.status===404||r.status===401||r.status===403)?'Couldn\'t open the trips repository (error '+r.status+'): this browser needs a GitHub token that can read tessynav-trips.':'Couldn\'t reach the trips repository (error '+r.status+'). Try again in a minute.';
+        if($('tn-trips-empty')) render();}}
+    catch(e){more=[];repoErr='Couldn\'t reach the trips repository (no connection?).';if($('tn-trips-empty')) render();}
   }
   if($('trips')) $('trips').onclick=showTrips;
   const saved=rec.saved();
