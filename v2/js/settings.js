@@ -4,6 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
+TN.ACCOUNT_URL='https://tessynav.github.io/account.html';   /* (the TessyNav website's Account page; tessynav.com once the domain is set up) */
 TN.SETDEF={habits:true,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
@@ -75,6 +76,9 @@ TN.Settings.prototype.build=function(){
   '#tn-set .seg{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--tn-off)}#tn-set .seg span{padding:6px 11px;font-size:13px;cursor:pointer}#tn-set .seg span.on{background:var(--tn-accent);color:var(--tn-on-accent)}'+
   '#tn-set .ttlrow{display:flex;align-items:center;gap:10px;margin:6px 0 6px}#tn-set .ttl{font-size:18px;font-weight:600}#tn-set .tip{font-size:12px;color:var(--tn-tip);margin-top:2px;line-height:1.35}#tn-gear .tn-rocco{display:block}#tn-set .cat{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--tn-line);cursor:pointer}#tn-set .cat:active{background:rgba(255,255,255,.06)}'+
   '#tn-set .ct{flex:1;font-size:16px}#tn-set .chev{color:var(--tn-sub);font-size:22px}#tn-set .back{font-size:17px;font-weight:600;padding:8px 0 4px;cursor:pointer;color:var(--tn-link)}#tn-set .back span{color:var(--tn-text)}'+
+  '#tn-acct{display:flex;align-items:center;gap:12px;margin:8px 0 6px;padding:12px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid var(--tn-line);cursor:pointer}#tn-acct .av{width:44px;height:44px;border-radius:12px;background:var(--tn-accent);color:var(--tn-on-accent);display:grid;place-items:center;font:700 20px system-ui,sans-serif;flex:none}'+
+  '#tn-acct .nm{flex:1;min-width:0}#tn-acct .nm b{display:block;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#tn-acct .nm span{font-size:12px;color:var(--tn-sub)}#tn-acct .mg{flex:none;border:1px solid var(--tn-off);background:transparent;color:var(--tn-text);border-radius:10px;padding:8px 12px;font:600 14px system-ui,sans-serif;cursor:pointer}'+
+  '#tn-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}#tn-chips .chip{font-size:12px;padding:4px 9px;border-radius:99px;border:1px solid var(--tn-line);color:var(--tn-sub)}#tn-chips .chip.ok{color:var(--tn-text)}'+
   '#tn-set input[type=range]{width:100%;accent-color:var(--tn-accent)}#tn-set .lbls{display:flex;justify-content:space-between;font-size:11px;color:var(--tn-sub)}#tn-set .lnk{cursor:pointer;color:var(--tn-link)}';
   document.head.appendChild(st);
   const g=document.createElement('button');g.id='tn-gear';g.className='hud';g.setAttribute('aria-label','Settings');if(TN.roccoSVG) g.innerHTML=TN.roccoSVG(38);else g.textContent='\u2699';   /* (Rocco is the settings button) */document.body.appendChild(g);
@@ -111,6 +115,15 @@ TN.Settings.prototype.build=function(){
   const show=id=>{
     if(!id){const fun=!(TN.settings&&TN.settings.fun===false);
       p.innerHTML='<div class="ttlrow">'+(TN.roccoSVG?TN.roccoSVG(44):'')+'<div><div class="ttl">Settings</div>'+(fun&&TN.roccoTip?'<div class="tip">Tip: '+TN.roccoTip()+'</div>':'')+'</div></div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
+      /* your account card at the top (like Codriver): the car's name, the plan, what's linked, and Manage, which opens the
+         Account page on the TessyNav website (same site, so it sees the same things stored in this browser) */
+      {let t=null,sp=false;try{t=JSON.parse(localStorage.getItem('tn2_tesla')||'null');sp=!!localStorage.getItem('tn_sp_tok');}catch(e){}
+       const car=!!(t&&t.refresh),nm=(t&&t.name)||(car?'My Tesla':'TessyNav driver'),hb=!!(TN.settings&&TN.settings.habits);
+       const chip=(okk,txt)=>'<span class="chip'+(okk?' ok':'')+'">'+(okk?'\u25cf ':'\u25cb ')+txt+'</span>';
+       const tr=p.querySelector('.ttlrow');if(tr) tr.insertAdjacentHTML('afterend','<div id="tn-acct"><div class="av">'+TN.esc(nm.charAt(0).toUpperCase())+'</div><div class="nm"><b>'+TN.esc(nm)+'</b><span>Free account</span></div><button class="mg">Manage \u2197</button></div>'+
+         '<div id="tn-chips">'+chip(car,car?'Car linked':'No car linked')+chip(sp,sp?'Spotify linked':'No Spotify')+chip(hb,hb?'Usual routes on':'Usual routes off')+'</div>');
+       const go=()=>{try{const w=window.open(TN.ACCOUNT_URL,'_blank');if(!w) location.href=TN.ACCOUNT_URL;}catch(e){location.href=TN.ACCOUNT_URL;}};
+       const ac=p.querySelector('#tn-acct');if(ac) ac.onclick=go;}
       /* the red dot on Rocco means an update is ready: say so at the top, with a button */
       {const g=document.getElementById('tn-gear');if(g&&g.classList.contains('upd')){
         const tr=p.querySelector('.ttlrow');if(tr) tr.insertAdjacentHTML('afterend','<div id="tn-setupd" style="display:flex;align-items:center;gap:10px;margin:8px 0 10px;padding:10px 12px;border-radius:12px;background:rgba(95,224,176,.14);border:1px solid rgba(95,224,176,.45)">'+
