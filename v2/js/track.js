@@ -531,7 +531,11 @@ TN.Track.prototype.frame=function(now,dt){
        and re-centring on every piece swung the car left and right; now it drifts over gently instead) */
     /* (a big gap, over 3 m from where the precise GPS says you are, e.g. after a ramp joins a highway: up to 2 m per
        second, a smooth 3-4 s glide instead of a slow 13 s slide with the car beside you) */
-    if(/^(motorway|trunk)/.test(w.cls||'')){const big=Math.abs(target-car.lat)>3&&(L.acc||9)<=3&&car.gf!=null&&Math.abs(car.gf-car.lat)>3,mx=(big?2:0.6)*dt;d=Math.max(-mx,Math.min(mx,d));}
+    /* (Nov 19, trip 08:58 at 7:48: past the end of the road's edge after switching onto a ramp (6.7 m out, on the grass),
+       the 0.6 m a second kept the car beside the road and off the blue line for 8 s. Off the edge, heading back in,
+       it now returns at up to 2.5 m a second, about 2 s) */
+    if(/^(motorway|trunk)/.test(w.cls||'')){const big=Math.abs(target-car.lat)>3&&(L.acc||9)<=3&&car.gf!=null&&Math.abs(car.gf-car.lat)>3,
+      out=Math.abs(car.lat)>W/2&&Math.abs(target)<Math.abs(car.lat)-1,mx=(out?2.5:big?2:0.6)*dt;d=Math.max(-mx,Math.min(mx,d));}
     /* (city streets: at most 0.5 m per second while the car is on the road. Streets are split into many short pieces,
        and switching between a two-way piece (car in the right half) and a one-way piece (car in the middle) slid the
        car across 2 m and back, the zigzag on Nuns' Island and in Outremont. Off the road's edge it still comes back fast.) */
