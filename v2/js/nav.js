@@ -1390,7 +1390,11 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   else this.latD=null;
   let y=base.y!=null?base.y:mi(3);
   {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
-  let ox=px+mi(1)-uz*lo,oz=pz+mi(2)+ux*lo,oh=hd;
+  /* (Nov 19, trip 15:03 at 16:33 and 17:09: in city turns the car is pulled onto this point (the turn blend), which sat
+     on the route's centre, while the blue line is drawn where the car is across the road (latD): car in one lane, line
+     in the next for 2-3 s. The point now uses the line's own place across the road, so the car is pulled onto the line) */
+  const lp=(this.latD!=null&&!(TN.settings&&TN.settings.glueRoute)&&this.latS==null)?this.latD:lo;
+  let ox=px+mi(1)-uz*lp,oz=pz+mi(2)+ux*lp,oh=hd;
   /* city turns: the route's corners sit in the middle of the intersection, while a driver starts turning earlier;
      near a turn at city speed, when the real direction clearly differs from the route line's, the car follows the
      real path (the GPS) through the turn, blended in smoothly, and goes back onto the route line after */
