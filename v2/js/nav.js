@@ -1193,7 +1193,7 @@ TN.Nav.prototype.go=function(){
   this.clearAlts();
   /* while driving, the 3D line shows the route; the flat map line was only for the overview */
   try{for(const id of ['tn-route-casing','tn-route-line']) if(this.api.map.getLayer(id)) this.api.map.setLayoutProperty(id,'visibility','none');}catch(e){}
-  this.ov.style.display='none';this.active=true;TN.navActive=true;{const self=this;TN.routeNear=(x,z)=>self.routeDist(x,z);}this.saidArrive=false;this.parkT=0;document.body.classList.add('tn-routing');
+  this.ov.style.display='none';this.active=true;TN.navActive=true;{const self=this;TN.routeNear=(x,z)=>self.routeDist(x,z);}this.saidArrive=false;this.parkT=0;this.latGo=false;document.body.classList.add('tn-routing');
   if(TN.voice&&this.route){TN.voice.say('Starting route to '+(this.dest?this.dest.name:'your destination'),true);}
   if(this.route) this.note('go',{dest:this.dest&&this.dest.name,km:+(this.route.L/1000).toFixed(2),pts:this.route.pts.length},true);
   this.bar.style.display='flex';this.endBtn.style.display='block';this.roadName.style.display='block';
@@ -1322,7 +1322,11 @@ TN.Nav.prototype.place=function(base,L,now,dt){
        car looked like it was chasing the line (trip 13:46). Back to the line following the car smoothly (about 1 s), which
        drove well in the morning (trip 08:22); kept from v2: more than 5 m off is somewhere else (a parking lot, a service
        road: the 8 m jump at 12:34), and the line glides back onto the route instead of jumping) */
-    const dd=lc-lo,far=Math.abs(dd)>5,cur=this.latD==null?lo:this.latD;let nx;
+    /* (Nov 18, trip 19:50: at the start, in a parking lot a few metres from the road, the line bent off the road to reach
+       the car. Until the car first reaches 15 km/h after a route starts, the line stays on the road, like Tesla's own
+       navigation; after that it follows the car again, also when stopped at a light in a turn lane) */
+    if(!this.latGo&&L.v>=4.2) this.latGo=true;
+    const dd=lc-lo,far=Math.abs(dd)>5||!this.latGo,cur=this.latD==null?lo:this.latD;let nx;
     if(!far) nx=cur+(lc-cur)*Math.min(1,dt*1.0);
     else{const df=lo-cur,st=1.2*dt;nx=cur+(Math.abs(df)<st?df:Math.sign(df)*st);}
     this.latD=(far&&Math.abs(nx-lo)<0.05)?null:nx;}
@@ -1403,7 +1407,7 @@ TN.Nav.prototype.reroute=async function(){
   try{await this.plan(true);}catch(e){}
   this.note('rerouted',{ok:!!this.route&&this.route.L!==L0,km:this.route?+(this.route.L/1000).toFixed(2):null});
   if(this.mat) this.mat.opacity=0.85;
-  this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.latD=null;this.gdH=[];
+  this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.latD=null;this.latGo=false;this.gdH=[];
 };
 /* how much the car should follow the route's curve right now (0 on straight roads, 1 in a turn): gluing starts
    70 m before a turn on the route, is full from 30 m before to 25 m after it, and ends 50 m after */
