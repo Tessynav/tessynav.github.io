@@ -121,12 +121,14 @@ footer a{margin-right:16px}
         catch(e){if(e.message==='wrong') msg('That code is not right. '+e.j.left+' tr'+(e.j.left===1?'y':'ies')+' left.','err');else if(e.message==='expired'){msg('That code has expired. Ask for a new one.','err');step='email';draw();}else msg('Something went wrong. Try again.','err');}}));
       A.appendChild(btn('Use another email / new code','ghost',async()=>{step='email';msg('');draw();}));
     }else{
-      const st=P.status==='beta'?'Thank you for testing TessyNav! As a beta tester you have Premium free until '+day(P.trialEnd)+'. No card needed. To keep Premium after that, you can subscribe below: the first payment is only taken on that day.'
+      const st=P.status==='owner'?'Premium, always: this is the owner\'s account.'
+        :P.status==='beta'?'Thank you for testing TessyNav! As a beta tester you have Premium free until '+day(P.trialEnd)+'. No card needed. To keep Premium after that, you can subscribe below: the first payment is only taken on that day.'
         :P.status==='trialing'?'Free trial until '+day(P.trialEnd)+(P.cancelAt?'. It will not renew.':', then '+(P.plan==='year'?'C$34.99 a year':'C$3.99 a month')+'.')
         :P.premium?(P.cancelAt?'Premium until '+day(P.cancelAt)+'. It will not renew.':'Premium, '+(P.plan==='year'?'yearly':'monthly')+(P.renews?'. Renews on '+day(P.renews)+'.':'.'))+(P.status==='past_due'?' Your last payment did not go through: please update your card in Manage billing.':'')
         :(P.betaEnded?'Your free beta months ended on '+day(P.betaEnded)+'. Thank you for testing! ':'')+(trialOn?'You have Premium free for '+tLeft+' more day'+(tLeft>1?'s':'')+' in this car. Subscribe to keep it after that.':'You are on the free account.');
       $('pmTx').textContent='Signed in as '+P.email+'. '+st;
-      if(P.premium&&P.status!=='beta') A.appendChild(btn('Manage billing','pri',async()=>{msg('Opening…');try{location.href=(await call('/premium/portal',{token:P.token})).url;}catch(e){msg('Could not open billing. Try again.','err');}}));
+      if(P.status==='owner'){}
+      else if(P.premium&&P.status!=='beta') A.appendChild(btn('Manage billing','pri',async()=>{msg('Opening…');try{location.href=(await call('/premium/portal',{token:P.token})).url;}catch(e){msg('Could not open billing. Try again.','err');}}));
       else{
         const go=plan=>async()=>{msg('Opening the payment page…');try{location.href=(await call('/premium/checkout',{token:P.token,plan})).url;}catch(e){if(e.message==='already'){await refresh();}else msg('Could not open the payment page. Try again.','err');}};
         const b0=P.status==='beta'?'Keep Premium after: ':'Go Premium · ';
