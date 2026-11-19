@@ -1,4 +1,4 @@
-/* TessyNav v2 — habits.js (v1): learning your usual routes
+/* TessyNav v2 — habits.js (v2): learning your usual routes, and your usual way into a place
    After each drive, TessyNav keeps a short note of it on the car (never sent anywhere): where it started and ended,
    the day and hour, and the ~100 m squares of map it went through. When you plan a route and Mapbox offers a few
    ways, the one that follows the roads you usually take between those two places is marked "Usual" and chosen,
@@ -65,5 +65,29 @@ TN.Habits.prototype.usual=function(routes){
   /* (clearly your way: most of it on your roads, and clearly more than the others) */
   if(sc[i]<0.75||sc[i]-second<0.12) return null;
   return {i:i,score:sc[i],n:D.length,scores:sc};
+};
+/* (v2, Nov 18) your usual way INTO a place: whole-trip choices need 3 drives from about the same start, which rarely
+   happens when you start from different places every time, and Mapbox's 2-3 ways seldom differ only in the last
+   kilometres (the roundabout on Île-des-Soeurs before home: the route took the other way on every drive). So the last
+   3 km of your drives that ended at this place are compared on their own, whatever the start: when at least 3 of them
+   (and 3 out of 4) went through the same ~100 m square that the new route misses, that square is returned, and the
+   route is asked again through it (nav.js), kept when it isn't clearly slower. null when there's nothing to change. */
+TN.Habits.center=k=>{const [x,y]=k.split(':').map(Number);return [(x+0.5)*0.0013,(y+0.5)*0.0009];};
+TN.Habits.prototype.approach=function(coords,to){
+  if(!this.on()||!coords||coords.length<2||!to) return null;
+  const D=this.list.filter(d=>TN.Habits.dist(d.e,to)<800);if(D.length<3) return null;
+  const cnt={};
+  for(const d of D){const seen=new Set();for(const k of d.c.split(' ')){if(seen.has(k)) continue;const r=TN.Habits.dist(TN.Habits.center(k),to);if(r>350&&r<3000){seen.add(k);cnt[k]=(cnt[k]||0)+1;}}}
+  const need=Math.max(3,Math.ceil(D.length*0.75));
+  /* the squares the new route goes through near the place (a neighbouring square counts, as in overlap()) */
+  const rc=new Set();let last=null;
+  for(const p of coords){if(TN.Habits.dist(p,to)>3200) continue;if(last&&TN.Habits.dist(last,p)<40) continue;last=p;
+    const [x,y]=TN.Habits.cell(p[0],p[1]).split(':').map(Number);for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) rc.add((x+dx)+':'+(y+dy));}
+  let best=null;
+  for(const k in cnt){if(cnt[k]<need||rc.has(k)) continue;const r=TN.Habits.dist(TN.Habits.center(k),to);
+    /* (the square of your way furthest from the route's own squares near the place, but not right at the door) */
+    if(r<400||r>2500) continue;const sc=cnt[k]*1000-r;if(!best||sc>best.sc) best={k:k,sc:sc,n:cnt[k]};}
+  if(!best) return null;
+  const c=TN.Habits.center(best.k);return {via:[+c[0].toFixed(6),+c[1].toFixed(6)],n:best.n,of:D.length};
 };
 TN.habits=new TN.Habits();

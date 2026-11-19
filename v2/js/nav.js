@@ -513,6 +513,16 @@ TN.Nav.prototype.fetchRoute=async function(from,to){
             const ok=inLot<70&&toPlace<180&&rt3.duration<=rt.duration+90;
             this.note('parking lot check',{name:d.name,lotFromPlace:Math.round(bd),endInLot:Math.round(inLot),lotMin:Math.round(rt3.duration/60),bestMin:Math.round(rt.duration/60),used:ok});
             if(ok){rt3.viaParking=true;rt=rt3;this.alts=null;}}}}}}catch(e){}
+  /* your usual way into this place (habits.js, learned from your last drives here, whatever the start): when the route
+     misses the last stretch you always take (the roundabout on Île-des-Soeurs before home), it's asked again through
+     that stretch and kept when it isn't clearly slower (3 minutes or 15% at most) */
+  try{const d=this.dest;
+    if(rt&&d&&!(this.stops&&this.stops.length)&&TN.habits&&TN.habits.approach){
+      const A=TN.habits.approach(rt.geometry.coordinates,[d.lng,d.lat]);
+      if(A){const C=rt.geometry.coordinates,end=C[C.length-1],rt4=await this.fetchVia(from,A.via,end);
+        if(rt4){const ok=rt4.duration<=rt.duration+Math.max(180,0.15*rt.duration);
+          this.note('usual approach',{name:d.name,n:A.n,of:A.of,via:A.via,min:Math.round(rt.duration/60),min2:Math.round(rt4.duration/60),used:ok});
+          if(ok){rt4.viaUsual=true;rt=rt4;this.alts=null;}}}}}catch(e){}
   /* a bad ending (like a station beside a highway, reached by crossing a bridge and coming back): ask again with
      the destination on the nearest local street, and keep that route if it's better */
   try{const bad=TN.badEnding(rt,to);
@@ -535,6 +545,17 @@ TN.Nav.prototype.fetchRouteOnce=async function(from,to){
       return j.routes[0];}}
   }catch(e){}}
   return this.fetchRouteFree(from,to);
+};
+/* a route through one point without stopping there (waypoints=0;2: the middle point is only passed through, no
+   "you have arrived" there); the point snaps to a road within 80 m. null when Mapbox can't */
+TN.Nav.prototype.fetchVia=async function(from,via,to){
+  if(!TN.MBX) return null;
+  try{const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60;;':'';
+    const P=[from,via,to].map(p=>p[0].toFixed(6)+','+p[1].toFixed(6)).join(';');
+    const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+P+'?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language='+(TN.LANG||'en')+
+      '&voice_instructions=true&voice_units=metric&waypoints=0;2&radiuses=unlimited;80;unlimited'+brg+TN.avoidParam()+'&access_token='+TN.MBX;
+    const r=await fetch(u);if(!r.ok) return null;const j=await r.json();if(!j.routes||!j.routes[0]) return null;
+    j.routes[0].traffic=true;return j.routes[0];}catch(e){return null;}
 };
 TN.Nav.prototype.fetchRouteFree=async function(from,to){
   const pts=[from].concat((this.stops||[]).map(p=>TN.routeTo(p)),[to]);
