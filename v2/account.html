@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>TessyNav · My account</title>
+<!-- TessyNav account page. It reads what TessyNav keeps in this browser (same site as the app), so opened from the car
+     it shows your car's connection, Spotify, saved places and learned routes, with buttons to remove them.
+     Nothing here is sent anywhere. -->
+<style>
+:root{--bg:#0b0d12;--card:#161a23;--line:rgba(255,255,255,.08);--text:#eef0f4;--sub:#9aa3b2;--accent:#f2a33a;--ok:#34d399;--red:#ff6b6b}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:inherit;text-decoration:none}
+.nav{border-bottom:1px solid var(--line)}.nav .w{display:flex;align-items:center;height:64px;gap:16px}
+.w{max-width:860px;margin:0 auto;padding:0 20px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px}.logo i{width:28px;height:28px;border-radius:8px;background:conic-gradient(from 210deg,#f2a33a,#ff7a59,#3b82f6,#f2a33a)}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:12px;font:600 15px system-ui,sans-serif;border:0;cursor:pointer}
+.pri{background:linear-gradient(135deg,#f2a33a,#ff8a3d);color:#1b0f02}.ghost{background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--text)}
+.danger{background:transparent;border:1px solid rgba(255,107,107,.45);color:var(--red)}.danger.sure{background:var(--red);color:#1a0505}
+h1{font-size:34px;margin:36px 0 6px}.lead{color:var(--sub);margin:0 0 26px}
+.hero{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px}
+.av{width:58px;height:58px;border-radius:16px;background:var(--accent);color:#1b0f02;display:grid;place-items:center;font-weight:800;font-size:26px;flex:none}
+.hero b{font-size:22px;display:block}.hero span{color:var(--sub);font-size:14px}
+.plan{margin-left:auto;text-align:right}.plan em{font-style:normal;font-size:13px;padding:5px 11px;border-radius:99px;background:rgba(242,163,58,.15);color:#ffcf7a}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.card h3{margin:0;font-size:17px;display:flex;align-items:center;gap:10px}.card p{margin:0;color:var(--sub);font-size:14px}
+.st{font-size:13px;display:inline-flex;align-items:center;gap:6px}.st:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--sub)}.st.on{color:var(--ok)}.st.on:before{background:var(--ok)}
+.card .act{margin-top:auto;display:flex;gap:8px;flex-wrap:wrap}
+.note{margin:22px 0;padding:14px 16px;border-radius:14px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:#c9d8f5;font-size:14px}
+input.in{width:100%;max-width:340px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:#0f1219;color:var(--text);font:16px system-ui,sans-serif}
+.msg{font-size:14px;color:var(--sub);min-height:20px}.msg.err{color:var(--red)}.msg.ok{color:var(--ok)}
+.plan em.pro{background:rgba(52,211,153,.15);color:var(--ok)}
+footer{color:var(--sub);font-size:13px;border-top:1px solid var(--line);margin-top:40px;padding:24px 0 40px}
+footer a{margin-right:16px}
+@media (max-width:700px){.grid{grid-template-columns:1fr}h1{font-size:28px}.hero{flex-wrap:wrap}.plan{margin-left:0;text-align:left}}
+</style>
+</head>
+<body>
+<div class="nav"><div class="w"><a class="logo" href="/"><i></i>TessyNav</a><span class="sp"></span><a class="btn pri" href="/v2/">Open TessyNav</a></div></div>
+<main class="w">
+  <h1>My account</h1>
+  <p class="lead">What TessyNav keeps in this browser, and buttons to remove it.</p>
+  <div class="hero"><div class="av" id="av">T</div><div><b id="nm">TessyNav driver</b><span id="sub">No car linked</span></div><div class="plan"><em id="pill">Free account</em></div></div>
+  <div id="phone" class="note" style="display:none">Nothing is saved in this browser yet. TessyNav keeps your settings in the browser you drive with, so open this page from your <b>car's screen</b> (Settings → Manage) to see your car's information.</div>
+  <div class="grid">
+    <div class="card"><h3>🚗 Tesla</h3><span class="st" id="tSt">Not connected</span><p id="tTx">Sync trips from your car and send places to its navigation.</p><div class="act" id="tAct"></div></div>
+    <div class="card"><h3>🎵 Spotify</h3><span class="st" id="sSt">Not connected</span><p>Control the music playing in your car from the map.</p><div class="act" id="sAct"></div></div>
+    <div class="card"><h3>⭐ Saved places</h3><span class="st" id="pSt">None</span><p id="pTx">Home, Work and your favourites.</p><div class="act" id="pAct"></div></div>
+    <div class="card"><h3>🧠 Usual routes</h3><span class="st" id="hSt">Off</span><p id="hTx">Learned only in this browser, to suggest the way you usually drive.</p><div class="act" id="hAct"></div></div>
+  </div>
+  <div class="card" style="margin-top:14px" id="plan"><h3>💳 Plan</h3><span class="st" id="pmSt">Free account</span><p id="pmTx"></p><div class="act" id="pmAct" style="flex-direction:column;align-items:flex-start"></div><div class="msg" id="pmMsg"></div></div>
+  <div class="note">🔒 This page reads this browser. Only the Plan section talks to TessyNav's server: your email, to send you a sign-in code and check your plan with Stripe, our payment provider.</div>
+</main>
+<footer><div class="w"><a href="https://tessynav.com">Home</a><a href="https://tessynav.com/privacy.html">Privacy</a><a href="https://tessynav.com/terms.html">Terms</a><a href="mailto:support@tessynav.com">Contact</a><div style="margin-top:10px">Independent project, not affiliated with Tesla, Inc. TESLA is a trademark of Tesla, Inc.</div></div></footer>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const get=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
+  const del=ks=>{try{ks.forEach(k=>localStorage.removeItem(k));}catch(e){}};
+  const J=k=>{try{return JSON.parse(get(k)||'null');}catch(e){return null;}};
+  /* a remove button that asks for a second tap instead of a pop-up */
+  const rm=(box,label,fn)=>{const b=document.createElement('button');b.className='btn danger';b.textContent=label;
+    b.onclick=()=>{if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Tap again to confirm';setTimeout(()=>{b.classList.remove('sure');b.textContent=label;},4000);return;}fn();draw();};box.appendChild(b);};
+  const draw=()=>{
+    const t=J('tn2_tesla'),car=!!(t&&t.refresh),sp=!!get('tn_sp_tok'),P=J('tn2_places')||{},S=J('tn2_settings')||{},H=J('tn2_habits');
+    const nm=(t&&t.name)||(car?'My Tesla':'TessyNav driver');
+    $('nm').textContent=nm;$('av').textContent=nm.charAt(0).toUpperCase();$('sub').textContent=car?'Tesla connected':'No car linked';
+    ['tAct','sAct','pAct','hAct'].forEach(i=>$(i).innerHTML='');
+    $('tSt').textContent=car?'Connected'+(t.name?' · '+t.name:''):'Not connected';$('tSt').classList.toggle('on',car);
+    if(car) rm($('tAct'),'Disconnect',()=>del(['tn2_tesla']));else{const a=document.createElement('a');a.className='btn ghost';a.href='/v2/';a.textContent='Connect in the app';$('tAct').appendChild(a);}
+    $('sSt').textContent=sp?'Connected':'Not connected';$('sSt').classList.toggle('on',sp);
+    if(sp) rm($('sAct'),'Disconnect',()=>del(['tn_sp_tok','tn_sp_state']));
+    const n=(P.home?1:0)+(P.work?1:0)+((P.favs||[]).length);
+    $('pSt').textContent=n?n+' saved':'None';$('pSt').classList.toggle('on',!!n);
+    $('pTx').textContent=n?[P.home&&'Home',P.work&&'Work',(P.favs||[]).length&&(P.favs.length+' favourite'+(P.favs.length>1?'s':''))].filter(Boolean).join(' · '):'Home, Work and your favourites.';
+    if(n) rm($('pAct'),'Remove all',()=>del(['tn2_places']));
+    const on=S.habits===undefined?true:!!S.habits,dn=H&&Array.isArray(H.d)?H.d.length:0;
+    $('hSt').textContent=(on?'On':'Off')+(dn?' · '+dn+' drive'+(dn>1?'s':'')+' learned':'');$('hSt').classList.toggle('on',on);
+    if(dn) rm($('hAct'),'Forget my routes',()=>del(['tn2_habits','tn2_habits_cur']));
+    $('phone').style.display=(t||sp||n||dn||get('tn2_settings'))?'none':'block';
+  };
+  draw();
+})();
+</script>
+<script>
+/* Premium: sign in with a code sent by email (random each time, 10 minutes, once), then the plan comes from Stripe through
+   TessyNav's server. The sign-in key and the last answer are kept in this browser (tn2_premium) so the app can read them. */
+(function(){
+  const API='https://tessynav.mznwattar.workers.dev',$=id=>document.getElementById(id),lang=/^fr/i.test(navigator.language||'')?'fr':'en';
+  const load=()=>{try{return JSON.parse(localStorage.getItem('tn2_premium')||'null');}catch(e){return null;}};
+  const save=o=>{try{o?localStorage.setItem('tn2_premium',JSON.stringify(o)):localStorage.removeItem('tn2_premium');}catch(e){}};
+  let P=load(),step=P&&P.token?'in':'email',email=P&&P.email||'',busy=false;
+  const msg=(t,c)=>{$('pmMsg').textContent=t||'';$('pmMsg').className='msg'+(c?' '+c:'');};
+  const day=t=>t?new Date(t*1000).toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'}):'';
+  const call=async(path,body)=>{const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({lang},body))});
+    const j=await r.json().catch(()=>({}));if(!r.ok) throw Object.assign(new Error(j.error||('error '+r.status)),{j,status:r.status});return j;};
+  const btn=(label,cls,fn)=>{const b=document.createElement('button');b.className='btn '+cls;b.textContent=label;b.onclick=async()=>{if(busy) return;busy=true;b.disabled=true;try{await fn();}finally{busy=false;b.disabled=false;}};return b;};
+  const input=(ph,type,val)=>{const i=document.createElement('input');i.className='in';i.placeholder=ph;i.type=type;if(val) i.value=val;return i;};
+  const keep=j=>{P={token:j.token,email:j.email,premium:!!j.premium,status:j.status||null,plan:j.plan||null,trialEnd:j.trialEnd||null,renews:j.renews||null,cancelAt:j.cancelAt||null,trial:j.trial===true,betaEnded:j.betaEnded||null,at:Date.now()};save(P);};
+  const draw=()=>{
+    const A=$('pmAct');A.innerHTML='';
+    /* the 14 free days of this car's browser (started the first time TessyNav opened here, see v2/js/premium.js) */
+    const t0=parseInt((()=>{try{return localStorage.getItem('tn2_trial0');}catch(e){return null;}})()||'0',10),tLeft=t0?Math.ceil((t0+14*864e5-Date.now())/864e5):0;
+    const trialOn=tLeft>0&&!(P&&P.premium);
+    const pro=!!(P&&P.premium)||trialOn;
+    $('pill').textContent=trialOn?'Premium · '+tLeft+' day'+(tLeft>1?'s':'')+' free left':pro?(P.status==='beta'?'Premium · beta tester':P.status==='trialing'?'Premium · free trial':'Premium'):'Free account';$('pill').classList.toggle('pro',pro);
+    $('pmSt').textContent=trialOn?'Premium free · '+tLeft+' day'+(tLeft>1?'s':'')+' left':pro?'Premium':'Free account';$('pmSt').classList.toggle('on',pro);
+    if(step==='email'){
+      $('pmTx').textContent=(trialOn?'You have Premium free for '+tLeft+' more day'+(tLeft>1?'s':'')+' in this car. ':'')+'Premium is C$3.99 a month or C$34.99 a year. Sign in with your email to start it or manage it. Beta testers: use the email you joined the waitlist with, and your free months start automatically.';
+      const i=input('you@example.com','email',email);A.appendChild(i);
+      A.appendChild(btn('Email me a code','pri',async()=>{email=i.value.trim().toLowerCase();if(!/^\S+@\S+\.\S+$/.test(email)){msg('Please check the email address.','err');return;}
+        msg('Sending…');try{await call('/premium/code',{email});step='code';draw();msg('Code sent to '+email+'. Check your inbox (and spam).','ok');}
+        catch(e){msg(e.message==='too many'?'Too many codes for this email. Try again in an hour.':'Could not send the code. Try again in a moment.','err');}}));
+    }else if(step==='code'){
+      $('pmTx').textContent='Type the 6-digit code we just emailed to '+email+'. It works for 10 minutes, once.';
+      const i=input('123456','text');i.inputMode='numeric';i.maxLength=6;i.autocomplete='one-time-code';A.appendChild(i);
+      A.appendChild(btn('Sign in','pri',async()=>{msg('Checking…');try{keep(await call('/premium/verify',{email,code:i.value}));step='in';msg('Signed in.','ok');draw();}
+        catch(e){if(e.message==='wrong') msg('That code is not right. '+e.j.left+' tr'+(e.j.left===1?'y':'ies')+' left.','err');else if(e.message==='expired'){msg('That code has expired. Ask for a new one.','err');step='email';draw();}else msg('Something went wrong. Try again.','err');}}));
+      A.appendChild(btn('Use another email / new code','ghost',async()=>{step='email';msg('');draw();}));
+    }else{
+      const st=P.status==='owner'?'Premium, always: this is the owner\'s account.'
+        :P.status==='beta'?'Thank you for testing TessyNav! As a beta tester you have Premium free until '+day(P.trialEnd)+'. No card needed. To keep Premium after that, you can subscribe below: the first payment is only taken on that day.'
+        :P.status==='trialing'?'Free trial until '+day(P.trialEnd)+(P.cancelAt?'. It will not renew.':', then '+(P.plan==='year'?'C$34.99 a year':'C$3.99 a month')+'.')
+        :P.premium?(P.cancelAt?'Premium until '+day(P.cancelAt)+'. It will not renew.':'Premium, '+(P.plan==='year'?'yearly':'monthly')+(P.renews?'. Renews on '+day(P.renews)+'.':'.'))+(P.status==='past_due'?' Your last payment did not go through: please update your card in Manage billing.':'')
+        :(P.betaEnded?'Your free beta months ended on '+day(P.betaEnded)+'. Thank you for testing! ':'')+(trialOn?'You have Premium free for '+tLeft+' more day'+(tLeft>1?'s':'')+' in this car. Subscribe to keep it after that.':'You are on the free account.');
+      $('pmTx').textContent='Signed in as '+P.email+'. '+st;
+      if(P.status==='owner'){}
+      else if(P.premium&&P.status!=='beta') A.appendChild(btn('Manage billing','pri',async()=>{msg('Opening…');try{location.href=(await call('/premium/portal',{token:P.token})).url;}catch(e){msg('Could not open billing. Try again.','err');}}));
+      else{
+        const go=plan=>async()=>{msg('Opening the payment page…');try{location.href=(await call('/premium/checkout',{token:P.token,plan})).url;}catch(e){if(e.message==='already'){await refresh();}else msg('Could not open the payment page. Try again.','err');}};
+        const b0=P.status==='beta'?'Keep Premium after: ':'Go Premium · ';
+        A.appendChild(btn(b0+'C$3.99/month','pri',go('month')));
+        A.appendChild(btn('C$34.99/year (save 27%)','ghost',go('year')));
+      }
+      A.appendChild(btn('Sign out of Premium','ghost',async()=>{save(null);P=null;step='email';msg('');draw();}));
+    }
+  };
+  const refresh=async()=>{if(!P||!P.token) return;try{keep(await call('/premium/status',{token:P.token}));msg('');}catch(e){if(e.status===401){save(null);P=null;step='email';msg('Please sign in again.','err');}}draw();};
+  draw();
+  if(/[?&]paid=1/.test(location.search)){msg('Thank you! Checking your plan…','ok');history.replaceState(null,'',location.pathname);}
+  refresh();
+})();
+</script>
+</body>
+</html>
