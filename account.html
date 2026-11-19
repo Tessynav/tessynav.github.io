@@ -101,11 +101,15 @@ footer a{margin-right:16px}
   const input=(ph,type,val)=>{const i=document.createElement('input');i.className='in';i.placeholder=ph;i.type=type;if(val) i.value=val;return i;};
   const keep=j=>{P={token:j.token,email:j.email,premium:!!j.premium,status:j.status||null,plan:j.plan||null,trialEnd:j.trialEnd||null,renews:j.renews||null,cancelAt:j.cancelAt||null,trial:j.trial===true,betaEnded:j.betaEnded||null,at:Date.now()};save(P);};
   const draw=()=>{
-    const A=$('pmAct');A.innerHTML='';const pro=!!(P&&P.premium);
-    $('pill').textContent=pro?(P.status==='beta'?'Premium · beta tester':P.status==='trialing'?'Premium · free trial':'Premium'):'Free account';$('pill').classList.toggle('pro',pro);
-    $('pmSt').textContent=pro?'Premium':'Free account';$('pmSt').classList.toggle('on',pro);
+    const A=$('pmAct');A.innerHTML='';
+    /* the 14 free days of this car's browser (started the first time TessyNav opened here, see v2/js/premium.js) */
+    const t0=parseInt((()=>{try{return localStorage.getItem('tn2_trial0');}catch(e){return null;}})()||'0',10),tLeft=t0?Math.ceil((t0+14*864e5-Date.now())/864e5):0;
+    const trialOn=tLeft>0&&!(P&&P.premium);
+    const pro=!!(P&&P.premium)||trialOn;
+    $('pill').textContent=trialOn?'Premium · '+tLeft+' day'+(tLeft>1?'s':'')+' free left':pro?(P.status==='beta'?'Premium · beta tester':P.status==='trialing'?'Premium · free trial':'Premium'):'Free account';$('pill').classList.toggle('pro',pro);
+    $('pmSt').textContent=trialOn?'Premium free · '+tLeft+' day'+(tLeft>1?'s':'')+' left':pro?'Premium':'Free account';$('pmSt').classList.toggle('on',pro);
     if(step==='email'){
-      $('pmTx').textContent='Premium is C$3.99 a month or C$34.99 a year. Sign in with your email to start it or manage it. Beta testers: use the email you joined the waitlist with, and your free months start automatically.';
+      $('pmTx').textContent=(trialOn?'You have Premium free for '+tLeft+' more day'+(tLeft>1?'s':'')+' in this car. ':'')+'Premium is C$3.99 a month or C$34.99 a year. Sign in with your email to start it or manage it. Beta testers: use the email you joined the waitlist with, and your free months start automatically.';
       const i=input('you@example.com','email',email);A.appendChild(i);
       A.appendChild(btn('Email me a code','pri',async()=>{email=i.value.trim().toLowerCase();if(!/^\S+@\S+\.\S+$/.test(email)){msg('Please check the email address.','err');return;}
         msg('Sending…');try{await call('/premium/code',{email});step='code';draw();msg('Code sent to '+email+'. Check your inbox (and spam).','ok');}
@@ -120,7 +124,7 @@ footer a{margin-right:16px}
       const st=P.status==='beta'?'Thank you for testing TessyNav! As a beta tester you have Premium free until '+day(P.trialEnd)+'. No card needed. To keep Premium after that, you can subscribe below: the first payment is only taken on that day.'
         :P.status==='trialing'?'Free trial until '+day(P.trialEnd)+(P.cancelAt?'. It will not renew.':', then '+(P.plan==='year'?'C$34.99 a year':'C$3.99 a month')+'.')
         :P.premium?(P.cancelAt?'Premium until '+day(P.cancelAt)+'. It will not renew.':'Premium, '+(P.plan==='year'?'yearly':'monthly')+(P.renews?'. Renews on '+day(P.renews)+'.':'.'))+(P.status==='past_due'?' Your last payment did not go through: please update your card in Manage billing.':'')
-        :(P.betaEnded?'Your free beta months ended on '+day(P.betaEnded)+'. Thank you for testing! ':'')+'You are on the free account.';
+        :(P.betaEnded?'Your free beta months ended on '+day(P.betaEnded)+'. Thank you for testing! ':'')+(trialOn?'You have Premium free for '+tLeft+' more day'+(tLeft>1?'s':'')+' in this car. Subscribe to keep it after that.':'You are on the free account.');
       $('pmTx').textContent='Signed in as '+P.email+'. '+st;
       if(P.premium&&P.status!=='beta') A.appendChild(btn('Manage billing','pri',async()=>{msg('Opening…');try{location.href=(await call('/premium/portal',{token:P.token})).url;}catch(e){msg('Could not open billing. Try again.','err');}}));
       else{
