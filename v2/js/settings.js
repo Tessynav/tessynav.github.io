@@ -21,6 +21,8 @@ TN.Settings.prototype.set=function(k,v){this.s[k]=v;TN.settings=this.s;this.save
   /* while recording, every setting change is noted with its time (to compare before and after) */
   try{if(TN.recorder&&TN.recorder.rec) TN.recorder.note('setting',{k:k,v:v});}catch(e){}};
 /* make one setting take effect right away */
+/* the theme in use: the chosen one with Premium, otherwise Rocco */
+TN.proTheme=function(){const t=(TN.settings&&TN.settings.theme)||'rocco';return TN.isPro&&!TN.isPro()?'rocco':t;};
 /* themes: one shared colour set for the whole app (search box, bar, alert cards, buttons, settings) */
 TN.THEMES={
   rocco:{'panel-rgb':'43 45 49',text:'#f3f1ec',sub:'#b9b6ae',tip:'#f2b55a',link:'#f2b55a',accent:'#e8913a','on-accent':'#2b1a08',btn:'#45474d',off:'#55575d',line:'rgba(255,255,255,.09)',joke:'#f2b55a',danger:'#ff8a80'},
@@ -54,9 +56,9 @@ TN.Settings.prototype.apply=function(k){
     if(k==='lights'){sc.lightsOff=!s.lights;sc.setNight(sc.night||0);}
     if(k==='cut'){sc.cutOn=!!s.cut;}
     if(k==='weather'&&m.weather){m.weather.setOn(!!s.weather);}
-    if(k==='theme'){const nt=()=>{const sc2=this.m.scene;return sc2?(sc2.night||0)>0.5:false;};TN.applyTheme(s.theme,nt());
+    if(k==='theme'){const nt=()=>{const sc2=this.m.scene;return sc2?(sc2.night||0)>0.5:false;};TN.applyTheme(TN.proTheme(),nt());
       /* (the Tesla theme follows the map's day and night: checked every few seconds) */
-      if(!this.themeT) this.themeT=setInterval(()=>{if(this.s.theme==='tesla') TN.applyTheme('tesla',nt());},4000);}
+      if(!this.themeT) this.themeT=setInterval(()=>{const th=TN.proTheme();if(th==='tesla'||th!==TN._themeKey) TN.applyTheme(th,nt());},4000);}
     if((k==='chargers'||k==='fastdc')&&TN.chargers){TN.chargers.clear();TN.chargers.draw(true);}
     if(k==='record'){for(const id of ['rec','trips']){const b=document.getElementById(id);if(b) b.style.display=s.record?'':'none';}}
     if(k==='glass') document.body.classList.toggle('tn-glass',!!s.glass);   /* (see-through panels) */
@@ -137,7 +139,10 @@ TN.Settings.prototype.build=function(){
     p.innerHTML='<div class="back">\u2039 <span>'+c.t+'</span></div>'+c.html();p.scrollTop=0;
     p.querySelector('.back').onclick=()=>show(null);
     p.querySelectorAll('.t').forEach(t=>t.onclick=()=>{const k=t.dataset.k,v=!this.s[k];t.classList.toggle('off',!v);this.set(k,v);});
-    p.querySelectorAll('.seg').forEach(sg=>{const key=sg.dataset.k;const mark=()=>sg.querySelectorAll('span').forEach(x=>x.classList.toggle('on',x.dataset.v===this.s[key]));mark();sg.querySelectorAll('span').forEach(x=>x.onclick=()=>{this.set(key,x.dataset.v);mark();});});
+    p.querySelectorAll('.seg').forEach(sg=>{const key=sg.dataset.k;const mark=()=>sg.querySelectorAll('span').forEach(x=>x.classList.toggle('on',x.dataset.v===this.s[key]));mark();sg.querySelectorAll('span').forEach(x=>x.onclick=()=>{
+      /* (Premium: the Tesla and Futuristic themes, Always day and Always night) */
+      if(TN.isPro&&!TN.isPro()&&((key==='theme'&&x.dataset.v!=='rocco')||(key==='time'&&x.dataset.v!=='auto'))){try{TN.proHint('set',(TN.LANG==='fr'?'Avec Premium : ':'With Premium: ')+x.textContent,true);}catch(e){}return;}
+      this.set(key,x.dataset.v);mark();});});
     const rg=p.querySelector('input[type=range]');if(rg) rg.oninput=()=>this.set('nightLevel',rg.value/100);
     const tb=p.querySelector('#tn-tesla');if(tb) tb.onclick=()=>{if(!TN.tesla) return;if(TN.tesla.connected()){TN.tesla.signOut();show(id);}else TN.tesla.signIn();};
     const vb=p.querySelector('#tn-setver');if(vb) vb.onclick=()=>{p.style.display='none';const v=document.getElementById('ver');if(v) v.click();};
@@ -150,7 +155,7 @@ TN.Settings.prototype.build=function(){
 };
 /* night level from the time-of-day choice and the brightness slider */
 TN.nightFrom=function(ntSun){
-  const s=TN.settings;let nt=s.time==='day'?0:s.time==='night'?1:ntSun;
+  const s=TN.settings,tm=TN.isPro&&!TN.isPro()?'auto':s.time;let nt=tm==='day'?0:tm==='night'?1:ntSun;   /* (Always day / night: Premium) */
   const v=s.nightLevel==null?0.5:s.nightLevel;
   /* softer: night shades come in only part of the way; darker: an extra dark tint on the ground */
   const ntUse=v<0.5?nt*(0.55+0.9*v):nt;

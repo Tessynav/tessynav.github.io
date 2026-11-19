@@ -118,6 +118,8 @@ TN.Parking.prototype.update=function(dt,force){
   if(this.shownAt||(!force&&this.stillT<20)) return;
   const key=Math.round(car.x/10)+','+Math.round(car.z/10);if(this.dismissed===key) return;
   const signs=this.near(car),vd=this.verdict(signs,new Date());if(!vd) return;
+  /* (Premium: free drivers get a small hint instead of the rules) */
+  if(TN.isPro&&!TN.isPro()){this.dismissed=key;try{TN.proHint('parking',(TN.LANG==='fr'?'\ud83c\udd7f\ufe0f Règles de stationnement ici':'\ud83c\udd7f\ufe0f Parking rules for this spot'));}catch(e){}return;}
   this.key=key;this.shownAt=Date.now();this.show(vd,signs);
   try{this.note('parking',{c:vd.c,t:vd.t,n:signs.length});}catch(e){}
   try{if(TN.voice&&TN.voice.say&&(!TN.settings||TN.settings.parkVoice!==false)) TN.voice.say(vd.t,false);}catch(e){}

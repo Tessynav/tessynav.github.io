@@ -997,7 +997,9 @@ TN.Nav.prototype.fasterCheck=async function(){
   catch(e){}finally{this.fasterBusy=false;}
 };
 TN.Nav.prototype.fasterOffer=function(rt,save){
-  if(typeof document==='undefined') return;const fr=TN.LANG==='fr',map=this.api.map;this.offer=rt;
+  if(typeof document==='undefined') return;
+  /* (Premium: free drivers are only told a faster way exists) */
+  if(TN.isPro&&!TN.isPro()){try{TN.proHint('faster',(TN.LANG==='fr'?'\u26a1 Trajet plus rapide : ':'\u26a1 Faster route: ')+Math.round(save/60)+' min'+(TN.LANG==='fr'?' de moins':' less'));this.note('faster offer',{premium:false,saveMin:Math.round(save/60)});}catch(e){}return;}const fr=TN.LANG==='fr',map=this.api.map;this.offer=rt;
   /* the faster way on the map, in grey */
   try{const data={type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:rt.geometry}]};
     if(map.getSource('tn-faster')) map.getSource('tn-faster').setData(data);
@@ -1057,6 +1059,8 @@ TN.Nav.prototype.wxUpdate=function(s,R){
   let end=a.d;for(const o of W.pts){if(o.d>a.d&&o.sev>=2) end=o.d;else if(o.d>end) break;}
   const km=Math.max(0,(a.d-here)/1000),mins=Math.max(2,Math.round((end-a.d+3000)/Math.max(1,W.L)*W.dur/60));
   const txt=km<1?a.ic+' '+a.t+' now \u00b7 about '+mins+' min':a.ic+' '+a.t+' in '+(km<10?km.toFixed(km<3?1:0):Math.round(km))+' km \u00b7 about '+mins+' min';
+  /* (Premium: free drivers see what is coming, without where, how long or Rocco's advice) */
+  if(TN.isPro&&!TN.isPro()){this.wxChip(a.ic+' '+a.t+(TN.LANG==='fr'?' plus loin \u00b7 Premium':' ahead \u00b7 Premium'));try{TN.proHint('weather',a.ic+' '+a.t+(TN.LANG==='fr'?' sur votre trajet':' on your route'));}catch(e){}return;}
   this.wxChip(txt);
   const key=a.k+':'+Math.round(a.d/1000);
   if(!this.wxSaid[key]&&km<12){this.wxSaid[key]=1;

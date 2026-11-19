@@ -29,6 +29,9 @@ TN.Landmarks.prototype.material=function(){
 };
 TN.Landmarks.prototype.update=function(lng,lat){
   if(!this.on||!this.scene||!this.scene.three) return;
+  /* (Premium: without it the landmark models are removed and the map's plain buildings come back) */
+  if(TN.isPro&&!TN.isPro()){if(this.built.size){for(const g of this.built.values()) if(g&&g!=='none'){this.scene.three.scene.remove(g);g.traverse(o=>{if(o.geometry) o.geometry.dispose();});}
+    this.built.clear();TN.landmarkHide=[];}return;}
   /* the map's own building boxes where a model stands are hidden directly too (also the far, plain ones, which the
      building code only reaches up close: the Olympic tower showed as a big grey box next to the model), again every
      5 s for map tiles that arrive later */
