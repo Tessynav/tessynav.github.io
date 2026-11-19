@@ -25,6 +25,8 @@ TN.PRO_TRIAL_DAYS=14;
     if(end&&Date.now()<end+3*864e5) return true;
     return Date.now()-(P.at||0)<3*864e5;
   };
+  /* Rocco: on the alert cards for everyone (Fun mode); his jokes and trip comments with Premium */
+  TN.roccoFull=function(){return !(TN.settings&&TN.settings.fun===false)&&TN.isPro();};
   TN.proTrialDaysLeft=function(){return Math.max(0,Math.ceil((TN.proTrialEnd-Date.now())/864e5));};
   /* the line in Settings: what this car has now */
   TN.proLabel=function(){const P=TN.proAccount(),fr=TN.LANG==='fr';

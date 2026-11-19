@@ -299,7 +299,7 @@ TN.Incidents.prototype.show=function(it,d,tapped){
   const who=it.user?'Reported by a driver \u00b7 '+Math.max(1,Math.round((Date.now()-it.t)/60000))+' min ago'+(it.up?' \u00b7 '+it.up+' confirmed':''):'';
   const canVote=it.user&&!it.mine&&!this.reports.voted.has(it.id)&&(d==null||d<500);
   this.card.innerHTML=(this.fun()?TN.ROCCO(it.sev===3?'stand':it.kind,50,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc((it.title||TN.ROCCO_TITLE[it.kind])+dist)+'</b>'+
-    (detail?'<small>'+TN.esc(detail)+'</small>':'')+(who?'<small>'+TN.esc(who)+'</small>':'')+(this.fun()?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>'+
+    (detail?'<small>'+TN.esc(detail)+'</small>':'')+(who?'<small>'+TN.esc(who)+'</small>':'')+(this.fun()&&(!TN.isPro||TN.isPro())?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>'+
     (canVote?'<button class="v up">Still there</button><button class="v down">Gone</button>':'');
   if(canVote){this.card.querySelector('.up').onclick=()=>{this.reports.vote(it.id,true);this.toast('Thanks! Rocco updated it.');this.hide();};
     this.card.querySelector('.down').onclick=()=>{this.reports.vote(it.id,false);this.toast('Thanks! Rocco crossed it out.');this.hide();};}

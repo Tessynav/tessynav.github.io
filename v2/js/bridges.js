@@ -89,7 +89,7 @@ TN.Bridges.prototype.open=async function(){
   /* (the closest crossing that is clear: comparing crossing times alone would favour short bridges far away) */
   const dist=b=>{const c=this.pos();if(!c) return 0;const m=TN.toLocal(b.mid[1],b.mid[0]);return Math.hypot(m[0]-c.x,m[1]-c.z);};
   const grp=near?near.b.g:'south',ok=sts.filter(s=>s.b.g===grp&&!s.b.noAlt&&s.mins!=null&&s.tone==='green'&&s.delay<2).sort((a,b)=>dist(a.b)-dist(b.b))[0];
-  if(ok&&!(TN.settings&&TN.settings.fun===false)&&TN.roccoSVG){
+  if(ok&&!(TN.roccoFull?!TN.roccoFull():(TN.settings&&TN.settings.fun===false))&&TN.roccoSVG){
     const side=grp==='south'?(fr?(dir==='out'?'la Rive-Sud':'Montréal'):(dir==='out'?'the South Shore':'Montreal')):(fr?(dir==='out'?'Laval':'Montréal'):(dir==='out'?'Laval':'Montreal'));
     P.querySelector('.rl').innerHTML='<div class="tn-rline notr">'+TN.roccoSVG(28)+'<span>'+(fr?(near&&ok.b===near.b&&!near.b.noAlt?'Le plus proche, '+ok.b.name+', est fluide vers '+side+'.':ok.b.name+' est votre meilleure option vers '+side+' en ce moment.'):(near&&ok.b===near.b&&!near.b.noAlt?'Your closest, '+ok.b.name+', is clear to '+side+'.':ok.b.name+' is your best bet to '+side+' right now.'))+'</span></div>';}
   P.querySelectorAll('.it').forEach(el=>el.onclick=()=>{const b=TN.BRIDGES.find(x=>x.id===el.dataset.id);P.style.display='none';
@@ -114,5 +114,5 @@ TN.Bridges.prototype.checkRoute=async function(nav){
   R.rocco={tone:s.tone==='red'?'red':'amber',text:txt};
   const el=nav.ov&&nav.ov.querySelector('.tn-rline');
   if(el){el.className='tn-rline notr '+R.rocco.tone;const sp=el.querySelector('span');if(sp) sp.textContent=txt;}
-  else if(nav.ov&&!(TN.settings&&TN.settings.fun===false)){const bt=nav.ov.querySelector('.btns'),rl=nav.roccoHtml&&nav.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
+  else if(nav.ov&&!(TN.roccoFull?!TN.roccoFull():(TN.settings&&TN.settings.fun===false))){const bt=nav.ov.querySelector('.btns'),rl=nav.roccoHtml&&nav.roccoHtml();if(bt&&rl) bt.insertAdjacentHTML('beforebegin',rl);}
 };

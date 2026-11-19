@@ -59,6 +59,10 @@ TN.Weather.prototype.buildRain=function(){
 };
 TN.Weather.prototype.update=function(dt,lat,lng,cx,cy,cz){
   if(!this.scene.three) return;
+  /* (Premium: rain, snow and fog on the map; switched off without it, back on with it if the setting is on) */
+  {const pro=!TN.isPro||TN.isPro();if(!pro&&this.on){this.proOff=true;this.setOn(false);}
+   else if(pro&&this.proOff){this.proOff=false;this.setOn(!(TN.settings&&TN.settings.weather===false));}
+   if(!pro) return;}
   const now=Date.now();
   if(now-this.last>600000||(!this.last&&lat)){this.last=now;if(lat) this.check(lat,lng);}
   const r=this.on?this.rain:0;

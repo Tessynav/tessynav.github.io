@@ -1671,7 +1671,7 @@ TN.Nav.prototype.roccoFacts=function(){
 };
 /* the line for this trip: {tone, text}, the most important fact first; chosen once per route */
 TN.Nav.prototype.roccoPlan=function(){
-  const R=this.route;if(!R||(TN.settings&&TN.settings.fun===false)) return null;
+  const R=this.route;if(!R||(TN.roccoFull&&!TN.roccoFull())) return null;
   if(R.rocco) return R.rocco;
   const f=this.roccoFacts(),fr=TN.LANG==='fr',pick=a=>a[Math.floor(Math.random()*a.length)];
   let r;
@@ -1765,7 +1765,7 @@ TN.Nav.prototype.roccoHtml=function(){
 };
 /* a short bubble under the instruction bar: 6 s, or until tapped */
 TN.Nav.prototype.roccoBubble=function(tone,text){
-  if(TN.settings&&TN.settings.fun===false) return;this.roccoCss();
+  if(TN.roccoFull&&!TN.roccoFull()) return;this.roccoCss();
   let b=document.getElementById('tn-rbub');
   if(!b){b=document.createElement('div');b.id='tn-rbub';b.className='notr';document.body.appendChild(b);b.onclick=()=>{b.style.display='none';};}
   const bar=this.bar&&this.bar.getBoundingClientRect?this.bar.getBoundingClientRect():null;
@@ -1777,6 +1777,8 @@ TN.Nav.prototype.roccoBubble=function(tone,text){
 };
 TN.Nav.prototype.roccoGo=function(){
   if(!this.route||(TN.settings&&TN.settings.fun===false)) return;
+  /* (Premium: Rocco's trip comments; free drivers get a hint once) */
+  if(TN.roccoFull&&!TN.roccoFull()){try{TN.proHint('rocco',TN.LANG==='fr'?'\ud83e\udd9d Rocco a un mot pour ce trajet':'\ud83e\udd9d Rocco has something to say about this trip');}catch(e){}return;}
   const f=this.roccoFacts(),fr=TN.LANG==='fr',h=new Date().getHours(),pick=a=>a[Math.floor(Math.random()*a.length)];
   const hi=h>=5&&h<11?(fr?'Bonjour!':'Good morning!'):h>=11&&h<17?(fr?'Bon trajet!':'Have a nice trip!'):h>=17&&h<22?(fr?'Bonsoir!':'Good evening!'):(fr?'Trajet de nuit!':'Night drive!');
   const t=f.min<60?f.min+' min':Math.floor(f.min/60)+' h '+String(f.min%60).padStart(2,'0');
@@ -1799,8 +1801,8 @@ TN.Nav.prototype.roccoWatch=function(){
 TN.Nav.prototype.roccoArrive=function(){
   /* arrival: Rocco rises from the bottom edge with a little bounce, says his line, then sinks back (about 6 s).
      At a charger he holds a charging plug (sparks, a battery filling up in his bubble); elsewhere he waves, with a
-     burst of confetti. Fun mode off: nothing here (the bar already says "You have arrived"). */
-  if(TN.settings&&TN.settings.fun===false) return;
+     burst of confetti. Fun mode off: nothing here (the bar already says "You have arrived"). (Premium) */
+  if(TN.roccoFull&&!TN.roccoFull()) return;
   const f=this.roccoFacts();if(!f) return;
   const d=this.dest||{},fr=TN.LANG==='fr',pick=a=>a[Math.floor(Math.random()*a.length)];
   const charging=f.charging||!!d.charger||/supercharg|borne|charging|recharge/i.test((d.name||'')+' '+(d.sub||''));
