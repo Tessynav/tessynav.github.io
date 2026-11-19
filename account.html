@@ -99,13 +99,13 @@ footer a{margin-right:16px}
     const j=await r.json().catch(()=>({}));if(!r.ok) throw Object.assign(new Error(j.error||('error '+r.status)),{j,status:r.status});return j;};
   const btn=(label,cls,fn)=>{const b=document.createElement('button');b.className='btn '+cls;b.textContent=label;b.onclick=async()=>{if(busy) return;busy=true;b.disabled=true;try{await fn();}finally{busy=false;b.disabled=false;}};return b;};
   const input=(ph,type,val)=>{const i=document.createElement('input');i.className='in';i.placeholder=ph;i.type=type;if(val) i.value=val;return i;};
-  const keep=j=>{P={token:j.token,email:j.email,premium:!!j.premium,status:j.status||null,plan:j.plan||null,trialEnd:j.trialEnd||null,renews:j.renews||null,cancelAt:j.cancelAt||null,trial:j.trial!==false,at:Date.now()};save(P);};
+  const keep=j=>{P={token:j.token,email:j.email,premium:!!j.premium,status:j.status||null,plan:j.plan||null,trialEnd:j.trialEnd||null,renews:j.renews||null,cancelAt:j.cancelAt||null,trial:j.trial===true,betaEnded:j.betaEnded||null,at:Date.now()};save(P);};
   const draw=()=>{
     const A=$('pmAct');A.innerHTML='';const pro=!!(P&&P.premium);
-    $('pill').textContent=pro?(P.status==='trialing'?'Premium · free trial':'Premium'):'Free account';$('pill').classList.toggle('pro',pro);
+    $('pill').textContent=pro?(P.status==='beta'?'Premium · beta tester':P.status==='trialing'?'Premium · free trial':'Premium'):'Free account';$('pill').classList.toggle('pro',pro);
     $('pmSt').textContent=pro?'Premium':'Free account';$('pmSt').classList.toggle('on',pro);
     if(step==='email'){
-      $('pmTx').textContent='Premium is C$3.99 a month or C$34.99 a year, with 14 days free to start. Sign in with your email to start it or manage it. Everything TessyNav does today stays free.';
+      $('pmTx').textContent='Premium is C$3.99 a month or C$34.99 a year. Sign in with your email to start it or manage it. Beta testers: use the email you joined the waitlist with, and your free months start automatically.';
       const i=input('you@example.com','email',email);A.appendChild(i);
       A.appendChild(btn('Email me a code','pri',async()=>{email=i.value.trim().toLowerCase();if(!/^\S+@\S+\.\S+$/.test(email)){msg('Please check the email address.','err');return;}
         msg('Sending…');try{await call('/premium/code',{email});step='code';draw();msg('Code sent to '+email+'. Check your inbox (and spam).','ok');}
@@ -117,15 +117,17 @@ footer a{margin-right:16px}
         catch(e){if(e.message==='wrong') msg('That code is not right. '+e.j.left+' tr'+(e.j.left===1?'y':'ies')+' left.','err');else if(e.message==='expired'){msg('That code has expired. Ask for a new one.','err');step='email';draw();}else msg('Something went wrong. Try again.','err');}}));
       A.appendChild(btn('Use another email / new code','ghost',async()=>{step='email';msg('');draw();}));
     }else{
-      const st=P.status==='trialing'?'Free trial until '+day(P.trialEnd)+(P.cancelAt?'. It will not renew.':', then '+(P.plan==='year'?'C$34.99 a year':'C$3.99 a month')+'.')
+      const st=P.status==='beta'?'Thank you for testing TessyNav! As a beta tester you have Premium free until '+day(P.trialEnd)+'. No card needed. To keep Premium after that, you can subscribe below: the first payment is only taken on that day.'
+        :P.status==='trialing'?'Free trial until '+day(P.trialEnd)+(P.cancelAt?'. It will not renew.':', then '+(P.plan==='year'?'C$34.99 a year':'C$3.99 a month')+'.')
         :P.premium?(P.cancelAt?'Premium until '+day(P.cancelAt)+'. It will not renew.':'Premium, '+(P.plan==='year'?'yearly':'monthly')+(P.renews?'. Renews on '+day(P.renews)+'.':'.'))+(P.status==='past_due'?' Your last payment did not go through: please update your card in Manage billing.':'')
-        :'You are on the free account. Everything TessyNav does today is included.';
+        :(P.betaEnded?'Your free beta months ended on '+day(P.betaEnded)+'. Thank you for testing! ':'')+'You are on the free account.';
       $('pmTx').textContent='Signed in as '+P.email+'. '+st;
-      if(P.premium) A.appendChild(btn('Manage billing','pri',async()=>{msg('Opening…');try{location.href=(await call('/premium/portal',{token:P.token})).url;}catch(e){msg('Could not open billing. Try again.','err');}}));
+      if(P.premium&&P.status!=='beta') A.appendChild(btn('Manage billing','pri',async()=>{msg('Opening…');try{location.href=(await call('/premium/portal',{token:P.token})).url;}catch(e){msg('Could not open billing. Try again.','err');}}));
       else{
         const go=plan=>async()=>{msg('Opening the payment page…');try{location.href=(await call('/premium/checkout',{token:P.token,plan})).url;}catch(e){if(e.message==='already'){await refresh();}else msg('Could not open the payment page. Try again.','err');}};
-        A.appendChild(btn(P.trial?'Start 14 days free · then C$3.99/month':'Go Premium · C$3.99/month','pri',go('month')));
-        A.appendChild(btn(P.trial?'14 days free · then C$34.99/year (save 27%)':'C$34.99/year (save 27%)','ghost',go('year')));
+        const b0=P.status==='beta'?'Keep Premium after: ':'Go Premium · ';
+        A.appendChild(btn(b0+'C$3.99/month','pri',go('month')));
+        A.appendChild(btn('C$34.99/year (save 27%)','ghost',go('year')));
       }
       A.appendChild(btn('Sign out of Premium','ghost',async()=>{save(null);P=null;step='email';msg('');draw();}));
     }
