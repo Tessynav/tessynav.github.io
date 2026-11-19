@@ -26,6 +26,11 @@ TN.PRO_TRIAL_DAYS=14;
     return Date.now()-(P.at||0)<3*864e5;
   };
   TN.proTrialDaysLeft=function(){return Math.max(0,Math.ceil((TN.proTrialEnd-Date.now())/864e5));};
+  /* the line in Settings: what this car has now */
+  TN.proLabel=function(){const P=TN.proAccount(),fr=TN.LANG==='fr';
+    if(P&&P.premium&&TN.isPro()) return P.status==='beta'?(fr?'Premium \u00b7 testeur bêta':'Premium \u00b7 beta tester'):'Premium';
+    const d=TN.proTrialDaysLeft();if(d>0) return fr?'Premium gratuit \u00b7 encore '+d+' jour'+(d>1?'s':''):'Premium free \u00b7 '+d+' day'+(d>1?'s':'')+' left';
+    return fr?'Compte gratuit':'Free account';};
   /* the plan, asked again twice a day when signed in (a cancelled plan turns off by itself) */
   TN.proRefresh=async function(force){
     const P=TN.proAccount();if(!P||!P.token) return;
