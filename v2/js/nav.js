@@ -1327,7 +1327,9 @@ TN.Nav.prototype.place=function(base,L,now,dt){
        navigation; after that it follows the car again, also when stopped at a light in a turn lane) */
     if(!this.latGo&&L.v>=4.2) this.latGo=true;
     const dd=lc-lo,far=Math.abs(dd)>5||!this.latGo,cur=this.latD==null?lo:this.latD;let nx;
-    if(!far) nx=cur+(lc-cur)*Math.min(1,dt*1.0);
+    /* (Nov 18, trip 21:58 report: in turns the line trailed the car by about a second. Small gaps (wobble, under 0.5 m)
+       are still followed calmly in about 1 s; bigger gaps (a turn, a lane change) up to 5 times faster) */
+    if(!far){const u=Math.min(1,Math.max(0,(Math.abs(lc-cur)-0.5)/1.5));nx=cur+(lc-cur)*Math.min(1,dt*(1+4*u));}
     else{const df=lo-cur,st=1.2*dt;nx=cur+(Math.abs(df)<st?df:Math.sign(df)*st);}
     this.latD=(far&&Math.abs(nx-lo)<0.05)?null:nx;}
   else this.latD=null;
