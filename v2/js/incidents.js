@@ -372,12 +372,12 @@ TN.Reports.prototype.token=async function(){
   return a;
 };
 TN.Reports.prototype.base=function(){return 'https://firestore.googleapis.com/v1/projects/'+TN.FB.projectId+'/databases/(default)/documents';};
-/* send a report at the car's position (the time is stamped by the server). exp: the database deletes the report by itself
-   30 days later (a TTL policy on the field exp of the reports collection), as the privacy policy promises (at most 1 year) */
+/* send a report at the car's position (the time is stamped by the server). Reports are deleted 30 days after they're
+   posted by a nightly job in the private feedback repository (alert-cleanup.yml), as the privacy policy promises */
 TN.Reports.prototype.send=async function(kind,lng,lat,hd){
   const a=await this.token(),id='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
   const name='projects/'+TN.FB.projectId+'/databases/(default)/documents/reports/'+id;
-  const body={writes:[{update:{name:name,fields:{uid:{stringValue:a.uid},kind:{stringValue:kind},lat:{doubleValue:lat},lng:{doubleValue:lng},hd:{doubleValue:Math.round(hd||0)},up:{integerValue:'0'},down:{integerValue:'0'},exp:{timestampValue:new Date(Date.now()+30*864e5).toISOString()}}},
+  const body={writes:[{update:{name:name,fields:{uid:{stringValue:a.uid},kind:{stringValue:kind},lat:{doubleValue:lat},lng:{doubleValue:lng},hd:{doubleValue:Math.round(hd||0)},up:{integerValue:'0'},down:{integerValue:'0'}}},
     currentDocument:{exists:false},updateTransforms:[{fieldPath:'t',setToServerValue:'REQUEST_TIME'},{fieldPath:'last',setToServerValue:'REQUEST_TIME'}]}]};
   const r=await fetch(this.base()+':commit',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+a.id},body:JSON.stringify(body)});
   if(!r.ok) throw new Error('report '+r.status);
