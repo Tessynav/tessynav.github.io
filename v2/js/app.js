@@ -734,7 +734,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       const ll=TN.fromLocal(car.x,car.z);
       /* the car leaving the screen while the map isn't following it (at the start of a trip, or after looking around):
          driving off the edge brings the view back to the car right away, instead of after the usual wait */
-      const viewBusy=(nav&&((nav.res&&nav.res.style.display!=='none'&&nav.res.childElementCount)||(nav.ov&&nav.ov.style.display!=='none')))||(document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName));
+      const viewBusy=(nav&&((nav.res&&nav.res.style.display!=='none'&&nav.res.childElementCount)||(nav.ov&&nav.ov.style.display!=='none')||(nav.lookAway&&Date.now()<nav.lookAway)))||(document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName));
       if(!follow&&ready&&!viewBusy&&track.last&&(track.last.v||0)>2&&typeof startFollow==='function'){
         try{const pp=map.project([ll[0],ll[1]]),Wd=map.getContainer().clientWidth,Hd=map.getContainer().clientHeight;
           if(pp.y>Hd*0.93||pp.y<Hd*0.05||pp.x<Wd*0.03||pp.x>Wd*0.97){startFollow();try{if(rec&&rec.rec) rec.note('car off screen',{x:Math.round(pp.x),y:Math.round(pp.y)});}catch(e){}}}catch(e){}}

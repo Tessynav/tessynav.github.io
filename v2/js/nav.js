@@ -946,12 +946,35 @@ TN.Nav.prototype.jamCard=function(){
 };
 TN.Nav.prototype.jamShow=function(){
   const J=this.jam,R=this.route,map=this.api.map;if(!J||!R||!map) return;   /* (it was this.map, which doesn't exist: See it did nothing) */
-  try{let w=1e9,e=-1e9,so=1e9,n=-1e9;const a=Math.max(0,(this.pi||0));
-    for(let i=a;i<=J.b&&i<R.pts.length;i++){const ll=TN.fromLocal(R.pts[i][0],R.pts[i][1]);if(ll[0]<w)w=ll[0];if(ll[0]>e)e=ll[0];if(ll[1]<so)so=ll[1];if(ll[1]>n)n=ll[1];}
+  /* (Nov 19: the view zoomed out but the jam wasn't on it: the 3D route line is only drawn near the car, so a jam 2-5 km
+     ahead had nothing red to show. Now the map shows, from above, your way to the jam in blue and the jam itself in red,
+     drawn on top of everything, for 8 s; then back to the car) */
+  try{let w=1e9,e=-1e9,so=1e9,n=-1e9;const a=Math.max(0,(this.pi||0)),toLL=p=>TN.fromLocal(p[0],p[1]);
+    const way=[],jam=[];
+    for(let i=a;i<=J.b&&i<R.pts.length;i++){const ll=toLL(R.pts[i]);if(ll[0]<w)w=ll[0];if(ll[0]>e)e=ll[0];if(ll[1]<so)so=ll[1];if(ll[1]>n)n=ll[1];
+      if(i<=J.a) way.push(ll);if(i>=J.a) jam.push(ll);}
+    const fc=c=>({type:'FeatureCollection',features:c.length>1?[{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:c}}]:[]});
+    const put=(id,data,paint)=>{if(map.getSource(id)) map.getSource(id).setData(data);else{map.addSource(id,{type:'geojson',data:data});map.addLayer({id:id,type:'line',source:id,layout:{'line-join':'round','line-cap':'round'},paint:paint});}};
+    put('tn-jamway',fc(way),{'line-color':'#2f6fe4','line-width':7,'line-opacity':0.95});
+    put('tn-jamred',fc(jam),{'line-color':'#d93025','line-width':10,'line-opacity':1});
     if(this.api.setFollow) this.api.setFollow(false);
-    map.fitBounds([[w,so],[e,n]],{padding:{top:90,bottom:150,left:60,right:90},bearing:map.getBearing(),pitch:35,duration:1000,maxZoom:16});
-    try{this.note('jam view',{});}catch(e2){}
-    clearTimeout(this.jamBackT);this.jamBackT=setTimeout(()=>{try{if(this.api.setFollow) this.api.setFollow(true);}catch(e3){}},6000);}catch(e){}
+    /* (the driving view keeps the map's own padding, 423 px at the top to put the car low on the screen; fitBounds adds
+       it to ours, which left 50 px for the jam: the "zooms out but doesn't show it" of Nov 19. Padding cleared here and
+       put back after) */
+    const pad0=map.getPadding();try{map.setPadding({top:0,bottom:0,left:0,right:0});}catch(e5){}
+    /* (Nov 19, second try: from above, the whole way to the jam was too far out to see anything. Now the camera flies
+       to the jam itself, in 3D, looking along it, close enough to see the streets and landmarks around it) */
+    let jw=1e9,je=-1e9,js=1e9,jn=-1e9;for(const ll of jam){if(ll[0]<jw)jw=ll[0];if(ll[0]>je)je=ll[0];if(ll[1]<js)js=ll[1];if(ll[1]>jn)jn=ll[1];}
+    const A0=jam[0],B0=jam[jam.length-1],br=(Math.atan2((B0[0]-A0[0])*Math.cos(A0[1]*Math.PI/180),B0[1]-A0[1])*180/Math.PI+360)%360;
+    const cam=map.cameraForBounds([[jw,js],[je,jn]],{padding:{top:140,bottom:200,left:90,right:110},bearing:br,pitch:0});
+    const z=Math.max(14.5,Math.min(17,(cam&&cam.zoom||15.5)+0.6));
+    this.lookAway=Date.now()+10500;   /* (the view is away from the car on purpose: no snapping back because the car is off screen) */
+    map.easeTo({center:[(jw+je)/2,(js+jn)/2],zoom:z,bearing:br,pitch:55,duration:1500});
+    try{this.note('jam view',{km:+((R.cum[J.b]-R.cum[a])/1000).toFixed(1)});}catch(e2){}
+    clearTimeout(this.jamBackT);this.jamBackT=setTimeout(()=>{
+      try{for(const id of ['tn-jamway','tn-jamred']){if(map.getLayer(id)) map.removeLayer(id);if(map.getSource(id)) map.removeSource(id);}}catch(e4){}
+      try{map.setPadding(pad0);}catch(e6){}
+      try{if(this.api.setFollow) this.api.setFollow(true);}catch(e3){}},10000);}catch(e){}
 };
 /* ---- a faster way during traffic: every 4 minutes while navigating (right away when a jam appears ahead), the route
    from where you are now is asked again; if it's at least 3 minutes quicker and really goes another way, Rocco
