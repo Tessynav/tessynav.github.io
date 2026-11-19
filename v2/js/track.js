@@ -416,6 +416,13 @@ TN.Track.prototype.frame=function(now,dt){
       let bj=0,bd=1e9;for(let j=0;j<w.pts.length-1;j++){const r=TN.seg(w,j,car.x,car.z);if(r.d<bd){bd=r.d;bj=j;}}
       const r=TN.seg(w,bj,car.x,car.z);
       if(r.d<20){s0=r.s;lat0=r.lat*dir;}
+      /* (Nov 19, trip 11:21 at 2:10 and 5:30: after a turn onto another street, the car's place across the new street
+         was carried over from where it was drawn mid-turn, 4-5 m to the side, then slid back at 0.5 m a second: the
+         car sat beside its road and the blue line for 8 s. Coming out of a turn (the car followed the turn's curve, on
+         no road piece), or landing beyond the new road's edge, it now starts where the GPS says, kept 1 m inside the
+         edge; the drawn car still steers smoothly onto it, it never jumps) */
+      {const lim=Math.max(0.5,TN.width(w)/2-1);
+       if(!car.w||car.turning||Math.abs(lat0)>lim+1){const g0=TN.latOf(h,L.x,L.z);lat0=Math.max(-lim,Math.min(lim,g0));}}
     }
     car={w:w,dir:dir,s:s0,lat:lat0,v:car?car.v:L.v,cv:car&&car.cv||0,x:car?car.x:null,z:car?car.z:null,hd:car?car.hd:h.hd,y:car?car.y:0,gl:lat0,
       ease:{lat0:lat0,s0:s0,len:car&&car.hd!=null&&TN.angDiff(car.hd,h.hd)>45?12:Math.max(35,(L.v||0)*3)}};   /* (about 3 s of driving: at 90 km/h a switch is a lane change, not a 13-degree swerve) */

@@ -575,8 +575,7 @@ TN.Nav.prototype.plan=async function(reroute){
     try{this.wxFetch(rt);}catch(e){}
     /* (for the trip recording: where this route really goes, to check a wrong destination) */
     /* (the route's line itself, a point every ~15 m, so a drive can be replayed with its navigation) */
-    try{const C=rt.geometry.coordinates,o=[];let last=null;for(const c of C){if(!last||TN.distLL(last,c)>15||c===C[C.length-1]){o.push([+c[0].toFixed(5),+c[1].toFixed(5)]);last=c;}}
-      this.note('route line',{n:o.length,c:o});}catch(e){}
+    try{this.noteRoute(rt);}catch(e){}
     try{const d=this.dest,to=TN.routeTo(d),C=rt.geometry.coordinates,e=C[C.length-1];
       this.note('route to',{name:d.name,place:[+d.lng.toFixed(5),+d.lat.toFixed(5)],to:[+to[0].toFixed(5),+to[1].toFixed(5)],end:[+e[0].toFixed(5),+e[1].toFixed(5)],km:+(rt.distance/1000).toFixed(2),reroute:!!reroute});}catch(e){}
     if(!reroute) this.overview();
@@ -1245,6 +1244,14 @@ TN.Nav.prototype.end=function(why){
    While navigating and near the route, the car is drawn ON the route path (rounded corners): it glides forward at
    the current speed between GPS readings and is gently pulled towards where each reading says it is. Its heading
    is the direction of the path, so a turn is a smooth curve. Off the route (over 25 m), normal following takes over. */
+/* the route's line in the trip recording, a point every ~15 m (also when a recording starts on a route already
+   running: the 10:32 drive on Nov 19 had no route in it, so its line problems couldn't be replayed) */
+TN.Nav.prototype.noteRoute=function(rt){
+  rt=rt||this.curRt;if(!rt||!rt.geometry) return;
+  const C=rt.geometry.coordinates,o=[];let last=null;for(const c of C){if(!last||TN.distLL(last,c)>15||c===C[C.length-1]){o.push([+c[0].toFixed(5),+c[1].toFixed(5)]);last=c;}}
+  this.note('route line',{n:o.length,c:o});
+  try{const d=this.dest;if(d) this.note('route to',{name:d.name,place:[+d.lng.toFixed(5),+d.lat.toFixed(5)],km:+(rt.distance/1000).toFixed(2),reroute:false,mid:true});}catch(e){}
+};
 TN.Nav.prototype.place=function(base,L,now,dt){
   const R=this.route;if(!R||!this.active||!L||!base||base.x==null) return null;
   /* where the GPS is along the route (searching around the last place) */
@@ -1347,7 +1354,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
        the car. Until the car first reaches 15 km/h after a route starts, the line stays on the road, like Tesla's own
        navigation; after that it follows the car again, also when stopped at a light in a turn lane) */
     if(!this.latGo&&L.v>=4.2) this.latGo=true;
-    const dd=lc-lo,far=Math.abs(dd)>5||!this.latGo,cur=this.latD==null?lo:this.latD;let nx;
+    this._lc=lc-lo;const dd=lc-lo,far=Math.abs(dd)>5||!this.latGo,cur=this.latD==null?lo:this.latD;let nx;
     /* (Nov 18, trip 21:58 report: in turns the line trailed the car by about a second. Small gaps (wobble, under 0.5 m)
        are still followed calmly in about 1 s; bigger gaps (a turn, a lane change) up to 5 times faster) */
     if(!far){const u=Math.min(1,Math.max(0,(Math.abs(lc-cur)-0.5)/1.5));nx=cur+(lc-cur)*Math.min(1,dt*(1+4*u));}
@@ -1371,6 +1378,11 @@ TN.Nav.prototype.place=function(base,L,now,dt){
    if(this.turnW>0.01){const tw=this.turnW,TC=this.api.getCar&&this.api.getCar(),use=TC&&TC.x!=null&&TC.snapped!==false?TC:L;
      let tx=ox+(use.x-ox)*tw,tz=oz+(use.z-oz)*tw;const dx=tx-ox,dz=tz-oz,dd=Math.hypot(dx,dz);if(dd>4){tx=ox+dx*4/dd;tz=oz+dz*4/dd;}
      ox=tx;oz=tz;oh=(oh+(((gh-oh+540)%360)-180)*tw+360)%360;}}
+  /* (for the recording, once a second: where the line is across the road compared with the car (m), whether it is
+     following the car, and how much the city-turn blend moves things: to find why the car sits beside the line) */
+  this.lnT=(this.lnT||0)+dt;if(this.lnT>=1){this.lnT=0;
+    this.note('line',{car:this._lc!=null?+this._lc.toFixed(2):null,line:this.latD!=null?+(this.latD-lo).toFixed(2):null,lane:this.latS!=null?1:0,tw:+(this.turnW||0).toFixed(2),v:+(L.v||0).toFixed(1)});}
+  this._lc=null;
   return Object.assign({},base,{x:ox,z:oz,hd:oh,y:y,onRoute:true});
 };
 /* the speed limit sign next to your speed (null hides it); red and pulsing when more than 3 km/h over */

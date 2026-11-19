@@ -310,7 +310,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   let recTick=null;
   const recTime=()=>{const s=Math.max(0,Math.floor((Date.now()-rec.t0)/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
   $('rec').onclick=async()=>{
-    if(!rec.rec){rec.start();$('rec').textContent='■ Stop 0:00';$('rec').style.color='#ff6b6b';$('rec').classList.add('on');
+    if(!rec.rec){rec.start();try{if(nav&&nav.active) nav.noteRoute();}catch(e){}$('rec').textContent='■ Stop 0:00';$('rec').style.color='#ff6b6b';$('rec').classList.add('on');
       recTick=setInterval(()=>{if(rec.rec) $('rec').textContent='■ Stop '+recTime();},1000);return;}
     if(recTick){clearInterval(recTick);recTick=null;}
     const trip=rec.stop();$('rec').textContent='● Record';$('rec').style.color='';$('rec').classList.remove('on');
