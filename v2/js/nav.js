@@ -1381,7 +1381,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   /* (for the recording, once a second: where the line is across the road compared with the car (m), whether it is
      following the car, and how much the city-turn blend moves things: to find why the car sits beside the line) */
   this.lnT=(this.lnT||0)+dt;if(this.lnT>=1){this.lnT=0;
-    this.note('line',{car:this._lc!=null?+this._lc.toFixed(2):null,line:this.latD!=null?+(this.latD-lo).toFixed(2):null,lane:this.latS!=null?1:0,tw:+(this.turnW||0).toFixed(2),v:+(L.v||0).toFixed(1)});}
+    this.note('line',{car:this._lc!=null?+this._lc.toFixed(2):null,line:this.latD!=null?+(this.latD-lo).toFixed(2):null,lane:this.latS!=null?1:0,tw:+(this.turnW||0).toFixed(2),v:+(L.v||0).toFixed(1),dy:+(y-(base.y||0)).toFixed(2)});}
   this._lc=null;
   return Object.assign({},base,{x:ox,z:oz,hd:oh,y:y,onRoute:true});
 };
