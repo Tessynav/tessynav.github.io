@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <script>/* private until launch: a device that hasn't been unlocked with the owner's private link goes to the Coming soon page, and nothing else loads (no map, no API keys used): the rest of the page becomes plain text, so no other script runs, while the move to Coming soon goes ahead (stopping the page instead also cancelled that move: a white screen) */(function(){var ok=false;try{ok=localStorage.getItem('tn2_access')==='a292d7af1555f35512cac2a92b967747c92a9b77177e0bd85b7c9063b8edfbfc';}catch(e){}if(!ok){location.replace('/soon.html');document.write('<style>html{display:none}</style><plaintext style="display:none">');}})();</script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TessyNav · Tesla</title>
+<title>MapKoon · Tesla</title>
 <style>
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#2b2d31;color:#f3f1ec;font:17px system-ui,sans-serif}
   .box{max-width:420px;padding:28px;text-align:center}
@@ -18,16 +18,16 @@
 <div class="box">
   <h1 id="t">Connecting to your Tesla…</h1>
   <p id="m">One moment.</p>
-  <a class="btn" id="b" href="/v2/" style="display:none">Back to TessyNav</a>
+  <a class="btn" id="b" href="/v2/" style="display:none">Back to MapKoon</a>
 </div>
 <script>
-/* Tesla sends you here after signing in, with a one-time code. The TessyNav server turns it into access tokens,
+/* Tesla sends you here after signing in, with a one-time code. The MapKoon server turns it into access tokens,
    which stay in this browser only. Then the app finds your car and goes back to the map. */
 (async function(){
   var SERVER='https://tessynav.mznwattar.workers.dev';
   var fr=false;try{fr=(JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{}).lang==='fr';}catch(e){}
-  var T=fr?{ok:'Connecté à votre Tesla',okm:'TessyNav peut maintenant lire le trajet de ',back:'Retour à TessyNav',err:'La connexion n’a pas fonctionné',again:'Réessayez depuis TessyNav.'}
-          :{ok:'Connected to your Tesla',okm:'TessyNav can now read the trip from ',back:'Back to TessyNav',err:'The connection didn’t work',again:'Try again from TessyNav.'};
+  var T=fr?{ok:'Connecté à votre Tesla',okm:'MapKoon peut maintenant lire le trajet de ',back:'Retour à MapKoon',err:'La connexion n’a pas fonctionné',again:'Réessayez depuis MapKoon.'}
+          :{ok:'Connected to your Tesla',okm:'MapKoon can now read the trip from ',back:'Back to MapKoon',err:'The connection didn’t work',again:'Try again from MapKoon.'};
   var t=document.getElementById('t'),m=document.getElementById('m'),b=document.getElementById('b');b.textContent=T.back;
   function fail(why){t.textContent=T.err;t.className='err';m.textContent=T.again+(why?' ('+why+')':'');b.style.display='inline-block';}
   var q=new URLSearchParams(location.search),code=q.get('code'),state=q.get('state');
@@ -46,7 +46,7 @@
     try{var v=await fetch(SERVER+'/api/1/vehicles',{headers:{Authorization:'Bearer '+a.access}});var vj=await v.json();
       var c=vj.response&&vj.response[0];if(c){a.vin=c.vin;a.name=c.display_name||'';name=a.name;localStorage.setItem('tn2_tesla',JSON.stringify(a));}}catch(e){}
     history.replaceState(null,'','/v2/tesla.html');   /* (the one-time code leaves the address bar) */
-    t.textContent=T.ok+' ✓';m.textContent=T.okm+(name||'Tessy')+'.';b.style.display='inline-block';
+    t.textContent=T.ok+' ✓';m.textContent=T.okm+(name||(fr?'votre Tesla':'your Tesla'))+'.';b.style.display='inline-block';
     setTimeout(function(){location.replace('/v2/');},2500);
   }catch(e){fail(e.message);}
 })();

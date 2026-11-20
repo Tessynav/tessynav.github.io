@@ -12,7 +12,7 @@
   else if(/X11; Linux x86_64/.test(navigator.userAgent)&&d>1.05&&d<1.48) k=Math.min(1.3,1.53/d);
   window.TN_UIK=k;
   if(k>1.02) document.write('<style>body>*:not(#map){zoom:'+k.toFixed(3)+'}</style>');}catch(e){}})();</script>
-<title>TessyNav</title>
+<title>MapKoon</title>
 <!-- the map (MapLibre) and 3D (three.js) libraries: from jsDelivr, with unpkg as a backup if jsDelivr doesn't answer
      (an outage of a single library site used to leave the app without its map) -->
 <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" media="print" onload="this.media='all'" onerror="this.onerror=null;this.media='all';this.href='https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'">
@@ -96,16 +96,16 @@ button.hud{border:0;cursor:pointer}
 </style>
 </head>
 <body>
-<div id="tn-boot"><div class="road"></div><div class="beam"></div><div class="hl l"></div><div class="hl r"></div><div class="nm">Tessy<b>Nav</b></div><div class="sub">Navigation for Tesla</div></div>
+<div id="tn-boot"><div class="road"></div><div class="beam"></div><div class="hl l"></div><div class="hl r"></div><div class="nm">Map<b>Koon</b></div><div class="sub">Navigation for Tesla</div></div>
 <script>
 window.TN_T0=performance.now();
 /* the opening animation starts dark from the first moment (no blank screen); skipped after an update or with ?intro=0 */
-/* after an update (reload): a faded "Updating TessyNav" screen with a progress bar instead of a blank page */
+/* after an update (reload): a faded "Updating MapKoon" screen with a progress bar instead of a blank page */
 window.TN_PROGRESS=function(){};
 (function(){let upd=false;try{upd=/[?&]r=\d/.test(location.search)||!!sessionStorage.getItem('tn2_target');}catch(e){}
   if(!upd) return;
   const d=document.createElement('div');d.id='tn-upd';
-  d.innerHTML='<div class="t">Updating TessyNav</div><div class="bar"><div class="fill"></div></div><div class="s">Loading the new version… 0%</div>';
+  d.innerHTML='<div class="t">Updating MapKoon</div><div class="bar"><div class="fill"></div></div><div class="s">Loading the new version… 0%</div>';
   /* the map as it looked just before the update, faded behind the progress bar */
   try{const shot=sessionStorage.getItem('tn2_shot');if(shot){const im=document.createElement('img');im.className='shot';im.src=shot;d.insertBefore(im,d.firstChild);
     d.style.background='rgba(8,14,26,.45)';sessionStorage.removeItem('tn2_shot');}}catch(e){}
@@ -119,7 +119,7 @@ window.TN_PROGRESS=function(){};
   setTimeout(()=>window.TN_PROGRESS(100,'Ready'),12000);
 })();
 /* (the real opening plays after an update too, with a thin progress line under it, instead of the old
-   "Updating TessyNav" screen with a faded picture of the map from before) */
+   "Updating MapKoon" screen with a faded picture of the map from before) */
 (function(){let on=true;try{if(/[?&]intro=0/.test(location.search)) on=false;
   const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');if(st&&st.intro===false) on=false;}catch(e){}
   const b=document.getElementById('tn-boot');
@@ -137,8 +137,8 @@ window.TN_PROGRESS=function(){};
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 <script>window.THREE||document.write('<script src="https://unpkg.com/three@0.158.0/build/three.min.js"><\/script>')</script>
 <div id="map"></div>
-<div id="status" class="hud">Finding Tessy…</div>
-<div id="tag" class="hud">TessyNav v2 · test</div>
+<div id="status" class="hud">Finding your car…</div>
+<div id="tag" class="hud">MapKoon v2 · test</div>
 <button id="rec" class="hud">● Record</button>
 <button id="trips" class="hud">Trips</button>
 <div id="speed" class="hud">0 <small>km/h</small></div>
@@ -151,7 +151,7 @@ window.TN_PROGRESS=function(){};
 <template id="tn-files">
 <script src="js/roads.js?v=62"></script>
 <script src="js/store.js?v=1"></script>
-<script src="js/i18n.js?v=15"></script>
+<script src="js/i18n.js?v=16"></script>
 <script src="js/rocco.js?v=1"></script>
 <script src="js/track.js?v=39"></script>
 <script src="js/scene.js?v=61"></script>
@@ -162,26 +162,26 @@ window.TN_PROGRESS=function(){};
 <script src="js/landmarks.js?v=6"></script>
 <script src="js/garage.js?v=5"></script>
 <script src="js/habits.js?v=3"></script>
-<script src="js/intro.js?v=8"></script>
+<script src="js/intro.js?v=9"></script>
 <script src="js/rem.js?v=13"></script>
 <script src="js/parking.js?v=4"></script>
 <script src="js/season.js?v=6"></script>
 <script src="js/ground.js?v=1"></script>
 <script src="js/water.js?v=2"></script>
 <script src="js/weather.js?v=3"></script>
-<script src="js/settings.js?v=40"></script>
+<script src="js/settings.js?v=41"></script>
 <script src="js/voice.js?v=5"></script>
-<script src="js/nav.js?v=117"></script>
+<script src="js/nav.js?v=118"></script>
 <script src="js/incidents.js?v=23"></script>
 <script src="js/chargers.js?v=3"></script>
-<script src="js/tesla.js?v=6"></script>
+<script src="js/tesla.js?v=7"></script>
 <script src="js/bridges.js?v=6"></script>
 <script src="js/signs.js?v=2"></script>
 <script src="js/tunnel.js?v=3"></script>
-<script src="js/feedback.js?v=8"></script>
-<script src="js/rec.js?v=4"></script>
-<script src="js/app.js?v=142"></script>
-<script src="js/music.js?v=6"></script>
+<script src="js/feedback.js?v=9"></script>
+<script src="js/rec.js?v=5"></script>
+<script src="js/app.js?v=143"></script>
+<script src="js/music.js?v=7"></script>
 </template>
 <script>
 /* Fast updates: the newest files are loaded straight from the GitHub repo (through jsDelivr's copy of the
@@ -231,7 +231,7 @@ window.addEventListener('error',function(e){
 })();
 </script>
 <script>
-/* offline mode: a copy of TessyNav kept on the car (sw.js), so it opens and drives without internet; and a small
+/* offline mode: a copy of MapKoon kept on the car (sw.js), so it opens and drives without internet; and a small
    note while offline (search and routes need internet) */
 (function(){
   try{if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')&&!/[?&]sw=0/.test(location.search))
