@@ -1,8 +1,8 @@
-/* TessyNav v2 — tesla.js (v1)
-   The connection to your Tesla, through the TessyNav server (Cloudflare Worker), which holds the app's secret:
+/* MapKoon v2 — tesla.js (v1)
+   The connection to your Tesla, through the MapKoon server (Cloudflare Worker), which holds the app's secret:
    - signIn(): Tesla's sign-in page; you come back through tesla.html, which stores the access in this browser
    - getTrip(nav): reads Tessy's active navigation (destination, minutes, battery at arrival) once, and opens the
-     route to it in TessyNav. With Supercharger stops, Tesla gives the next stop (the Supercharger) first.
+     route to it in MapKoon. With Supercharger stops, Tesla gives the next stop (the Supercharger) first.
    Nothing is read in the background: one request per tap (about $0.002, within Tesla's free monthly credit). */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.TESLA_SERVER='https://tessynav.mznwattar.workers.dev';
@@ -43,7 +43,7 @@ TN.Tesla.prototype.vehicle=async function(){
 /* "asleep" (408) even while you're in the car: Tesla's servers can think the car is asleep for a moment (it just
    woke, or its connection dropped). Ask it to wake up, then wait until it says it's online, at most about 25 s */
 TN.Tesla.prototype.wake=async function(vin,say){
-  try{if(say) say('Waking Tessy…');await this.post('/api/1/vehicles/'+vin+'/wake_up',{});
+  try{if(say) say('Waking your Tesla…');await this.post('/api/1/vehicles/'+vin+'/wake_up',{});
     for(let i=0;i<9;i++){await new Promise(r=>setTimeout(r,3000));
       const r=await this.api('/api/1/vehicles/'+vin);const st=r.j&&r.j.response&&r.j.response.state;
       if(st==='online') return true;
@@ -66,20 +66,20 @@ TN.Tesla.prototype.trip=async function(){
 };
 TN.Tesla.prototype.getTrip=async function(nav){
   const say=m=>{if(nav&&nav.toast) nav.toast(m);};
-  say('Asking Tessy…');this._say=say;
+  say('Asking your Tesla…');this._say=say;
   try{
     const t=await this.trip();
-    if(t.asleep){say('Tessy didn’t wake up. Try again in a minute.');return;}
-    if(t.none){say('No trip in Tessy’s navigation');return;}
-    const sub=['From Tessy'];if(t.energy!=null) sub.push(Math.round(t.energy)+'% at arrival');
+    if(t.asleep){say('Your Tesla didn’t wake up. Try again in a minute.');return;}
+    if(t.none){say('No trip in your Tesla’s navigation');return;}
+    const sub=['From your Tesla'];if(t.energy!=null) sub.push(Math.round(t.energy)+'% at arrival');
     if(nav) nav.pick({name:t.name,sub:sub.join(' \u00b7 '),lng:t.lng,lat:t.lat,fromTesla:true,tesla:{energy:t.energy,min:t.min,km:t.km}});
   }catch(e){
     if(e.message==='signin'){say('Connect your Tesla first');return;}
     if(e.message==='novehicle'){say('No car found on this Tesla account');return;}
-    say('Could not reach Tessy right now');
+    say('Could not reach your Tesla right now');
   }
 };
-/* Send to Tessy: the destination (exact coordinates) into Tessy's own navigation, so Tessy plans Superchargers and
+/* Send to your Tesla: the destination (exact coordinates) into Tessy's own navigation, so Tessy plans Superchargers and
    preconditions the battery. One command (about $0.001). If the car requires signed commands, it says so clearly. */
 TN.Tesla.prototype.post=async function(path,body){
   const t=await this.token();
@@ -91,22 +91,22 @@ TN.Tesla.prototype.send=async function(dest,nav){
   const say=m=>{if(nav&&nav.toast) nav.toast(m);};
   if(!dest||dest.lat==null) return;
   if(!this.connected()){this.signIn();return;}
-  say('Sending to Tessy…');
+  say('Sending to your Tesla…');
   try{
     const vin=await this.vehicle();
     const cmd=()=>this.post('/api/1/vehicles/'+vin+'/command/navigation_gps_request',{lat:+dest.lat,lon:+dest.lng,order:0});
     let r=await cmd();
     {const e0=String((r.j&&(r.j.error||r.j.error_description))||(r.j&&r.j.response&&r.j.response.reason)||'');
-     if(r.status===408||/offline|asleep|unavailable/i.test(e0)){if(await this.wake(vin,say)){say('Sending to Tessy…');r=await cmd();}}}
+     if(r.status===408||/offline|asleep|unavailable/i.test(e0)){if(await this.wake(vin,say)){say('Sending to your Tesla…');r=await cmd();}}}
     const res=r.j&&r.j.response,err=String((r.j&&(r.j.error||r.j.error_description))||(res&&res.reason)||'');
-    if(r.status===200&&res&&res.result!==false){say('Sent to Tessy ✓');return {ok:true};}
-    if(r.status===408||/offline|asleep|unavailable/i.test(err)){say('Tessy didn’t wake up. Try again in a minute.');return {ok:false,why:'asleep'};}
+    if(r.status===200&&res&&res.result!==false){say('Sent to your Tesla ✓');return {ok:true};}
+    if(r.status===408||/offline|asleep|unavailable/i.test(err)){say('Your Tesla didn’t wake up. Try again in a minute.');return {ok:false,why:'asleep'};}
     if(r.status===401){this.signOut();say('Connect your Tesla first');return {ok:false,why:'signin'};}
-    if(r.status===403||/protocol|unsigned|hardlocked/i.test(err)){say('Tessy needs signed commands: next update');return {ok:false,why:'signed',detail:err};}
-    say('Tessy didn’t accept it ('+(err||r.status)+')');return {ok:false,why:'other',detail:err||r.status};
+    if(r.status===403||/protocol|unsigned|hardlocked/i.test(err)){say('Your Tesla needs signed commands: next update');return {ok:false,why:'signed',detail:err};}
+    say('Your Tesla didn’t accept it ('+(err||r.status)+')');return {ok:false,why:'other',detail:err||r.status};
   }catch(e){
     if(e.message==='signin'){say('Connect your Tesla first');return {ok:false,why:'signin'};}
-    say('Could not reach Tessy right now');return {ok:false,why:'net'};
+    say('Could not reach your Tesla right now');return {ok:false,why:'net'};
   }
 };
 /* the car's configuration (model, colour, trim, wheels), read once after sign-in: the 3D car takes its real colour */

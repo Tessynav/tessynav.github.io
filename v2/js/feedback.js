@@ -1,4 +1,4 @@
-/* TessyNav v2 — feedback.js (v8: the tester's name, and details for sorting reports by type: garage, Spotify)
+/* MapKoon v2 — feedback.js (v8: the tester's name, and details for sorting reports by type: garage, Spotify)
    While driving (a route, or moving): one tap on the button SENDS the moment right away (screenshot, time, street,
    position, what the app was doing) and Rocco confirms it clearly; no typing on the road. After the trip, Rocco asks
    whether to add details, which are added to that same report (a comment on the same issue). The app keeps a light
@@ -7,7 +7,7 @@
    "Send feedback" from the main screen: a round button under Rocco's settings button opens a short form (what happened,
    an optional message, and two choices: include a screenshot, include my location). The report also carries what the
    app was doing in the last 2 minutes (GPS quality, smoothness, route events, errors), the build and file versions,
-   the device and the settings. It goes to the TessyNav server, which files it as an issue in a private GitHub
+   the device and the settings. It goes to the MapKoon server, which files it as an issue in a private GitHub
    repository (you get an email for each). Nothing personal is sent beyond what the user ticks. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 /* (its own text escaping, named fbEsc: browsers share one space for all scripts) */
@@ -138,7 +138,7 @@ TN.Feedback.prototype.moment=async function(){
   const fr=TN.LANG==='fr',hm=new Date(t).toLocaleTimeString(fr?'fr-CA':'en-CA',{hour:'2-digit',minute:'2-digit'});
   try{const j=await this.post('/feedback',body);this.auto=[];
     this.pend.push({num:j.num,key:j.key,t:t,place:place,asked:false});this.save();
-    this.notice(fr?'C’est noté! 📸':'Got it! 📸',fr?'Ce moment ('+hm+(place?', '+place:'')+') a été envoyé à l’équipe TessyNav. Vous pourrez ajouter des détails à l’arrêt.':'This moment ('+hm+(place?', '+place:'')+') was sent to the TessyNav team. You can add details when you stop.');}
+    this.notice(fr?'C’est noté! 📸':'Got it! 📸',fr?'Ce moment ('+hm+(place?', '+place:'')+') a été envoyé à l’équipe MapKoon. Vous pourrez ajouter des détails à l’arrêt.':'This moment ('+hm+(place?', '+place:'')+') was sent to the MapKoon team. You can add details when you stop.');}
   catch(e){this.queue.push({body:body,t:t,place:place});this.save();
     this.notice(fr?'Moment gardé 📸':'Moment saved 📸',fr?'Pas de connexion pour l’instant : je l’enverrai dès que possible.':'No connection right now: I’ll send it as soon as I can.');}
 };

@@ -1,11 +1,11 @@
-/* TessyNav v2 — music.js (v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
+/* MapKoon v2 — music.js (v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
    A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
    to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
    (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
    and nothing goes through Tesla. Needs Spotify Premium; Spotify limits a personal app to 5 users.
    Separate from the map and the car: if anything fails here, only the card is affected. ?music=0 switches it off. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
-TN.SPOTIFY_ID='69e3fcb20ecc487da3512617ba29158f';   /* TessyNav's own key: works for the people invited to it (Spotify allows 5) */
+TN.SPOTIFY_ID='69e3fcb20ecc487da3512617ba29158f';   /* MapKoon's own key: works for the people invited to it (Spotify allows 5) */
 TN.SPOTIFY_HELP='https://tessynav.github.io/v2/spotify.html';
 TN.Music=function(){
   this.on=typeof document!=='undefined'&&!/[?&]music=0/.test(location.search);
@@ -23,7 +23,7 @@ TN.Music=function(){
 TN.Music.prototype.ls=function(k,v){try{if(v===undefined) return localStorage.getItem(k);if(v===null) localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}return null;};
 TN.Music.prototype.load=function(){try{return JSON.parse(this.ls('tn_sp_tok')||'null');}catch(e){return null;}};
 TN.Music.prototype.save=function(t){this.tok=t;this.ls('tn_sp_tok',t?JSON.stringify(t):null);};
-/* the key in use: the driver's own (Settings guide) or TessyNav's */
+/* the key in use: the driver's own (Settings guide) or MapKoon's */
 TN.Music.prototype.cid=function(){const c=this.ls('tn_sp_cid');return c&&/^[0-9a-f]{32}$/i.test(c)?c:TN.SPOTIFY_ID;};
 TN.Music.prototype.own=function(){return this.cid()!==TN.SPOTIFY_ID;};
 TN.Music.prototype.clean=function(){try{history.replaceState(null,'',location.pathname);}catch(e){}};
@@ -70,8 +70,8 @@ TN.Music.prototype.poll=async function(){
   clearTimeout(this.pollT);if(!this.tok||document.hidden){this.render();return;}
   const r=await this.api('/me/player?additional_types=episode');
   this.now=r.s===200&&r.j?r.j:null;
-  /* a Spotify account not invited to TessyNav's key: Spotify answers 403; point to the own-key guide (once) */
-  if(r.s===403&&!this.own()&&!this.told403){this.told403=true;this.msg('This Spotify account isn\u2019t invited to TessyNav\u2019s key. Tap \u2699 in the music panel \u2192 Use my own Spotify key.');}
+  /* a Spotify account not invited to MapKoon's key: Spotify answers 403; point to the own-key guide (once) */
+  if(r.s===403&&!this.own()&&!this.told403){this.told403=true;this.msg('This Spotify account isn\u2019t invited to MapKoon\u2019s key. Tap \u2699 in the music panel \u2192 Use my own Spotify key.');}
   this.render();
   this.pollT=setTimeout(()=>this.poll(),this.open?5000:10000);
 };
@@ -207,10 +207,10 @@ TN.Music.prototype.box=function(html,btns){
 TN.Music.prototype.unbox=function(){const d=document.getElementById('tn-mkey');if(d) d.style.display='none';};
 TN.Music.prototype.choose=function(){
   const own=this.own(),hd='<h3><span class="sp">♫</span>Spotify</h3>';
-  if(this.tok) this.box(hd+'<div class="sub">Connected'+(own?' with <b>your own key</b>.':' with TessyNav’s key.')+'</div>',
+  if(this.tok) this.box(hd+'<div class="sub">Connected'+(own?' with <b>your own key</b>.':' with MapKoon’s key.')+'</div>',
       [[own?'Change my key':'Use my own Spotify key',()=>this.guide(1)],['Disconnect',()=>{this.save(null);this.now=null;this.render();this.unbox();this.msg('Spotify disconnected.');}],['Close',()=>this.unbox()]]);
-  else this.box(hd+'<div class="sub">Control Spotify from TessyNav: what’s playing, search, your playlists. Needs <b>Spotify Premium</b>.</div>'+
-      (own?'<div>Your own key is saved. Tap <b>Connect</b> to log in to Spotify.</div>':'<div><b>Use my own Spotify key</b> works for everyone (about 5 minutes, once). <b>Quick connect</b> only works for Spotify accounts invited to TessyNav.</div>'),
+  else this.box(hd+'<div class="sub">Control Spotify from MapKoon: what’s playing, search, your playlists. Needs <b>Spotify Premium</b>.</div>'+
+      (own?'<div>Your own key is saved. Tap <b>Connect</b> to log in to Spotify.</div>':'<div><b>Use my own Spotify key</b> works for everyone (about 5 minutes, once). <b>Quick connect</b> only works for Spotify accounts invited to MapKoon.</div>'),
       own?[['Connect',()=>{this.unbox();this.login();},'g'],['Change my key',()=>this.guide(1)],['Remove my key',()=>{this.ls('tn_sp_cid',null);this.choose();}],['Cancel',()=>this.unbox()]]
          :[['Use my own Spotify key',()=>this.guide(1),'g'],['Quick connect',()=>{this.unbox();this.login();}],['Cancel',()=>this.unbox()]]);
 };
@@ -221,7 +221,7 @@ TN.Music.prototype.guide=function(step){
     const d=this.box('<h3><span class="sp">♫</span>Connect your own Spotify</h3><div class="sub">For search and playlists. About 5 minutes, once. Needs Spotify Premium.</div>'+
       '<div class="qr" id="tn-mqr"><small>Scan with<br>your phone</small></div>'+
       '<div class="st"><div class="n">1</div><div>On your phone, scan the code (or open <b>developer.spotify.com/dashboard</b>) and log in with your Spotify account. Accept the terms.</div></div>'+
-      '<div class="st"><div class="n">2</div><div>Tap <b>Create app</b>. Name: <code>TessyNav</code><br>Can’t see it? Browser menu → <b>Desktop site</b>.</div></div>'+
+      '<div class="st"><div class="n">2</div><div>Tap <b>Create app</b>. Name: <code>MapKoon</code><br>Can’t see it? Browser menu → <b>Desktop site</b>.</div></div>'+
       '<div class="st"><div class="n">3</div><div>Redirect URI: <code>'+red+'</code><button class="cp" data-c="1">Copy</button><br>Tick <b>Web API</b>, then <b>Save</b>.</div></div>'+
       '<div class="st"><div class="n">4</div><div>Open your app’s <b>Settings</b> and copy the <b>Client ID</b>.<br><span style="opacity:.7;font-size:13px">Never the Client Secret: it isn’t needed.</span></div></div>',
       [['Next: paste the key',()=>this.guide(2),'g'],['Cancel',()=>this.unbox()]]);
@@ -234,7 +234,7 @@ TN.Music.prototype.guide=function(step){
   /* screen 2: paste and connect (checked before it goes to Spotify) */
   const d=this.box('<h3><span class="sp">♫</span>Paste your Client ID</h3><div class="sub">Step 5 of 5</div>'+
     '<div>Paste the Client ID from your Spotify app:</div><input id="tn-mcid" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="32 letters and numbers">'+
-    '<div class="ok" id="tn-mok"></div><div style="font-size:12.5px;opacity:.65;margin-top:8px">Your key is saved only in this browser. TessyNav never sees your Spotify password: you log in on Spotify’s own page. Remove it any time with ⚙ in the music panel.</div>',
+    '<div class="ok" id="tn-mok"></div><div style="font-size:12.5px;opacity:.65;margin-top:8px">Your key is saved only in this browser. MapKoon never sees your Spotify password: you log in on Spotify’s own page. Remove it any time with ⚙ in the music panel.</div>',
     [['Back',()=>this.guide(1)],['Connect Spotify',()=>{const v=inp.value.trim();if(!/^[0-9a-f]{32}$/i.test(v)) return;
       this.ls('tn_sp_cid',v.toLowerCase());this.save(null);this.unbox();this.login();},'g']]);
   const inp=d.querySelector('#tn-mcid'),ok=d.querySelector('#tn-mok'),go=d.querySelector('.bt .g');

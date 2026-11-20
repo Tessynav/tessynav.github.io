@@ -1,10 +1,10 @@
-/* TessyNav v2 — settings.js (v2: test update for the update dot; v30: the update dot explained at the top of Settings; v31: voice volume and turn chime)
+/* MapKoon v2 — settings.js (v2: test update for the update dot; v30: the update dot explained at the top of Settings; v31: voice volume and turn chime)
    The settings menu (gear button): switch looks on and off, choose the time of day (auto, day, night), set how dark
    night gets, the opening animation, the Record button, and the version/update check.
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.ACCOUNT_URL='https://tessynav.github.io/account.html';   /* (the TessyNav website's Account page; tessynav.com once the domain is set up) */
+TN.ACCOUNT_URL='https://tessynav.github.io/account.html';   /* (the MapKoon website's Account page; mapkoon.com once the domain is set up) */
 TN.SETDEF={habits:false,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
@@ -106,7 +106,7 @@ TN.Settings.prototype.build=function(){
     {id:'map',t:'Map and view',sum:()=>list([({auto:'Light: auto',day:'Always day',night:'Always night'})[S.time]||'Light: auto',on('traffic')&&'live traffic']),
      html:()=>'<div class="h">TIME OF DAY</div><div class="r"><div>Light</div><div class="seg" data-k="time"><span data-v="auto">Auto</span><span data-v="day">Day</span><span data-v="night">Night</span></div></div>'+
        '<div class="r" style="display:block"><div>Night brightness</div><input type="range" min="0" max="100" step="1" data-k="nightLevel" value="'+Math.round(S.nightLevel*100)+'"><div class="lbls"><span>Softer</span><span>Darker</span></div></div>'+
-       '<div class="h">MAP</div>'+tog('glass','See-through panels','The sky and buildings show behind the top bar and the buttons')+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('chargers','Superchargers on the map','Tap one for its stalls and to go there')+tog('fastdc','Other fast chargers','FLO, Circuit électrique, Electrify Canada… (adapter needed)')+tog('cut','See-through around Tessy','Bridges and buildings in front of the car fade')+tog('zoombtns','Zoom buttons','Pinching the map works too')},
+       '<div class="h">MAP</div>'+tog('glass','See-through panels','The sky and buildings show behind the top bar and the buttons')+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('chargers','Superchargers on the map','Tap one for its stalls and to go there')+tog('fastdc','Other fast chargers','FLO, Circuit électrique, Electrify Canada… (adapter needed)')+tog('cut','See-through around the car','Bridges and buildings in front of the car fade')+tog('zoombtns','Zoom buttons','Pinching the map works too')},
     {id:'look',t:'3D details',sum:()=>{const k=['buildings','trees','shadows','leaves','weather','water','lights','rem'];return k.filter(on).length+' of '+k.length+' on'+(on('rainbow')?' \u00b7 rainbow road':'');},
      html:()=>'<div class="h">THE CITY</div>'+tog('buildings','Detailed buildings')+tog('trees','Trees')+tog('rem','REM trains and labels')+tog('water','Animated water')+
        '<div class="h">LIGHT AND SEASONS</div>'+tog('shadows','Shadows','Follow the real sun; the car always has a soft shadow')+tog('lights','Street light glow','At night')+tog('weather','Real weather','Rain, snow, fog and clouds from the live weather \u00b7 Premium')+tog('leaves','Leaves and snow','Falling, on the ground and on the car (autumn leaves; snow when there is some)')+
@@ -118,13 +118,13 @@ TN.Settings.prototype.build=function(){
     if(!id){const fun=!(TN.settings&&TN.settings.fun===false);
       p.innerHTML='<div class="ttlrow">'+(TN.roccoSVG?TN.roccoSVG(44):'')+'<div><div class="ttl">Settings</div>'+(fun&&TN.roccoTip?'<div class="tip">Tip: '+TN.roccoTip()+'</div>':'')+'</div></div>'+CATS.map(c=>'<div class="cat" data-c="'+c.id+'">'+ICN[c.id]+'<div class="ct"><div>'+c.t+'</div><div class="sub">'+c.sum()+'</div></div><span class="chev">\u203a</span></div>').join('');
       /* your account card at the top (like Codriver): the car's name, the plan, what's linked, and Manage, which opens the
-         Account page on the TessyNav website (same site, so it sees the same things stored in this browser) */
+         Account page on the MapKoon website (same site, so it sees the same things stored in this browser) */
       {let t=null,sp=false;try{t=JSON.parse(localStorage.getItem('tn2_tesla')||'null');sp=!!localStorage.getItem('tn_sp_tok');}catch(e){}
-       const car=!!(t&&t.refresh),nm=(t&&t.name)||(car?'My Tesla':'TessyNav driver'),hb=!!(TN.settings&&TN.settings.habits);
+       const car=!!(t&&t.refresh),nm=(t&&t.name)||(car?'My Tesla':'MapKoon driver'),hb=!!(TN.settings&&TN.settings.habits);
        const chip=(okk,txt)=>'<span class="chip'+(okk?' ok':'')+'">'+(okk?'\u25cf ':'\u25cb ')+txt+'</span>';
        const tr=p.querySelector('.ttlrow');if(tr) tr.insertAdjacentHTML('afterend','<div id="tn-acct"><div class="av">'+TN.esc(nm.charAt(0).toUpperCase())+'</div><div class="nm"><b>'+TN.esc(nm)+'</b><span>Free account</span></div><button class="mg">Manage \u2197</button></div>'+
          '<div id="tn-chips">'+chip(car,car?'Car linked':'No car linked')+chip(sp,sp?'Spotify linked':'No Spotify')+chip(hb,hb?'Usual routes on':'Usual routes off')+'</div>'+
-         '<div id="tn-legal" style="margin:2px 0 8px;font-size:13px;opacity:.7"><a data-u="https://tessynav.com/">tessynav.com</a> \u00b7 <a data-u="https://tessynav.com/privacy.html">Privacy</a> \u00b7 <a data-u="https://tessynav.com/terms.html">Terms</a> \u00b7 support@tessynav.com</div>');
+         '<div id="tn-legal" style="margin:2px 0 8px;font-size:13px;opacity:.7"><a data-u="https://mapkoon.com/">mapkoon.com</a> \u00b7 <a data-u="https://mapkoon.com/privacy.html">Privacy</a> \u00b7 <a data-u="https://mapkoon.com/terms.html">Terms</a> \u00b7 support@mapkoon.com</div>');
        p.querySelectorAll('#tn-legal a').forEach(a=>{a.style.cursor='pointer';a.style.textDecoration='underline';a.onclick=()=>{const u=a.dataset.u;try{if(!window.open(u,'_blank')) location.href=u;}catch(e){location.href=u;}};});
        const go=()=>{try{const w=window.open(TN.ACCOUNT_URL,'_blank');if(!w) location.href=TN.ACCOUNT_URL;}catch(e){location.href=TN.ACCOUNT_URL;}};
        const ac=p.querySelector('#tn-acct');if(ac) ac.onclick=go;}

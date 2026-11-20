@@ -1,4 +1,4 @@
-/* TessyNav v2 — app.js: buttons, GPS, road loading and the main loop */
+/* MapKoon v2 — app.js: buttons, GPS, road loading and the main loop */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
@@ -161,9 +161,9 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     const road=car&&car.snapped?(car.w&&car.w.name?esc(car.w.name):({motorway:'Highway',trunk:'Highway',primary:'Main street',secondary:'Street',tertiary:'Street',minor:'Street',service:'Service road'}[car.cls]||'Road')):null;
     if(TN.inGarage) $('status').innerHTML=TN.garageMsg||'Underground parking';
     /* (the Tesla says 10000 m for a second or two under overpasses while its position is still fine: the status
-       keeps what it said, instead of flashing "Finding Tessy… GPS 10000 m") */
+       keeps what it said, instead of flashing "Finding your car… GPS 10000 m") */
     else if(c.accuracy>=9999&&road){}
-    else if(c.accuracy>60) $('status').innerHTML='Finding Tessy… <span class="g">GPS '+(c.accuracy>=9999?'searching':Math.round(c.accuracy)+' m')+'</span>';
+    else if(c.accuracy>60) $('status').innerHTML='Finding your car… <span class="g">GPS '+(c.accuracy>=9999?'searching':Math.round(c.accuracy)+' m')+'</span>';
     else $('status').innerHTML=(road||'Finding the road…')+' <span class="g">· GPS '+Math.round(c.accuracy)+' m'+(covered?'':' · outside the map')+'</span>';
     if(c.accuracy<100){try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
     wantPacks(c.longitude,c.latitude);
@@ -238,7 +238,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     if(TN.ORBIT) return;   /* (filming mode: no GPS, the camera circles a landmark instead) */
     let ok=false;try{ok=localStorage.getItem('tn2_gpsok')==='1';}catch(e){}
     /* start once the map has loaded, plus a moment (like a natural tap on Start), so the GPS answers precisely */
-    const go=()=>{$('status').textContent='Finding Tessy…';const st=()=>setTimeout(()=>{if(watchId===null) startFollow();},1500);
+    const go=()=>{$('status').textContent='Finding your car…';const st=()=>setTimeout(()=>{if(watchId===null) startFollow();},1500);
       if(ready) st();else map.once('load',st);};
     if(navigator.permissions&&navigator.permissions.query){
       navigator.permissions.query({name:'geolocation'}).then(r=>{if(r.state==='granted'||(ok&&r.state!=='denied')) go();}).catch(()=>{if(ok) go();});
@@ -501,7 +501,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     hide();
     if(!document.getElementById('tn-upd')){
       const d=document.createElement('div');d.id='tn-upd';d.style.opacity='0';
-      d.innerHTML='<div class="t">Updating TessyNav</div><div class="bar"><div class="fill"></div></div><div class="s">Getting the new version… 0%</div>';
+      d.innerHTML='<div class="t">Updating MapKoon</div><div class="bar"><div class="fill"></div></div><div class="s">Getting the new version… 0%</div>';
       document.body.appendChild(d);requestAnimationFrame(()=>{d.style.opacity='1';});
     }
     /* a snapshot of the map just before reloading, shown faded behind the progress bar on the new page */
@@ -523,7 +523,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(now.join('|')!==mine.join('|')){
         const changed=now.filter(x=>mine.indexOf(x)<0).map(label).join(', ');
         panel('Update available: <b>'+changed+'</b><br><br>Running now:'+table(mine),[['Update now',()=>update(now)],['Later',hide]]);
-      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(40)+'</div>':'')+'<b>TessyNav</b> · build '+TN.APPBUILD+'<br><span style="font-size:14px">Heights: '+(TN.HV2?'new':'current')+'</span>'+table(mine)+'<br>You have the latest version.',[['Close',hide]]);
+      }else panel((TN.roccoSVG?'<div style="text-align:center;margin-bottom:4px">'+TN.roccoSVG(40)+'</div>':'')+'<b>MapKoon</b> · build '+TN.APPBUILD+'<br><span style="font-size:14px">Heights: '+(TN.HV2?'new':'current')+'</span>'+table(mine)+'<br>You have the latest version.',[['Close',hide]]);
     }catch(e){panel('Could not check: '+String(e.message||e),[['Close',hide]]);}
   };
   /* the app checks for updates by itself (20 s after opening, then every 10 minutes); a found update shows a dot on
@@ -623,7 +623,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   map.on('load',()=>{scene.styleMap();ready=true;setTimeout(()=>{try{applyView();setLite(follow);}catch(e){}},500);if(settings){try{settings.applyAll();}catch(e){}}night();
     try{window.TN_PROGRESS&&window.TN_PROGRESS(90,'Building the streets…');}catch(e){}
     try{map.once('idle',()=>{try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e){}});}catch(e){try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e2){}}
-    /* opening animation: the city in glowing lines with the TessyNav name, then real colours */
+    /* opening animation: the city in glowing lines with the MapKoon name, then real colours */
     let started=false;
     if(TN.Intro){try{started=new TN.Intro(scene,map).start(scene.pendingNt!=null?scene.pendingNt:lastNt);}catch(e){}}
     if(!started){const b=document.getElementById('tn-boot');if(b&&b.parentNode) b.parentNode.removeChild(b);document.body.classList.remove('tn-intro');}

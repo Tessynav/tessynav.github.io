@@ -1,4 +1,4 @@
-/* TessyNav v2 — rec.js
+/* MapKoon v2 — rec.js
    Recording in the same trip format as before (so every analysis keeps working), encrypted in the browser and
    uploaded to the trips repository. Uses the upload setup already saved in this browser by the main app.
    The recording is also saved locally every 20 s, so a crash never loses a drive. */
@@ -88,7 +88,7 @@ TN.up={
     return 'trip-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'-v2';},
   async upload(trip){
     const token=TN.up.get('token'),pass=TN.up.get('pass'),repo=TN.up.get('repo')||'Tessynav/tessynav-trips';
-    if(!token||!pass) throw new Error('Upload is not set up in this browser yet. Open the main TessyNav once and use Trips → Setup.');
+    if(!token||!pass) throw new Error('Upload is not set up in this browser yet. Open the main MapKoon once and use Trips → Setup.');
     const body=await TN.up.encrypt(trip,pass);
     let name=TN.up.name(trip);
     const put=n=>fetch('https://api.github.com/repos/'+repo+'/contents/trips/'+n+'.json',{method:'PUT',

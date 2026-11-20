@@ -1,4 +1,4 @@
-/* TessyNav v2 — nav.js  (navigation, part 1)
+/* MapKoon v2 — nav.js  (navigation, part 1)
    - search: results as you type (Photon, nearest first), recent destinations when the box is empty
    - route: OSRM (fastest by car), overview with time / distance / arrival, then Go or Cancel
    - the route as a blue line laid on the 3D roads (bridges included), trimmed behind the car
@@ -87,7 +87,7 @@ TN.Nav.prototype.build=function(){
    'body.tn-routing #status,body.tn-routing #tn-search{display:none}body.tn-routing #rec{top:auto;bottom:228px;left:16px}body.tn-routing #trips{top:auto;bottom:228px;left:132px}';
   document.head.appendChild(st);
   const el=(id,cls,html,tag)=>{const e=document.createElement(tag||'div');e.id=id;e.className='hud'+(cls?' '+cls:'');if(html) e.innerHTML=html;document.body.appendChild(e);return e;};
-  this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>'+(TN.tesla?'<span class="tz" title="Sync with Tessy">'+TN.TESLA_T(20)+'<b>Sync</b></span>':''));
+  this.box=el('tn-search','','<span class="i">'+TN.ICON('search',22,'#9fb3c8')+'</span><input type="text" placeholder="Search a place or address" autocomplete="off" spellcheck="false"><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span>'+(TN.tesla?'<span class="tz" title="Sync with your Tesla">'+TN.TESLA_T(20)+'<b>Sync</b></span>':''));
   {const tz=this.box.querySelector('.tz');if(tz) tz.onclick=ev=>{ev.stopPropagation();this.closeSearch&&this.closeSearch();if(TN.tesla.connected()) TN.tesla.getTrip(this);else TN.tesla.signIn();};}
   this.res=el('tn-res');this.ov=el('tn-ov');this.bar=el('tn-bar','','<div class="a"></div><div class="t"><div class="dline"><div class="dist"></div><div class="lanes"></div></div><div class="ins"></div><div class="then"></div></div><div class="etabox"><div class="eta"></div><button class="dst"></button></div><div class="pb"><div class="car"></div></div>');
   {const tt=this.bar.querySelector('.t');if(tt){tt.style.cursor='pointer';tt.onclick=ev=>{ev.stopPropagation();if(this.route) this.details();};}}
@@ -1113,7 +1113,7 @@ TN.Nav.prototype.overview=function(){
   const arr=new Date(Date.now()+R.dur*1000);
   this.ov.style.display='flex';
   this.ov.innerHTML='<div style="flex:1 1 260px;min-width:220px"><b>'+TN.esc(this.dest.name)+'</b><br><small>'+Math.max(1,Math.round(R.dur/60))+' min \u00b7 '+fmtDist(R.dist)+' \u00b7 arrive '+arr.toTimeString().slice(0,5)+(R.traffic?' \u00b7 live traffic':'')+(TN.avoidList().length?' \u00b7 avoiding '+TN.avoidList().map(x=>({toll:'tolls',motorway:'highways',ferry:'ferries',unpaved:'unpaved roads'})[x]).join(', '):'')+'</small>'+
-    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="det">Details</button>'+(TN.tesla&&TN.tesla.connected()&&!(this.dest&&this.dest.fromTesla)?'<button class="tsend">'+TN.TESLA_T(16)+' Send to Tessy</button>':'')+'<button class="cancel">Cancel</button></div>';
+    (this.stops.length?this.tripList():'')+'</div><div class="btns"><button class="go">Go</button><button class="save">'+(this.isFav(this.dest)?TN.ICON('star',16,'#fcd34d'):TN.ICON('staro',16,'#fcd34d'))+' Save</button><button class="stop">+ Stop</button><button class="det">Details</button>'+(TN.tesla&&TN.tesla.connected()&&!(this.dest&&this.dest.fromTesla)?'<button class="tsend">'+TN.TESLA_T(16)+' Send to your Tesla</button>':'')+'<button class="cancel">Cancel</button></div>';
   this.ov.querySelector('.go').onclick=()=>this.go();
   try{this.bizCard(R);}catch(e){}
   this.ov.querySelector('.save').onclick=ev=>{ev.stopPropagation();this.saveMenu(ev.currentTarget);};
@@ -1162,7 +1162,7 @@ TN.Nav.prototype.details=function(){
   let h='<div class="hd"><div><b>'+TN.esc(dest.name||'Trip')+'</b><small>'+TN.esc(charging?'Charging stop':(dest.sub||''))+'</small></div><span class="x">'+TN.ICON('x',22,'#9fb3c8')+'</span></div>';
   {const rl=this.roccoHtml();if(rl) h+='<div style="padding:0 18px">'+rl+'</div>';}
   h+='<div class="sum">'+tiles.map(t=>'<div class="tile"><small>'+t[0]+'</small><span>'+TN.esc(t[1])+'</span></div>').join('')+tsl+'</div>';
-  if(dest.fromTesla) h+='<div class="note">'+(charging?'After charging, tap Sync for the next leg':'Synced from Tessy’s navigation')+'</div>';
+  if(dest.fromTesla) h+='<div class="note">'+(charging?'After charging, tap Sync for the next leg':'Synced from your Tesla’s navigation')+'</div>';
   if(this.stops&&this.stops.length) h+='<div class="sec">YOUR STOPS</div><div class="list" style="flex:none;max-height:none">'+this.stops.map((s2,i)=>'<div class="st"><div class="ic">'+(i+1)+'</div><div class="tx">'+TN.esc(s2.name)+'<small>'+TN.esc(s2.sub||'')+'</small></div></div>').join('')+'</div>';
   /* the turns, from the next one while driving */
   const steps=R.steps.filter(st=>st.at>=now-5&&st.type!=='depart'||(!this.active&&st.type==='depart'));
@@ -1565,7 +1565,7 @@ TN.Nav.prototype.update=function(dt){
   {const dl=this.bar.querySelector('.dline');let rk=this.bar.querySelector('.rk');
    if(dl&&!rk&&TN.roccoSVG){rk=document.createElement('span');rk.className='rk';rk.innerHTML='<span class="bub">Your exit!</span>'+TN.roccoSVG(34);dl.appendChild(rk);}
    if(!rk&&!this.rkMiss){this.rkMiss=1;this.note('rocco',{missing:!dl?'bar':'drawing'});}
-   if(rk){const th=TN.settings&&TN.settings.theme,rocco=true;   /* (every theme: Rocco is TessyNav's) */
+   if(rk){const th=TN.settings&&TN.settings.theme,rocco=true;   /* (every theme: Rocco is MapKoon's) */
      const hwExit=!!((nx.type==='off ramp'||(nx.type==='fork'&&(nx.exits||nx.dest)))&&dNext<1000);   /* (a true/false: an empty exit name made it '' and the note below was written every frame) */
      const on=!!(rocco&&hwExit);if(on!==rk.classList.contains('on')) rk.classList.toggle('on',on);
      if(on&&this.rkStep!==nx.at){this.rkStep=nx.at;this.rkT=Date.now();}
