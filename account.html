@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>TessyNav · My account</title>
-<!-- TessyNav account page. It reads what TessyNav keeps in this browser (same site as the app), so opened from the car
+<title>MapKoon · My account</title>
+<!-- MapKoon account page. It reads what MapKoon keeps in this browser (same site as the app), so opened from the car
      it shows your car's connection, Spotify, saved places and learned routes, with buttons to remove them.
      Nothing here is sent anywhere. -->
 <style>
@@ -39,12 +39,12 @@ footer a{margin-right:16px}
 </style>
 </head>
 <body>
-<div class="nav"><div class="w"><a class="logo" href="/"><i></i>TessyNav</a><span class="sp"></span><a class="btn pri" href="/v2/">Open TessyNav</a></div></div>
+<div class="nav"><div class="w"><a class="logo" href="/"><i></i>MapKoon</a><span class="sp"></span><a class="btn pri" href="/v2/">Open MapKoon</a></div></div>
 <main class="w">
   <h1>My account</h1>
-  <p class="lead">What TessyNav keeps in this browser, and buttons to remove it.</p>
-  <div class="hero"><div class="av" id="av">T</div><div><b id="nm">TessyNav driver</b><span id="sub">No car linked</span></div><div class="plan"><em id="pill">Free account</em></div></div>
-  <div id="phone" class="note" style="display:none">Nothing is saved in this browser yet. TessyNav keeps your settings in the browser you drive with, so open this page from your <b>car's screen</b> (Settings → Manage) to see your car's information.</div>
+  <p class="lead">What MapKoon keeps in this browser, and buttons to remove it.</p>
+  <div class="hero"><div class="av" id="av">T</div><div><b id="nm">MapKoon driver</b><span id="sub">No car linked</span></div><div class="plan"><em id="pill">Free account</em></div></div>
+  <div id="phone" class="note" style="display:none">Nothing is saved in this browser yet. MapKoon keeps your settings in the browser you drive with, so open this page from your <b>car's screen</b> (Settings → Manage) to see your car's information.</div>
   <div class="grid">
     <div class="card"><h3>🚗 Tesla</h3><span class="st" id="tSt">Not connected</span><p id="tTx">Sync trips from your car and send places to its navigation.</p><div class="act" id="tAct"></div></div>
     <div class="card"><h3>🎵 Spotify</h3><span class="st" id="sSt">Not connected</span><p>Control the music playing in your car from the map.</p><div class="act" id="sAct"></div></div>
@@ -52,9 +52,9 @@ footer a{margin-right:16px}
     <div class="card"><h3>🧠 Usual routes</h3><span class="st" id="hSt">Off</span><p id="hTx">Learned only in this browser, to suggest the way you usually drive.</p><div class="act" id="hAct"></div></div>
   </div>
   <div class="card" style="margin-top:14px" id="plan"><h3>💳 Plan</h3><span class="st" id="pmSt">Free account</span><p id="pmTx"></p><div class="act" id="pmAct" style="flex-direction:column;align-items:flex-start"></div><div class="msg" id="pmMsg"></div></div>
-  <div class="note">🔒 This page reads this browser. Only the Plan section talks to TessyNav's server: your email, to send you a sign-in code and check your plan with Stripe, our payment provider.</div>
+  <div class="note">🔒 This page reads this browser. Only the Plan section talks to MapKoon's server: your email, to send you a sign-in code and check your plan with Stripe, our payment provider.</div>
 </main>
-<footer><div class="w"><a href="https://tessynav.com">Home</a><a href="https://tessynav.com/privacy.html">Privacy</a><a href="https://tessynav.com/terms.html">Terms</a><a href="mailto:support@tessynav.com">Contact</a><div style="margin-top:10px">Independent project, not affiliated with Tesla, Inc. TESLA is a trademark of Tesla, Inc.</div></div></footer>
+<footer><div class="w"><a href="https://mapkoon.com">Home</a><a href="https://mapkoon.com/privacy.html">Privacy</a><a href="https://mapkoon.com/terms.html">Terms</a><a href="mailto:support@mapkoon.com">Contact</a><div style="margin-top:10px">Independent project, not affiliated with Tesla, Inc. TESLA is a trademark of Tesla, Inc.</div></div></footer>
 <script>
 (function(){
   const $=id=>document.getElementById(id);
@@ -66,7 +66,7 @@ footer a{margin-right:16px}
     b.onclick=()=>{if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Tap again to confirm';setTimeout(()=>{b.classList.remove('sure');b.textContent=label;},4000);return;}fn();draw();};box.appendChild(b);};
   const draw=()=>{
     const t=J('tn2_tesla'),car=!!(t&&t.refresh),sp=!!get('tn_sp_tok'),P=J('tn2_places')||{},S=J('tn2_settings')||{},H=J('tn2_habits');
-    const nm=(t&&t.name)||(car?'My Tesla':'TessyNav driver');
+    const nm=(t&&t.name)||(car?'My Tesla':'MapKoon driver');
     $('nm').textContent=nm;$('av').textContent=nm.charAt(0).toUpperCase();$('sub').textContent=car?'Tesla connected':'No car linked';
     ['tAct','sAct','pAct','hAct'].forEach(i=>$(i).innerHTML='');
     $('tSt').textContent=car?'Connected'+(t.name?' · '+t.name:''):'Not connected';$('tSt').classList.toggle('on',car);
@@ -87,7 +87,7 @@ footer a{margin-right:16px}
 </script>
 <script>
 /* Premium: sign in with a code sent by email (random each time, 10 minutes, once), then the plan comes from Stripe through
-   TessyNav's server. The sign-in key and the last answer are kept in this browser (tn2_premium) so the app can read them. */
+   MapKoon's server. The sign-in key and the last answer are kept in this browser (tn2_premium) so the app can read them. */
 (function(){
   const API='https://tessynav.mznwattar.workers.dev',$=id=>document.getElementById(id),lang=/^fr/i.test(navigator.language||'')?'fr':'en';
   const load=()=>{try{return JSON.parse(localStorage.getItem('tn2_premium')||'null');}catch(e){return null;}};
@@ -102,7 +102,7 @@ footer a{margin-right:16px}
   const keep=j=>{P={token:j.token,email:j.email,premium:!!j.premium,status:j.status||null,plan:j.plan||null,trialEnd:j.trialEnd||null,renews:j.renews||null,cancelAt:j.cancelAt||null,trial:j.trial===true,betaEnded:j.betaEnded||null,founder:!!j.founder,priceLock:j.priceLock||null,founderUntil:j.founderUntil||null,at:Date.now()};save(P);};
   const draw=()=>{
     const A=$('pmAct');A.innerHTML='';
-    /* the 14 free days of this car's browser (started the first time TessyNav opened here, see v2/js/premium.js) */
+    /* the 14 free days of this car's browser (started the first time MapKoon opened here, see v2/js/premium.js) */
     const t0=parseInt((()=>{try{return localStorage.getItem('tn2_trial0');}catch(e){return null;}})()||'0',10),tLeft=t0?Math.ceil((t0+14*864e5-Date.now())/864e5):0;
     const trialOn=tLeft>0&&!(P&&P.premium);
     const pro=!!(P&&P.premium)||trialOn;
@@ -122,13 +122,13 @@ footer a{margin-right:16px}
       A.appendChild(btn('Use another email / new code','ghost',async()=>{step='email';msg('');draw();}));
     }else{
       const st=P.status==='owner'?'Premium, always: this is the owner\'s account.'
-        :P.status==='beta'?'Thank you for testing TessyNav! As a beta tester you have Premium free until '+day(P.trialEnd)+'. No card needed. To keep Premium after that, you can subscribe below: the first payment is only taken on that day.'
+        :P.status==='beta'?'Thank you for testing MapKoon! As a beta tester you have Premium free until '+day(P.trialEnd)+'. No card needed. To keep Premium after that, you can subscribe below: the first payment is only taken on that day.'
         :P.status==='trialing'?'Free trial until '+day(P.trialEnd)+(P.cancelAt?'. It will not renew.':', then '+(P.plan==='year'?'C$34.99 a year':'C$3.99 a month')+'.')
-        :P.premium?(P.cancelAt?'Premium until '+day(P.cancelAt)+'. It will not renew.':'Premium, '+(P.plan==='year'?'yearly':'monthly')+(P.renews?'. Renews on '+day(P.renews)+'.':'.'))+(P.founder?' 🏅 You are a Founder: thank you for believing in TessyNav early! Your yearly price is locked until '+day(P.priceLock)+'.':'')+(P.status==='past_due'?' Your last payment did not go through: please update your card in Manage billing.':'')
+        :P.premium?(P.cancelAt?'Premium until '+day(P.cancelAt)+'. It will not renew.':'Premium, '+(P.plan==='year'?'yearly':'monthly')+(P.renews?'. Renews on '+day(P.renews)+'.':'.'))+(P.founder?' 🏅 You are a Founder: thank you for believing in MapKoon early! Your yearly price is locked until '+day(P.priceLock)+'.':'')+(P.status==='past_due'?' Your last payment did not go through: please update your card in Manage billing.':'')
         :(P.betaEnded?'Your free beta months ended on '+day(P.betaEnded)+'. Thank you for testing! ':'')+(trialOn?'You have Premium free for '+tLeft+' more day'+(tLeft>1?'s':'')+' in this car. Subscribe to keep it after that.':'You are on the free account.');
       const fo=P.founderUntil&&!(P.premium&&P.status!=='beta')?' 🏅 Take the yearly plan by '+new Date((P.founderUntil-86400)*1000).toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric',timeZone:'UTC'})+' to become a Founder: a Founder badge, and your yearly price locked for 12 months.':'';
       $('pmTx').textContent='Signed in as '+P.email+'. '+st+fo;
-      if(P.founder){const im=document.createElement('img');im.src='https://tessynav.com/img/founder-badge.png';im.alt='Founder badge';im.style.cssText='width:160px;height:160px;border-radius:18px;margin:4px 0 6px';A.appendChild(im);}
+      if(P.founder){const im=document.createElement('img');im.src='https://mapkoon.com/img/founder-badge.png';im.alt='Founder badge';im.style.cssText='width:160px;height:160px;border-radius:18px;margin:4px 0 6px';A.appendChild(im);}
       if(P.status==='owner'){}
       else if(P.premium&&P.status!=='beta') A.appendChild(btn('Manage billing','pri',async()=>{msg('Opening…');try{location.href=(await call('/premium/portal',{token:P.token})).url;}catch(e){msg('Could not open billing. Try again.','err');}}));
       else{

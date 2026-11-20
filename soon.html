@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>TessyNav · Coming soon</title>
-<!-- TessyNav is private until launch: visitors see this page. The owner unlocks a device once with the private link
+<title>MapKoon · Coming soon</title>
+<!-- MapKoon is private until launch: visitors see this page. The owner unlocks a device once with the private link
      (/soon.html?unlock=KEY): the key is checked against its fingerprint (SHA-256), never stored in this code, and the
      device is remembered. /soon.html?lock=1 locks this device again. -->
 <style>
@@ -30,7 +30,7 @@ h1 b{color:#e8913a}
 <body>
 <div class="w">
   <svg class="r" viewBox="0 0 200 200" aria-hidden="true"><path d="M46 62 L54 18 L86 50 Z" fill="#888780"/><path d="M154 62 L146 18 L114 50 Z" fill="#888780"/><path d="M52 56 L57 30 L76 49 Z" fill="#d3d1c7"/><path d="M148 56 L143 30 L124 49 Z" fill="#d3d1c7"/><circle cx="100" cy="100" r="62" fill="#b4b2a9"/><path d="M38 92 Q100 62 162 92 L162 114 Q100 90 38 114 Z" fill="#2c2c2a"/><circle cx="76" cy="101" r="11" fill="#f1efe8"/><circle cx="124" cy="101" r="11" fill="#f1efe8"/><circle cx="78" cy="102" r="5.5" fill="#2c2c2a"/><circle cx="122" cy="102" r="5.5" fill="#2c2c2a"/><ellipse cx="100" cy="132" rx="26" ry="20" fill="#f1efe8"/><ellipse cx="100" cy="123" rx="9" ry="6.5" fill="#2c2c2a"/><path d="M87 137 Q100 147 113 137" stroke="#2c2c2a" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>
-  <h1>Tessy<b>Nav</b></h1>
+  <h1>Map<b>Koon</b></h1>
   <div class="s">Navigation for Tesla</div>
   <div class="c">Coming soon</div>
   <div class="t">Rocco is getting the roads ready.<br>Made in Québec, for your Tesla.</div>
@@ -48,7 +48,7 @@ h1 b{color:#e8913a}
       history.replaceState(null,'','/soon.html');   /* (the key doesn't stay in the address bar or the history) */
       const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(k));
       const hex=[...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('');
-      if(hex===H){localStorage.setItem('tn2_access',H);msg.textContent='Unlocked. Opening TessyNav…';setTimeout(()=>location.replace('/v2/?r='+Date.now()),700);}
+      if(hex===H){localStorage.setItem('tn2_access',H);msg.textContent='Unlocked. Opening MapKoon…';setTimeout(()=>location.replace('/v2/?r='+Date.now()),700);}
       else msg.textContent='That link didn’t work.';
       return;
     }
