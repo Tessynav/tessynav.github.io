@@ -1,4 +1,4 @@
-/* TessyNav v2 — premium.js (v1)
+/* TessyNav v2 — premium.js (v3: Founders)
    Who has Premium, in this car's browser:
    - every new driver: 14 days of Premium from the first time TessyNav opens here (no card, no sign-in)
    - a subscriber or a beta tester: signed in on the Account page (tn2_premium, kept in this browser); the plan is asked
@@ -30,7 +30,7 @@ TN.PRO_TRIAL_DAYS=14;
   TN.proTrialDaysLeft=function(){return Math.max(0,Math.ceil((TN.proTrialEnd-Date.now())/864e5));};
   /* the line in Settings: what this car has now */
   TN.proLabel=function(){const P=TN.proAccount(),fr=TN.LANG==='fr';
-    if(P&&P.premium&&TN.isPro()) return P.status==='beta'?(fr?'Premium \u00b7 testeur bêta':'Premium \u00b7 beta tester'):'Premium';
+    if(P&&P.premium&&TN.isPro()) return P.founder?(fr?'Premium \u00b7 Fondateur \ud83c\udfc5':'Premium \u00b7 Founder \ud83c\udfc5'):P.status==='beta'?(fr?'Premium \u00b7 testeur bêta':'Premium \u00b7 beta tester'):'Premium';
     const d=TN.proTrialDaysLeft();if(d>0) return fr?'Premium gratuit \u00b7 encore '+d+' jour'+(d>1?'s':''):'Premium free \u00b7 '+d+' day'+(d>1?'s':'')+' left';
     return fr?'Compte gratuit':'Free account';};
   /* the plan, asked again twice a day when signed in (a cancelled plan turns off by itself) */
@@ -41,7 +41,7 @@ TN.PRO_TRIAL_DAYS=14;
       if(r.status===401){set('tn2_premium','');return;}
       const j=await r.json();if(!j||!j.ok) return;
       set('tn2_premium',JSON.stringify({token:j.token,email:j.email,premium:!!j.premium,status:j.status||null,plan:j.plan||null,trialEnd:j.trialEnd||null,
-        renews:j.renews||null,cancelAt:j.cancelAt||null,trial:false,betaEnded:j.betaEnded||null,at:Date.now()}));
+        renews:j.renews||null,cancelAt:j.cancelAt||null,trial:false,betaEnded:j.betaEnded||null,founder:!!j.founder,priceLock:j.priceLock||null,founderUntil:j.founderUntil||null,at:Date.now()}));
     }catch(e){}
   };
   setTimeout(()=>TN.proRefresh(),8000);setInterval(()=>TN.proRefresh(),36e5);
