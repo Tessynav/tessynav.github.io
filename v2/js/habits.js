@@ -1,4 +1,4 @@
-/* TessyNav v2 — habits.js (v2): learning your usual routes, and your usual way into a place
+/* TessyNav v2 — habits.js (v3): learning your usual routes, and your usual way into a place
    After each drive, TessyNav keeps a short note of it on the car (never sent anywhere): where it started and ended,
    the day and hour, and the ~100 m squares of map it went through. When you plan a route and Mapbox offers a few
    ways, the one that follows the roads you usually take between those two places is marked "Usual" and chosen,
@@ -83,11 +83,14 @@ TN.Habits.prototype.approach=function(coords,to){
   const rc=new Set();let last=null;
   for(const p of coords){if(TN.Habits.dist(p,to)>3200) continue;if(last&&TN.Habits.dist(last,p)<40) continue;last=p;
     const [x,y]=TN.Habits.cell(p[0],p[1]).split(':').map(Number);for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) rc.add((x+dx)+':'+(y+dy));}
-  let best=null;
+  const all=[];
   for(const k in cnt){if(cnt[k]<need||rc.has(k)) continue;const r=TN.Habits.dist(TN.Habits.center(k),to);
     /* (the square of your way furthest from the route's own squares near the place, but not right at the door) */
-    if(r<400||r>2500) continue;const sc=cnt[k]*1000-r;if(!best||sc>best.sc) best={k:k,sc:sc,n:cnt[k]};}
-  if(!best) return null;
-  const c=TN.Habits.center(best.k);return {via:[+c[0].toFixed(6),+c[1].toFixed(6)],n:best.n,of:D.length};
+    if(r<400||r>2500) continue;all.push({k:k,sc:cnt[k]*1000-r,n:cnt[k]});}
+  if(!all.length) return null;
+  all.sort((a,b)=>b.sc-a.sc);
+  const ll=k=>{const c=TN.Habits.center(k);return [+c[0].toFixed(6),+c[1].toFixed(6)];};
+  /* (a few other squares of the same way too, in case the first one lands on a side street: see nav.js) */
+  return {via:ll(all[0].k),n:all[0].n,of:D.length,more:all.slice(1,4).map(x=>ll(x.k))};
 };
 TN.habits=new TN.Habits();

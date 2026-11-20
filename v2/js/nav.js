@@ -519,9 +519,17 @@ TN.Nav.prototype.fetchRoute=async function(from,to){
   try{const d=this.dest;
     if(rt&&d&&!(this.stops&&this.stops.length)&&TN.habits&&TN.habits.approach){
       const A=TN.habits.approach(rt.geometry.coordinates,[d.lng,d.lat]);
-      if(A){const C=rt.geometry.coordinates,end=C[C.length-1],rt4=await this.fetchVia(from,A.via,end);
+      if(A){const C=rt.geometry.coordinates,end=C[C.length-1];
+        /* a U-turn the first route didn't have means the point landed on a side street: the route went in and came
+           back out (trip 2006: a 100 m dead end before home, with a U-turn shown and the car leaving the line). Then
+           the same point held closer to your way (30 m), then the other squares of your way; none without a U-turn
+           → the route as it was */
+        const ut=r=>{let n=0;for(const L of (r&&r.legs)||[]) for(const st of L.steps||[]) if(st.maneuver&&(st.maneuver.modifier==='uturn'||/uturn/.test(st.maneuver.type||''))) n++;return n;};
+        const u0=ut(rt),tries=[[A.via,80],[A.via,30]].concat((A.more||[]).map(v=>[v,40]));let rt4=null,via=A.via,spurs=0;
+        for(const [v,rad] of tries){const r=await this.fetchVia(from,v,end,rad);if(!r) continue;if(ut(r)>u0){spurs++;continue;}rt4=r;via=v;break;}
+        if(!rt4&&spurs) this.note('usual approach',{name:d.name,n:A.n,of:A.of,via:A.via,uturn:true,tries:spurs,used:false});
         if(rt4){const ok=rt4.duration<=rt.duration+Math.max(180,0.15*rt.duration);
-          this.note('usual approach',{name:d.name,n:A.n,of:A.of,via:A.via,min:Math.round(rt.duration/60),min2:Math.round(rt4.duration/60),used:ok});
+          this.note('usual approach',{name:d.name,n:A.n,of:A.of,via,spurs,min:Math.round(rt.duration/60),min2:Math.round(rt4.duration/60),used:ok});
           if(ok){rt4.viaUsual=true;rt=rt4;this.alts=null;}}}}}catch(e){}
   /* a bad ending (like a station beside a highway, reached by crossing a bridge and coming back): ask again with
      the destination on the nearest local street, and keep that route if it's better */
@@ -548,12 +556,12 @@ TN.Nav.prototype.fetchRouteOnce=async function(from,to){
 };
 /* a route through one point without stopping there (waypoints=0;2: the middle point is only passed through, no
    "you have arrived" there); the point snaps to a road within 80 m. null when Mapbox can't */
-TN.Nav.prototype.fetchVia=async function(from,via,to){
+TN.Nav.prototype.fetchVia=async function(from,via,to,rad){
   if(!TN.MBX) return null;
   try{const G=this.api.gps?this.api.gps():null,brg=G&&G.v>2&&G.hd!=null?'&bearings='+Math.round(G.hd)+',60;;':'';
     const P=[from,via,to].map(p=>p[0].toFixed(6)+','+p[1].toFixed(6)).join(';');
     const u='https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+P+'?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&language='+(TN.LANG||'en')+
-      '&voice_instructions=true&voice_units=metric&waypoints=0;2&radiuses=unlimited;80;unlimited'+brg+TN.avoidParam()+'&access_token='+TN.MBX;
+      '&voice_instructions=true&voice_units=metric&waypoints=0;2&radiuses=unlimited;'+(rad||80)+';unlimited'+brg+TN.avoidParam()+'&access_token='+TN.MBX;
     const r=await fetch(u);if(!r.ok) return null;const j=await r.json();if(!j.routes||!j.routes[0]) return null;
     j.routes[0].traffic=true;return j.routes[0];}catch(e){return null;}
 };
