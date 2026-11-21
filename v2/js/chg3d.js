@@ -1,4 +1,4 @@
-/* MapKoon v2 — chg3d.js (v1, Nov 21 2026)
+/* MapKoon v2 — chg3d.js (v1.1, Nov 21 2026)
    Fast chargers as small 3D landmarks, beside their map pins: a row of charging posts at painted parking stalls,
    and a tall sign with a lightning bolt, the number of stalls and the power. Red tops for Tesla Superchargers, blue
    for other fast chargers (only those shown on the map). Simple shapes, no logos.
@@ -8,8 +8,7 @@ var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.Chg3D=function(scene,net){
   this.scene=scene;this.net=net;this.on=true;this.built=new Map();this.t=0;
-  try{const s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s.chg3d===false) this.on=false;
-    this.showDC=!!s.chgDC;}catch(e){}
+  try{const s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};if(s.chg3d===false) this.on=false;}catch(e){}
   if(typeof location!=='undefined'&&/[?&]chg3d=0/.test(location.search)) this.on=false;
 };
 TN.Chg3D.prototype.mats=function(){
@@ -68,9 +67,10 @@ TN.Chg3D.prototype.update=function(dt,cx,cz){
   const C=TN.chargers;
   if(!this.on||!C||!C.list||!C.list.length||!this.scene.three||typeof THREE==='undefined'){if(this.built.size) this.clear();return;}
   this.t-=dt;if(this.t>0) return;this.t=2;
-  let dc=false;try{dc=!!(JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{}).chgDC;}catch(e){}
+  /* (the same switches as the map pins: Superchargers unless turned off, other fast chargers when turned on) */
+  const S=TN.settings||{},sc=S.chargers!==false,dc=!!S.fastdc;
   const ll=TN.fromLocal(cx,cz),near=[];
-  for(const c of C.list){if(c.kind!=='sc'&&!dc) continue;if(Math.abs(c.ll[1]-ll[1])>0.011||Math.abs(c.ll[0]-ll[0])>0.016) continue;
+  for(const c of C.list){if(c.kind==='sc'?!sc:!dc) continue;if(Math.abs(c.ll[1]-ll[1])>0.011||Math.abs(c.ll[0]-ll[0])>0.016) continue;
     const q=TN.toLocal(c.ll[0],c.ll[1]),d=Math.hypot(q[0]-cx,q[1]-cz);if(d<700) near.push([d,c,q]);}
   near.sort((a,b)=>a[0]-b[0]);const keep=new Set(near.slice(0,6).map(n=>n[1].id));
   for(const k of [...this.built.keys()]) if(!keep.has(k)) this.drop(k);
