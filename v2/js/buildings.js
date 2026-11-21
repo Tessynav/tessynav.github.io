@@ -292,7 +292,7 @@ TN.Buildings.prototype.free=function(k){
   this.cells.delete(k);
 };
 /* ---------- our own building tiles (Overture: OpenStreetMap plus the buildings it's missing) ---------- */
-TN.BTILES='https://tessynav.github.io/tessynav-buildings/';
+TN.BTILES='https://app.mapkoon.com/tessynav-buildings/';
 TN.Buildings.prototype.tilesIndex=function(){
   if(this.tidx||this.tidxLoading||Date.now()-(this.tidxT||0)<600000) return this.tidx;
   this.tidxLoading=true;this.tidxT=Date.now();
