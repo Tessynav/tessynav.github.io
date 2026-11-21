@@ -21,7 +21,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   TN.RW=null;
   if(typeof Worker!=='undefined'&&!/[?&]rw=0/.test(location.search)){try{
     const sv=n=>{const e=document.querySelector('script[src*="'+n+'.js"]');return e&&(e.getAttribute('src').match(/v=(\d+)/)||[])[1]||'1';},rv=sv('roads');
-    const W=new Worker('js/roadworker.js?v=6&r='+rv+'&b='+sv('buildings')+'&s='+sv('shadows')),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
+    const W=new Worker('js/roadworker.js?v=7&r='+rv+'&b='+sv('buildings')+'&s='+sv('shadows')),RW={w:W,ready:false,ver:-1,syncVer:-1,sj:null,pend:new Map(),id:0,failed:false,t0:performance.now()};
     /* if it stops: everything is done here again as before, heights included (a full rebuild) */
     const failAll=()=>{if(RW.failed&&!net.remoteHeights) return;RW.failed=true;net.mirror=false;
       if(net.remoteHeights){net.remoteHeights=false;if(!net.job) net.startRebuild();else net._dirty=true;}

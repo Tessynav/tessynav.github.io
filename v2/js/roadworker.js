@@ -40,6 +40,7 @@ self.onmessage=e=>{const m=e.data;
     }else if(m.t==='bld'){
       /* one area of buildings from our building tiles: decoded and built here, sent back as number arrays */
       const T2=self.TN,out=[],ox=m.o[0],oy=m.o[1];
+      T2.landmarkHide=m.hide||[];   /* (areas left out: landmark models, gas station canopies) */
       for(let ri=0;ri<m.recs.length;ri++){const r=m.recs[ri];let x=r[2],y=r[3];const ring=[T2.toLocal(ox+x/1e6,oy+y/1e6)];
         for(let k=4;k<r.length;k+=2){x+=r[k];y+=r[k+1];ring.push(T2.toLocal(ox+x/1e6,oy+y/1e6));}
         let A=0;for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length];A+=a[0]*b[1]-b[0]*a[1];}

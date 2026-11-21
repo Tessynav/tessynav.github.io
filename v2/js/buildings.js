@@ -454,7 +454,8 @@ TN.Buildings.prototype.update=function(lng,lat,fps){
       if(raw&&!raw.done&&raw.recs&&raw.recs.length){this.lastStart=now;
         const id=++RW.id,J={k:best.k,wait:true,t:now,tries:best.tries};this.job=J;
         RW.pend.set(id,(R,err)=>{if(err||!R) J.fail=true;else{J.res=R;this.bgFails=0;}});
-        try{RW.w.postMessage({t:'bld',k:best.k,id:id,o:P.o,recs:raw.recs,ms:raw.ms||null,shadows:!!TN.shadows});}catch(e){J.fail=true;}
+        /* (Nov 21: the areas to leave out (landmark models, gas station canopies) go along: the background builder has its own copy of everything and was building them anyway) */
+        try{RW.w.postMessage({t:'bld',k:best.k,id:id,o:P.o,recs:raw.recs,ms:raw.ms||null,shadows:!!TN.shadows,hide:(TN.landmarkHide||[]).map(h=>({x:h.x,z:h.z,r:h.r,inside:!!h.inside}))});}catch(e){J.fail=true;}
         return;}}}}
   const tl=this.tileList(best.k,lng,lat);
   if(tl===null){this.lastStart=now;return;}   /* (that tile is still on its way: try again shortly) */
