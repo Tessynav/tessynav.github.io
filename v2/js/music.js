@@ -1,246 +1,417 @@
-/* MapKoon v2 — music.js (v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
-   A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
-   to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
-   (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
-   and nothing goes through Tesla. Needs Spotify Premium; Spotify limits a personal app to 5 users.
-   Separate from the map and the car: if anything fails here, only the card is affected. ?music=0 switches it off. */
+/* TessyNav v2 — incidents.js
+   Road incidents with Rocco, TessyNav's raccoon mascot.
+   - source: TomTom Traffic Incidents (all roads, city streets included): accidents, closures, road works, lane
+     closures, broken-down vehicles, ice, fog, flooding... refreshed every 2 minutes around the car
+   - on the map: a small round Rocco badge for each incident
+   - ahead of you (on your route, or straight ahead when there is no route): an alert card, the important part big
+     ("Road works · 600 m"), Rocco and his one-liner smaller ("Fun mode" in the settings turns the jokes off)
+   The key is restricted to tessynav.github.io and app.mapkoon.com. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
-TN.SPOTIFY_ID='69e3fcb20ecc487da3512617ba29158f';   /* MapKoon's own key: works for the people invited to it (Spotify allows 5) */
-TN.SPOTIFY_HELP='https://tessynav.github.io/v2/spotify.html';
-TN.Music=function(){
-  this.on=typeof document!=='undefined'&&!/[?&]music=0/.test(location.search);
-  if(!this.on) return;
-  this.redirect=location.origin+location.pathname.replace(/[^/]*$/,'');   /* https://tessynav.github.io/v2/ */
-  this.tok=this.load();this.now=null;this.pollT=null;this.open=false;this.tab='search';
-  this.ui();
-  const q=new URLSearchParams(location.search);
-  if(q.get('code')&&q.get('state')===this.ls('tn_sp_state')) this.finish(q.get('code'));
-  else if(q.get('error')&&q.get('state')){this.clean();this.msg('Spotify login was cancelled.');}
-  this.poll();
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden) this.poll();});
+TN.TT='SFsP1S1bN56sxYRuHDYyJpLTgg5Pva1k';
+/* Firebase (driver reports). These web settings are meant to be public; the database rules decide what is allowed. */
+TN.FB={apiKey:'AIzaSyCBRR9gPPRnhNALC2V5uHmbtr7pR0R7EA8',projectId:'tessynav-958f3'};
+
+/* ---------- Rocco ---------- */
+TN.ROCCO_KIND={6:'jam',1:'accident',2:'fog',3:'hazard',4:'rain',5:'ice',7:'lane',8:'closed',9:'works',10:'wind',11:'flood',14:'breakdown'};
+TN.ROCCO_TITLE={school:'School zone',rail:'Railway crossing',camera:'Speed camera',speedred:'Speed and red-light camera',redlight:'Red-light camera',mobile:'Mobile radar zone',stand:'Standstill',jam:'Heavy traffic',pothole:'Pothole',accident:'Accident',fog:'Fog',hazard:'Danger on the road',rain:'Heavy rain',ice:'Ice',lane:'Lane closed',closed:'Road closed',works:'Road works',
+  wind:'Strong wind',flood:'Flooding',breakdown:'Stopped vehicle',police:'Police',unknown:'Incident'};
+TN.ROCCO_JOKES={
+  accident:['Oops! Someone kissed a bumper.','Fender-bender ahead. Rocco is taking notes.','Bumper cars, but not the fun kind.'],
+  works:['Cone collector at work.','Orange cones: Montreal\u2019s official tree.','Rocco is supervising. Very hard work.'],
+  closed:['Nope. Not today.','Road\u2019s taking a nap.','Even Rocco can\u2019t sneak through here.'],
+  lane:['One lane down. Squeeze politely.','Zipper merge time!','Lanes are like snacks: someone took one.'],
+  breakdown:['Someone needs a hug and a tow.','Car took a coffee break.','Stopped car ahead. Give it some room.'],
+  ice:['Ice ice baby. Slow down.','Rocco tried skating here. It didn\u2019t end well.','Slippery! Easy on the brakes.'],
+  fog:['Rocco can\u2019t see his own tail.','Pea soup ahead. Lights on.','Mystery fog. Slow and steady.'],
+  flood:['Rocco brought his floaties.','Car wash for free. Not recommended.','Water on the road. Go around.'],
+  rain:['Wipers on, Rocco\u2019s umbrella out.','Big rain. Bigger following distance.'],
+  wind:['Hold on to your tuque!','Windy! Rocco\u2019s tail is everywhere.'],
+  hazard:['Something on the road. Eyes open!','Rocco spotted trouble ahead.'],
+  police:['Smile, you\u2019re on camera!','Rocco says: speed limit, my friend.'],
+  school:['Slow down: future drivers crossing.','Rocco walked to school uphill both ways. Slow down.','Kids, buses and crossing guards ahead.'],
+  rail:['Look both ways. Trains don\u2019t brake for raccoons.','Choo choo! Rocco is listening for trains.','Tracks ahead. Slow down, look, listen.'],
+  camera:['Smile! Rocco checked your speed.','Say cheese at the speed limit.','Flash photography ahead.'],
+  speedred:['Speed and red lights: Rocco sees both.','Green means go, red means photo.'],
+  redlight:['Red means stop. Rocco means it.','Yellow is not a dare.','Camera loves a full stop.'],
+  mobile:['Rocco spotted a radar hideout.','Mobile radar zone. Easy on the pedal.','The radar might be home today.'],
+  stand:['Rocco fell asleep. Nobody\u2019s moving.','Parking lot mode: on.','Time to learn some French verbs.'],
+  jam:['Rocco brought snacks.','Perfect time for a podcast.','Bumper to bumper. Breathe.','Rocco is counting cars. He\u2019s at 300.'],
+  pothole:['Hi! Mind my house.','Rocco\u2019s swimming pool. Go around.','Montreal\u2019s famous craters.'],
+  unknown:['Something\u2019s up ahead.']};
+/* Rocco as a drawing: the head with his mask, plus an accessory for each kind of incident */
+TN.ROCCO=function(kind,size,night){
+  const z=size||64,fur=night?'#6f7782':'#8f97a2',fur2=night?'#5a616b':'#7d8590',dark='#2b2f36',muz=night?'#cfd3d8':'#eef0f2';
+  const head='<ellipse cx="-30" cy="-34" rx="14" ry="16" fill="'+fur2+'"/><ellipse cx="-30" cy="-32" rx="7" ry="9" fill="#3a3f47"/>'+
+    '<ellipse cx="30" cy="-34" rx="14" ry="16" fill="'+fur2+'"/><ellipse cx="30" cy="-32" rx="7" ry="9" fill="#3a3f47"/>'+
+    '<ellipse cx="0" cy="0" rx="46" ry="40" fill="'+fur+'"/><path d="M-44 -4 Q-24 -22 0 -8 Q24 -22 44 -4 Q30 14 0 6 Q-30 14 -44 -4Z" fill="'+dark+'"/>'+
+    '<ellipse cx="0" cy="18" rx="24" ry="18" fill="'+muz+'"/><ellipse cx="0" cy="8" rx="7" ry="5" fill="#1d2024"/>';
+  const eyes='<circle cx="-17" cy="-5" r="7" fill="#fff"/><circle cx="17" cy="-5" r="7" fill="#fff"/><circle cx="-16" cy="-4" r="3.5" fill="#111"/><circle cx="18" cy="-4" r="3.5" fill="#111"/>';
+  const wide='<circle cx="-17" cy="-6" r="9" fill="#fff"/><circle cx="17" cy="-6" r="9" fill="#fff"/><circle cx="-17" cy="-6" r="3" fill="#111"/><circle cx="17" cy="-6" r="3" fill="#111"/>';
+  const smile='<path d="M-12 24 Q0 32 12 24" stroke="#1d2024" stroke-width="3.5" fill="none" stroke-linecap="round"/>';
+  const oh='<ellipse cx="0" cy="25" rx="6" ry="8" fill="#5a1f1f"/>';
+  const frown='<path d="M-10 28 Q0 21 10 28" stroke="#1d2024" stroke-width="3.5" fill="none" stroke-linecap="round"/>';
+  const brows='<path d="M-24 -16 l12 5 M24 -16 l-12 5" stroke="#111" stroke-width="4" stroke-linecap="round"/>';
+  let extra='',face=eyes+smile;
+  switch(kind){
+    case 'police':face='<circle cx="-16" cy="-2" r="3.5" fill="#111"/><circle cx="16" cy="-2" r="3.5" fill="#111"/>'+brows+
+      '<path d="M-26 22 Q-14 12 0 18 Q14 12 26 22 Q14 20 0 24 Q-14 20 -26 22Z" fill="#3b2a20"/>';
+      extra='<path d="M-44 -30 Q0 -58 44 -30 L40 -20 Q0 -30 -40 -20Z" fill="#1f3a66"/><path d="M-42 -22 Q0 -30 42 -22 L46 -14 Q0 -22 -46 -14Z" fill="#111"/><path d="M-6 -44 l6 -6 l6 6 l-2 8 h-8z" fill="#d8b64a"/>';break;
+    case 'accident':face=wide+oh;extra='<path d="M40 30 L58 -2 L76 30Z" fill="none" stroke="#e5352b" stroke-width="6" stroke-linejoin="round"/><path d="M-56 -44 q4 -10 8 0 M56 -44 q-4 -10 -8 0" stroke="#e5352b" stroke-width="3" fill="none"/>';break;
+    case 'works':extra='<path d="M-44 -26 Q0 -62 44 -26Z" fill="#f2c21c"/><rect x="-48" y="-28" width="96" height="7" rx="3" fill="#d9a80f"/><path d="M48 44 L60 6 L72 44Z" fill="#f28c1c"/><path d="M53 30 H67" stroke="#fff" stroke-width="4"/>';break;
+    case 'closed':face=eyes+frown;extra='<rect x="-62" y="34" width="124" height="14" rx="3" fill="#fff" stroke="#e5352b" stroke-width="3"/><path d="M-50 34 l12 14 M-22 34 l12 14 M6 34 l12 14 M34 34 l12 14" stroke="#e5352b" stroke-width="6"/>';break;
+    case 'lane':extra='<path d="M44 44 L56 8 L68 44Z" fill="#f28c1c"/><path d="M-68 44 L-56 8 L-44 44Z" fill="#f28c1c"/>';break;
+    case 'breakdown':face=eyes+frown;extra='<path d="M-30 -48 q8 -14 16 0 q8 -14 16 0 q8 -14 16 0" stroke="#9aa3ab" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M50 20 l18 -18 m-6 -6 l10 10" stroke="#9aa3ab" stroke-width="6" stroke-linecap="round"/>';break;
+    case 'ice':face=wide+smile;extra='<path d="M-40 -40 Q0 -64 40 -40 L36 -30 Q0 -44 -36 -30Z" fill="#c0392b"/><circle cx="0" cy="-56" r="7" fill="#fff"/><path d="M-42 34 Q-20 44 0 38 Q20 44 42 34" stroke="#c0392b" stroke-width="8" fill="none" stroke-linecap="round"/>';break;
+    case 'fog':face='<path d="M-24 -5 h14 M10 -5 h14" stroke="#111" stroke-width="4" stroke-linecap="round"/>'+frown;extra='<path d="M-70 -10 h40 M30 -20 h44 M-60 40 h50 M20 46 h46" stroke="#cfd6dd" stroke-width="7" stroke-linecap="round" opacity=".85"/>';break;
+    case 'flood':face=eyes+smile;extra='<ellipse cx="0" cy="44" rx="58" ry="12" fill="#3b82f6" opacity=".8"/><circle cx="-50" cy="36" r="10" fill="none" stroke="#f28c1c" stroke-width="7"/>';break;
+    case 'rain':extra='<path d="M-52 -46 Q0 -86 52 -46Z" fill="#1fa596"/><path d="M0 -46 v-14" stroke="#555" stroke-width="3"/><path d="M-60 -20 l-4 10 M60 -20 l4 10 M-48 0 l-4 10 M48 0 l4 10" stroke="#7fb2e5" stroke-width="3"/>';break;
+    case 'wind':face=wide+oh;extra='<path d="M-74 -30 Q-50 -36 -40 -26 M-76 -6 Q-56 -12 -46 -2 M46 -24 Q60 -30 74 -22" stroke="#cfd6dd" stroke-width="5" fill="none" stroke-linecap="round"/>';break;
+    case 'jam':face='<path d="M-24 -5 q7 -5 14 0 M10 -5 q7 -5 14 0" stroke="#111" stroke-width="4" fill="none" stroke-linecap="round"/>'+frown;
+      extra='<path d="M36 -30 q6 10 0 16 q-6 -6 0 -16z" fill="#7fb2e5"/><rect x="-74" y="34" width="34" height="14" rx="4" fill="#e5352b"/><rect x="-68" y="27" width="20" height="10" rx="3" fill="#e5352b"/><circle cx="-66" cy="49" r="4" fill="#111"/><circle cx="-48" cy="49" r="4" fill="#111"/>'+
+        '<rect x="40" y="34" width="34" height="14" rx="4" fill="#f2c21c"/><rect x="46" y="27" width="20" height="10" rx="3" fill="#f2c21c"/><circle cx="48" cy="49" r="4" fill="#111"/><circle cx="66" cy="49" r="4" fill="#111"/>';break;
+    case 'school':face=wide+smile;extra='<path d="M58 -40 L80 -20 L80 14 L36 14 L36 -20Z" fill="#fcd34d" stroke="#3a2d00" stroke-width="3"/>'+
+      '<circle cx="51" cy="-14" r="5" fill="#3a2d00"/><path d="M51 -8 V6 M44 -2 H58 M51 6 L46 12 M51 6 L56 12" stroke="#3a2d00" stroke-width="3" stroke-linecap="round"/>'+
+      '<circle cx="66" cy="-10" r="4" fill="#3a2d00"/><path d="M66 -5 V7 M60 0 H72 M66 7 L62 12 M66 7 L70 12" stroke="#3a2d00" stroke-width="3" stroke-linecap="round"/>'+
+      '<path d="M58 14 V48" stroke="#9aa3ab" stroke-width="5"/>';break;
+    case 'rail':face=wide+smile;extra='<path d="M58 -30 V48" stroke="#9aa3ab" stroke-width="5"/><path d="M40 -28 L76 2 M76 -28 L40 2" stroke="#fff" stroke-width="9" stroke-linecap="round"/><path d="M40 -28 L76 2 M76 -28 L40 2" stroke="#e5352b" stroke-width="5" stroke-linecap="round"/>'+
+      '<circle cx="50" cy="16" r="5" fill="#e5352b"/><circle cx="66" cy="16" r="5" fill="#e5352b"/><path d="M-76 50 H-20 M-76 42 H-20" stroke="#6b5a4c" stroke-width="3"/><path d="M-70 38 v16 M-58 38 v16 M-46 38 v16 M-34 38 v16" stroke="#8a7a6b" stroke-width="3"/>';break;
+    case 'camera':case 'speedred':extra='<rect x="40" y="-6" width="34" height="24" rx="4" fill="#3a3f47"/><circle cx="57" cy="6" r="8" fill="#9fb3c8" stroke="#1d2024" stroke-width="3"/><rect x="62" y="-12" width="10" height="6" rx="2" fill="#3a3f47"/>'+
+      '<path d="M66 -24 l6 -8 M74 -18 l9 -4 M58 -26 l1 -9" stroke="#fcd34d" stroke-width="3" stroke-linecap="round"/>'+(kind==='speedred'?'<circle cx="-58" cy="20" r="9" fill="#e5352b"/><rect x="-68" y="8" width="20" height="40" rx="5" fill="none" stroke="#3a3f47" stroke-width="4"/>':'');break;
+    case 'redlight':face=wide+smile;extra='<rect x="44" y="-30" width="24" height="62" rx="7" fill="#3a3f47"/><circle cx="56" cy="-17" r="7" fill="#e5352b"/><circle cx="56" cy="1" r="7" fill="#5f5a2a"/><circle cx="56" cy="19" r="7" fill="#2a4a2f"/><path d="M56 32 v18" stroke="#3a3f47" stroke-width="5"/>';break;
+    case 'mobile':face='<circle cx="-16" cy="-4" r="3.5" fill="#111"/><circle cx="18" cy="-4" r="3.5" fill="#111"/><path d="M-24 -14 l12 3 M24 -14 l-12 3" stroke="#111" stroke-width="4" stroke-linecap="round"/>'+smile;
+      extra='<rect x="42" y="-8" width="30" height="20" rx="4" fill="#3a3f47"/><circle cx="57" cy="2" r="6" fill="#9fb3c8"/><path d="M57 12 l-12 38 M57 12 v38 M57 12 l12 38" stroke="#6b7280" stroke-width="3"/>';break;
+    case 'stand':face='<path d="M-24 -4 q7 4 14 0 M10 -4 q7 4 14 0" stroke="#111" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cx="0" cy="25" rx="5" ry="4" fill="#5a1f1f"/>';
+      extra='<text x="40" y="-38" font-size="22" font-weight="700" fill="#7fb2e5" font-family="system-ui,sans-serif">Z</text><text x="58" y="-54" font-size="15" font-weight="700" fill="#7fb2e5" font-family="system-ui,sans-serif">z</text>'+
+        '<rect x="-60" y="34" width="34" height="14" rx="4" fill="#e5352b"/><rect x="-54" y="27" width="20" height="10" rx="3" fill="#e5352b"/><circle cx="-52" cy="49" r="4" fill="#111"/><circle cx="-34" cy="49" r="4" fill="#111"/>'+
+        '<rect x="-24" y="34" width="34" height="14" rx="4" fill="#f2c21c"/><rect x="-18" y="27" width="20" height="10" rx="3" fill="#f2c21c"/><circle cx="-16" cy="49" r="4" fill="#111"/><circle cx="2" cy="49" r="4" fill="#111"/>'+
+        '<rect x="12" y="34" width="34" height="14" rx="4" fill="#3b82f6"/><rect x="18" y="27" width="20" height="10" rx="3" fill="#3b82f6"/><circle cx="20" cy="49" r="4" fill="#111"/><circle cx="38" cy="49" r="4" fill="#111"/>';break;
+    case 'pothole':return '<svg width="'+z+'" height="'+z+'" viewBox="-80 -80 160 160" aria-hidden="true"><ellipse cx="0" cy="40" rx="74" ry="24" fill="#45494f"/><ellipse cx="0" cy="40" rx="60" ry="16" fill="#17191c"/>'+
+      '<g transform="translate(0,6) scale(.8)">'+head+eyes+smile+'</g><path d="M-74 40 Q0 74 74 40 L74 80 L-74 80Z" fill="#45494f"/></svg>';
+    case 'hazard':face=wide+oh;extra='<path d="M50 34 L62 6 L74 34Z" fill="#f2c21c" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M62 15 v9 M62 28 v1" stroke="#111" stroke-width="3" stroke-linecap="round"/>';break;
+  }
+  return '<svg width="'+z+'" height="'+z+'" viewBox="-80 -80 160 160" aria-hidden="true">'+head+face+extra+'</svg>';
 };
-/* storage (wrapped: the Tesla browser keeps it, private windows may not) */
-TN.Music.prototype.ls=function(k,v){try{if(v===undefined) return localStorage.getItem(k);if(v===null) localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}return null;};
-TN.Music.prototype.load=function(){try{return JSON.parse(this.ls('tn_sp_tok')||'null');}catch(e){return null;}};
-TN.Music.prototype.save=function(t){this.tok=t;this.ls('tn_sp_tok',t?JSON.stringify(t):null);};
-/* the key in use: the driver's own (Settings guide) or MapKoon's */
-TN.Music.prototype.cid=function(){const c=this.ls('tn_sp_cid');return c&&/^[0-9a-f]{32}$/i.test(c)?c:TN.SPOTIFY_ID;};
-TN.Music.prototype.own=function(){return this.cid()!==TN.SPOTIFY_ID;};
-TN.Music.prototype.clean=function(){try{history.replaceState(null,'',location.pathname);}catch(e){}};
-/* login: PKCE (code verifier stays in this browser) */
-TN.Music.prototype.login=async function(){
-  const rnd=n=>{const c='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',a=new Uint8Array(n);crypto.getRandomValues(a);return Array.from(a,b=>c[b%62]).join('');};
-  const ver=rnd(64),st=rnd(16);
-  const dg=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ver));
-  const ch=btoa(String.fromCharCode(...new Uint8Array(dg))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  this.ls('tn_sp_ver',ver);this.ls('tn_sp_state',st);
-  const p=new URLSearchParams({client_id:this.cid(),response_type:'code',redirect_uri:this.redirect,state:st,code_challenge_method:'S256',code_challenge:ch,
-    scope:'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-read-recently-played user-library-read'});
-  location.href='https://accounts.spotify.com/authorize?'+p;
+
+/* ---------- the incidents ---------- */
+TN.Incidents=function(api){
+  this.api=api;this.list=[];this.tt=[];this.reports=new TN.Reports(this);this.repFetch=0;this.markers=new Map();this.lastFetch=0;this.lastPos=null;this.alertFor=null;this.on=true;
 };
-TN.Music.prototype.finish=async function(code){
-  this.clean();
-  try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({grant_type:'authorization_code',code:code,redirect_uri:this.redirect,client_id:this.cid(),code_verifier:this.ls('tn_sp_ver')||''})});
-    const j=await r.json();if(!j.access_token) throw new Error(j.error_description||'no token');
-    this.save({a:j.access_token,r:j.refresh_token,e:Date.now()+(j.expires_in-60)*1000,c:this.cid()});this.msg('Spotify connected'+(this.own()?' with your own key.':'.'));this.poll();
-  }catch(e){this.msg('Spotify login failed: '+e.message);}
-  this.ls('tn_sp_ver',null);this.ls('tn_sp_state',null);
-};
-TN.Music.prototype.access=async function(){
-  if(!this.tok) return null;
-  if(Date.now()<this.tok.e) return this.tok.a;
-  try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({grant_type:'refresh_token',refresh_token:this.tok.r,client_id:this.tok.c||this.cid()})});
-    const j=await r.json();if(!j.access_token){this.save(null);this.render();return null;}
-    this.save({a:j.access_token,r:j.refresh_token||this.tok.r,e:Date.now()+(j.expires_in-60)*1000,c:this.tok.c});return this.tok.a;
-  }catch(e){return null;}
-};
-/* one Web API call; returns {s: status, j: json or null} */
-TN.Music.prototype.api=async function(path,opt){
-  const a=await this.access();if(!a) return {s:401,j:null};
-  try{const r=await fetch('https://api.spotify.com/v1'+path,Object.assign({},opt,{headers:Object.assign({Authorization:'Bearer '+a},opt&&opt.body?{'Content-Type':'application/json'}:{})}));
-    let j=null;if(r.status!==204){try{j=await r.json();}catch(e){}}
-    if(r.status===401){this.tok.e=0;}
-    return {s:r.status,j:j};
-  }catch(e){return {s:0,j:null};}
-};
-/* what's playing: every 5 s with the panel open, every 10 s otherwise; nothing while the screen is off */
-TN.Music.prototype.poll=async function(){
-  clearTimeout(this.pollT);if(!this.tok||document.hidden){this.render();return;}
-  const r=await this.api('/me/player?additional_types=episode');
-  this.now=r.s===200&&r.j?r.j:null;
-  /* a Spotify account not invited to MapKoon's key: Spotify answers 403; point to the own-key guide (once) */
-  if(r.s===403&&!this.own()&&!this.told403){this.told403=true;this.msg('This Spotify account isn\u2019t invited to MapKoon\u2019s key. Tap \u2699 in the music panel \u2192 Use my own Spotify key.');}
-  this.render();
-  this.pollT=setTimeout(()=>this.poll(),this.open?5000:10000);
-};
-/* the car's Spotify (or whichever device is playing) */
-TN.Music.prototype.device=async function(){
-  if(this.now&&this.now.device) return this.now.device.id;
-  const r=await this.api('/me/player/devices');const d=(r.j&&r.j.devices)||[];
-  const pick=d.find(x=>x.is_active)||d.find(x=>/automobile/i.test(x.type)||/tesla|model/i.test(x.name))||d[0];
-  return pick?pick.id:null;
-};
-TN.Music.prototype.cmd=async function(kind,body){
-  const dev=await this.device();
-  if(!dev){this.msg('Open Spotify on the car once (Tesla music → Spotify), then try again.');return;}
-  const m={toggle:this.now&&this.now.is_playing?['PUT','/me/player/pause']:['PUT','/me/player/play'],next:['POST','/me/player/next'],prev:['POST','/me/player/previous'],play:['PUT','/me/player/play']}[kind];
-  const r=await this.api(m[1]+'?device_id='+dev,{method:m[0],body:body?JSON.stringify(body):undefined});
-  if(r.s===403) this.msg('Spotify refused this (it needs Premium, or Spotify limits this for new apps).');
-  else if(r.s===404) this.msg('No Spotify player found. Open Spotify on the car, then try again.');
-  setTimeout(()=>this.poll(),600);
-};
-/* ---------- screen ---------- */
-TN.Music.prototype.ui=function(){
+TN.Incidents.prototype.build=function(){
   const st=document.createElement('style');
-  st.textContent='#tn-mus{left:240px;bottom:24px;display:flex;align-items:center;gap:10px;padding:8px 10px;max-width:min(420px,calc(100vw - 400px));height:44px;box-sizing:content-box}body.tn-routing #tn-mus{max-width:min(420px,calc(100vw - 530px))}'+
-    '@media (max-width:700px){#tn-mus{left:16px;top:122px;bottom:auto;max-width:calc(100vw - 52px)}}'+
-    '#tn-mus img{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none}#tn-mus .t{min-width:0;flex:1;cursor:pointer;line-height:1.25}'+
-    '#tn-mus .t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mus .t span{display:block;font-size:12px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
-    '#tn-mus button,#tn-mpan button{background:none;border:0;color:inherit;cursor:pointer;padding:6px;border-radius:50%;flex:none}#tn-mus .pp{background:#1db954;color:#000;width:40px;height:40px}'+
-    '#tn-mpan{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9;width:min(560px,calc(100vw - 32px));height:min(620px,calc(100vh - 80px));display:none;flex-direction:column;background:rgb(var(--tn-panel-rgb,24 26 30) / .97);color:var(--tn-text,#fff);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.45);font-family:system-ui,sans-serif;overflow:hidden}'+
-    '#tn-mpan .hd{display:flex;gap:8px;align-items:center;padding:14px}#tn-mpan input{flex:1;font-size:17px;padding:10px 14px;border-radius:12px;border:0;background:rgba(127,127,127,.18);color:inherit;outline:none}'+
-    '#tn-mpan .tabs{display:flex;gap:6px;padding:0 14px 8px}#tn-mpan .tabs button{border-radius:16px;padding:6px 14px;font-size:14px;background:rgba(127,127,127,.15)}#tn-mpan .tabs button.on{background:#1db954;color:#000}'+
-    '#tn-mpan .ls{flex:1;overflow-y:auto;padding:0 8px 12px}#tn-mpan .it{display:flex;gap:12px;align-items:center;padding:8px;border-radius:10px;cursor:pointer}#tn-mpan .it:active{background:rgba(127,127,127,.2)}'+
-    '#tn-mpan .it img{width:48px;height:48px;border-radius:6px;object-fit:cover;flex:none;background:#333}#tn-mpan .it div{min-width:0}#tn-mpan .it b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mpan .it span{font-size:13px;opacity:.65}'+
-    '#tn-mpan .dh{display:flex;align-items:center;gap:8px;padding:4px 6px 10px;position:sticky;top:0;background:rgb(var(--tn-panel-rgb,24 26 30));z-index:1}#tn-mpan .dh b{flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mpan .dh button{border-radius:16px;padding:7px 14px;font-size:14px;background:rgba(127,127,127,.18)}#tn-mpan .dh .pa{background:#1db954;color:#000;font-weight:600}'+
-    '#tn-mpan .note{padding:20px;opacity:.7;text-align:center}#tn-mmsg{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);z-index:10;background:rgba(20,20,24,.92);color:#fff;padding:10px 16px;border-radius:12px;font:14px system-ui,sans-serif;display:none;max-width:80vw;text-align:center}';
+  st.textContent='.tn-inc{width:34px;height:34px;border-radius:50%;background:#fff;border:3px solid #e5352b;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}'+
+    '.tn-inc.rail{border-color:#e5352b}.tn-inc.school{border-color:#e0b100}.tn-inc.camera,.tn-inc.speedred,.tn-inc.redlight,.tn-inc.mobile{border-color:#1f3a66}.tn-inc.jam{border-color:#f28c1c}.tn-inc.jam.stand{border-color:#b91c1c}.tn-inc.works,.tn-inc.lane{border-color:#f28c1c}.tn-inc.ice,.tn-inc.fog,.tn-inc.flood,.tn-inc.rain,.tn-inc.wind{border-color:#3b82f6}'+
+    '#tn-alert{left:50%;bottom:24px;transform:translateX(-50%);display:none;align-items:center;gap:10px;padding:6px 14px 6px 8px;max-width:min(80vw,520px);z-index:8}'+
+    '#tn-alert b{font-size:19px;display:block}#tn-alert small{color:var(--tn-sub);font-size:13px;display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-alert .joke{color:var(--tn-joke)}'+
+    'body.tn-routing #tn-alert{bottom:96px}'+
+    '#tn-alert .v{border:0;border-radius:10px;padding:10px 14px;font:600 15px system-ui,sans-serif;cursor:pointer;margin-left:6px}#tn-alert .up{background:var(--tn-accent);color:var(--tn-on-accent)}#tn-alert .down{background:var(--tn-btn);color:var(--tn-text)}'+
+    '.tn-inc.user{border-style:dashed}'+
+    '#tn-report{right:16px;bottom:356px;display:flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border:0;font:600 16px system-ui,sans-serif;color:var(--tn-joke);cursor:pointer}'+
+    '#tn-repgrid{left:50%;top:50%;transform:translate(-50%,-50%);display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:12px;z-index:10;width:min(94vw,560px)}'+
+    '#tn-repgrid{background:rgb(var(--tn-panel-rgb) / .98)!important}body.tn-reporting #tn-report{display:none!important}'+
+    '#tn-repgrid button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:0;border-radius:12px;background:rgba(255,255,255,.06);color:var(--tn-text);font:600 14px system-ui,sans-serif;cursor:pointer}'+
+    '#tn-repgrid button.x{justify-content:center;color:var(--tn-sub)}';
   document.head.appendChild(st);
-  const ic={p:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',z:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
-    n:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6l8.5 6L6 18zM16 6h2v12h-2z"/></svg>',b:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M18 6l-8.5 6 8.5 6zM6 6h2v12H6z"/></svg>'};
-  this.ic=ic;
-  const el=document.createElement('div');el.id='tn-mus';el.className='hud notr';document.body.appendChild(el);this.el=el;
-  const pan=document.createElement('div');pan.id='tn-mpan';pan.className='notr';
-  pan.innerHTML='<div class="hd"><input placeholder="Search songs, artists, podcasts" enterkeyhint="search"><button class="ky" aria-label="Spotify settings" style="font-size:20px">\u2699</button><button class="x" aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'+
-    '<div class="tabs"><button data-t="search" class="on">Search</button><button data-t="lists">Playlists</button><button data-t="recent">Recent</button><button data-t="liked">Liked</button></div><div class="ls"></div>';
-  document.body.appendChild(pan);this.pan=pan;
-  const inp=pan.querySelector('input');let tm=null;
-  inp.oninput=()=>{clearTimeout(tm);tm=setTimeout(()=>{this.detail=null;this.setTab('search');this.search(inp.value);},350);};
-  pan.querySelector('.x').onclick=()=>this.close();
-  pan.querySelector('.ky').onclick=()=>{this.close();this.choose();};
-  pan.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{this.detail=null;this.setTab(b.dataset.t);this.list(b.dataset.t);});
-  const m=document.createElement('div');m.id='tn-mmsg';document.body.appendChild(m);this.m=m;
-  this.render();
+  this.card=document.createElement('div');this.card.id='tn-alert';this.card.className='hud';document.body.appendChild(this.card);
+  this.btn=document.createElement('button');this.btn.id='tn-report';this.btn.className='hud';this.btn.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L22.5 20.5 H1.5 Z" fill="#f59e0b" stroke="#7a4a06" stroke-width="1.2" stroke-linejoin="round"/><rect x="11" y="9" width="2" height="6" rx="1" fill="#2b1a08"/><circle cx="12" cy="17.4" r="1.2" fill="#2b1a08"/></svg>'+TN.ROCCO('hazard',26)+'<span>Alert</span>';   /* ("Alert": warn other drivers; "Report" is for the TessyNav team) */document.body.appendChild(this.btn);
+  this.btn.onclick=()=>this.openReport();
+  this.grid=document.createElement('div');this.grid.id='tn-repgrid';this.grid.className='hud';document.body.appendChild(this.grid);
 };
-TN.Music.prototype.msg=function(t){if(!this.m) return;this.m.textContent=t;this.m.style.display='block';clearTimeout(this.mT);this.mT=setTimeout(()=>this.m.style.display='none',4500);};
-TN.Music.prototype.render=function(){
-  if(!this.el) return;const e=TN.esc||(s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])));
-  if(!this.tok){this.el.innerHTML='<button class="pp" aria-label="Connect Spotify" style="width:auto;border-radius:20px;padding:0 14px;font:600 14px system-ui">♫ Connect Spotify</button>';
-    this.el.querySelector('button').onclick=()=>this.choose();return;}
-  const it=this.now&&this.now.item,pl=this.now&&this.now.is_playing;
-  const img=it?((it.album||it.show||{}).images||[]).slice(-2)[0]:null;
-  const title=it?it.name:'Nothing playing',sub=it?(it.artists?it.artists.map(a=>a.name).join(', '):(it.show?it.show.name:'')):'Tap to search Spotify';
-  this.el.innerHTML=(img?'<img src="'+e(img.url)+'" alt="">':'')+'<div class="t"><b>'+e(title)+'</b><span>'+e(sub)+'</span></div>'+
-    '<button class="b" aria-label="Previous">'+this.ic.b+'</button><button class="pp" aria-label="Play or pause">'+(pl?this.ic.z:this.ic.p)+'</button><button class="n" aria-label="Next">'+this.ic.n+'</button>';
-  this.el.querySelector('.t').onclick=()=>this.show();
-  this.el.querySelector('.b').onclick=()=>this.cmd('prev');this.el.querySelector('.pp').onclick=()=>this.cmd('toggle');this.el.querySelector('.n').onclick=()=>this.cmd('next');
+/* fetch the incidents around the car (every 2 minutes, or after moving 3 km) */
+TN.Incidents.prototype.fetch=async function(lng,lat){
+  const dLng=0.07,dLat=0.045,bbox=[lng-dLng,lat-dLat,lng+dLng,lat+dLat].map(v=>v.toFixed(5)).join(',');
+  const fields='{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code},startTime,endTime,from,to,length,delay,roadNumbers}}}';
+  const u='https://api.tomtom.com/traffic/services/5/incidentDetails?bbox='+bbox+'&fields='+encodeURIComponent(fields)+'&language=en-GB&timeValidityFilter=present&key='+TN.TT;
+  try{
+    const r=await fetch(u);if(!r.ok){this.err=r.status;return;}
+    const j=await r.json();const out=[];
+    for(const f of j.incidents||[]){
+      const p=f.properties||{},kind=TN.ROCCO_KIND[p.iconCategory];if(!kind) continue;
+      /* traffic jams: moderate, heavy or standstill (minor slowdowns are left to the traffic colours) */
+      let sev=0;if(kind==='jam'){const ds=((p.events||[]).map(e=>e.description).join(' ')).toLowerCase();
+        sev=/stationary|standstill|stopped/.test(ds)?3:/queu|heavy/.test(ds)?2:(p.magnitudeOfDelay>=3?2:p.magnitudeOfDelay===2?1:0);
+        if(!sev) continue;}
+      const g=f.geometry||{},c=g.type==='Point'?[g.coordinates]:g.type==='LineString'?g.coordinates:[];if(!c.length) continue;
+      const pts=c.map(q=>TN.toLocal(q[0],q[1]));
+      out.push({id:p.id||(kind+c[0].join(',')),kind:kind,pts:pts,ll:c[0],desc:(p.events&&p.events[0]&&p.events[0].description)||'',
+        from:p.from||'',to:p.to||'',road:(p.roadNumbers||[]).join(', '),mag:p.magnitudeOfDelay||0,delay:p.delay||0,len:p.length||0,sev:sev,
+        title:sev?['','Moderate traffic','Heavy traffic','Standstill'][sev]:null});
+    }
+    this.tt=out;this.err=null;this.merge();
+    if(this.api.note) this.api.note('incidents',{n:out.length});
+  }catch(e){this.err='net';}
 };
-TN.Music.prototype.show=function(){this.open=true;this.pan.style.display='flex';if(this.detail) this.openList(this.detail);else this.list(this.tab);this.poll();};
-TN.Music.prototype.close=function(){this.open=false;this.pan.style.display='none';};
-TN.Music.prototype.setTab=function(t){this.tab=t;this.pan.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));};
-TN.Music.prototype.fill=function(items,note,head){
-  const ls=this.pan.querySelector('.ls'),e=TN.esc||(s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])));
-  const top=head?'<div class="dh"><button class="bk">\u2190 Back</button><b>'+e(head.t)+'</b><button class="pa">\u25b6 Play all</button></div>':'';
-  if(!items||!items.length){ls.innerHTML=top+'<div class="note">'+e(note||'Nothing here yet.')+'</div>';}
-  else ls.innerHTML=top+items.map((x,i)=>'<div class="it" data-i="'+i+'">'+(x.img?'<img src="'+e(x.img)+'" alt="">':'<img alt="">')+'<div><b>'+e(x.t)+'</b><span>'+e(x.s)+(x.open?' \u203a':'')+'</span></div></div>').join('');
-  if(head){ls.querySelector('.bk').onclick=()=>{this.detail=null;this.list(this.tab);};
-    ls.querySelector('.pa').onclick=()=>{this.cmd('play',{context_uri:head.ctx});this.msg('Playing: '+head.t);};}
-  ls.querySelectorAll('.it').forEach(d=>d.onclick=()=>{const x=items[+d.dataset.i];
-    if(x.open){this.openList(x);return;}
-    /* a song inside a playlist or album plays from there, and the rest of the list follows */
-    const body=x.inCtx?{context_uri:x.inCtx,offset:{uri:x.uri}}:x.ctx?{context_uri:x.ctx}:{uris:[x.uri]};
-    this.cmd('play',body);this.msg('Playing: '+x.t);});
-  ls.scrollTop=0;
+TN.Incidents.prototype.mtqList=function(){
+  if(!this.mtqAll||(TN.settings&&TN.settings.incidents===false)) return [];
+  const c=this.api.getCar&&this.api.getCar(),G={closed:1,works:1,lane:1,accident:2,hazard:3};
+  return this.mtqAll.filter(m=>{
+    if(c&&c.x!=null&&!m.pts.some(p=>Math.hypot(p[0]-c.x,p[1]-c.z)<40000)) return false;   /* (within 40 km) */
+    return !this.tt.some(t=>(G[t.kind]||9)===(G[m.kind]||8)&&t.pts.some(q=>m.pts.some(p=>Math.hypot(p[0]-q[0],p[1]-q[1])<80)));});
 };
-/* open a playlist, artist, album or podcast: its songs first, then Play all or tap one */
-TN.Music.prototype.openList=async function(x){
-  this.detail=x;this.fill([],'Loading\u2026',x);
-  const id=x.ctx.split(':').pop(),k=x.ctx.split(':')[1];let out=[],ok=false;
-  const tr=(t,ctx)=>t&&t.uri&&{t:t.name,s:(t.artists||[]).map(a=>a.name).join(', ')||(t.show?t.show.name:''),img:tnImg(t.album||t),uri:t.uri,inCtx:ctx};
-  if(k==='playlist'){for(const path of ['/playlists/'+id+'/items?limit=100','/playlists/'+id+'/tracks?limit=100']){
-      const r=await this.api(path);if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).map(i=>tr(i.track||i.item,x.ctx)).filter(Boolean);break;}}}
-  else if(k==='album'){const r=await this.api('/albums/'+id+'/tracks?limit=50');if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).map(t=>Object.assign(tr(t,x.ctx)||{},{img:x.img})).filter(o=>o.uri);}}
-  else if(k==='artist'){const r=await this.api('/artists/'+id+'/top-tracks?market=from_token');if(r.s===200&&r.j){ok=true;out=(r.j.tracks||[]).map(t=>tr(t,null)).filter(Boolean);}}
-  else if(k==='show'){const r=await this.api('/shows/'+id+'/episodes?limit=30&market=from_token');if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).filter(Boolean).map(ep=>({t:ep.name,s:(ep.release_date||''),img:tnImg(ep)||x.img,uri:ep.uri}));}}
-  if(this.detail!==x) return;   /* (closed or opened something else meanwhile) */
-  this.fill(out,ok?'This list is empty.':'Spotify doesn\u2019t show this list to the app. Use Play all.',x);
+TN.Incidents.prototype.merge=function(){this.list=this.tt.concat(this.mtqList(),this.reports.list,(TN.settings&&TN.settings.cameras===false)?[]:(this.cams||[]),(TN.settings&&TN.settings.rail===false)?[]:(this.rails||[]),(TN.settings&&TN.settings.schools===false)?[]:(this.schools||[]));this.drawMarkers();};
+/* Transports Québec (Québec 511): warnings and road works active now, published every 15 minutes by a GitHub job */
+TN.MTQ_URL='https://raw.githubusercontent.com/Tessynav/tessynav-roads/live/mtq.json';
+TN.Incidents.prototype.loadMtq=function(car){
+  if(this.mtqLoading) return;this.mtqLoading=true;this.mtqT=Date.now();
+  fetch(TN.MTQ_URL+'?t='+Math.floor(Date.now()/120000)).then(r=>r.ok?r.json():null).then(j=>{this.mtqLoading=false;if(!j||!j.e) return;
+    const H={N:0,E:90,S:180,W:270},out=[];
+    for(const e of j.e){const f=e.p;if(!f||f.length<2) continue;const pts=[];for(let i=0;i<f.length;i+=2) pts.push(TN.toLocal(f[i],f[i+1]));
+      out.push({id:'mtq'+e.id,kind:e.k,pts:pts,ll:[f[0],f[1]],desc:e.d||'',from:'',to:'',road:'Transports Qu\u00e9bec',mtq:true,dirH:H[e.dir]!=null?H[e.dir]:null});}
+    this.mtqAll=out;this.merge();}).catch(()=>{this.mtqLoading=false;});
 };
-const tnImg=o=>{const im=(o&&o.images)||[];return im.length?im[im.length-1].url:null;};
-TN.Music.prototype.search=async function(q){
-  q=(q||'').trim();if(q.length<2){this.fill([],'Type a song, an artist or a podcast.');return;}
-  const r=await this.api('/search?type=track,artist,playlist,show&limit=6&q='+encodeURIComponent(q));
-  if(r.s!==200||!r.j){this.fill([],r.s===403?'Spotify doesn’t allow search for this app yet.':'Search didn’t work. Check the connection.');return;}
-  const j=r.j,out=[];
-  ((j.artists&&j.artists.items)||[]).slice(0,2).forEach(a=>a&&out.push({t:a.name,s:'Artist',img:tnImg(a),ctx:a.uri,open:true}));
-  ((j.tracks&&j.tracks.items)||[]).forEach(t=>t&&out.push({t:t.name,s:t.artists.map(a=>a.name).join(', '),img:tnImg(t.album),uri:t.uri}));
-  ((j.playlists&&j.playlists.items)||[]).slice(0,3).forEach(p=>p&&out.push({t:p.name,s:'Playlist',img:tnImg(p),ctx:p.uri,open:true}));
-  ((j.shows&&j.shows.items)||[]).slice(0,2).forEach(p=>p&&out.push({t:p.name,s:'Podcast',img:tnImg(p),ctx:p.uri,open:true}));
-  this.fill(out,'No results.');
+TN.schoolTime=function(d){
+  /* (test switch: ?schooltest=1 in the address treats any moment as school hours) */
+  if(typeof location!=='undefined'&&/[?&]schooltest=1/.test(location.search)) return true;
+  d=d||new Date();const m=d.getMonth(),wd=d.getDay(),h=d.getHours()+d.getMinutes()/60;return m!==6&&m!==7&&wd>=1&&wd<=5&&h>=7&&h<17;};
+/* schools within about 1.5 km (school hours only): their grounds' outline, as points every ~15 m */
+TN.Incidents.prototype.findSchools=function(car){
+  const net=this.api.net,out=[];
+  if(net&&net.schools&&car&&car.x!=null&&TN.schoolTime()){
+    for(const sc of net.schools.values()){if(Math.hypot(sc.c[0]-car.x,sc.c[1]-car.z)>1700) continue;
+      let pts=sc.pts;if(!sc.point){pts=[];for(let i=0;i<sc.pts.length;i++){const a=sc.pts[i],b=sc.pts[(i+1)%sc.pts.length],l=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.max(1,Math.ceil(l/15));for(let k=0;k<n;k++) pts.push([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n]);}}
+      out.push({id:'sch'+sc.id,kind:'school',pts:pts,ll:TN.fromLocal(sc.c[0],sc.c[1]),desc:'',from:'',to:'',road:sc.name||'',school:true,point:sc.point});}}
+  const sig=out.map(o=>o.id).join('|');if(sig!==(this.schSig||'')){this.schSig=sig;this.schools=out;this.merge();}   /* (only when the schools around you change) */
 };
-TN.Music.prototype.list=async function(t){
-  if(t==='search'){this.search(this.pan.querySelector('input').value);return;}
-  this.fill([],'Loading…');
-  if(t==='lists'){const r=await this.api('/me/playlists?limit=40');this.fill(((r.j&&r.j.items)||[]).filter(Boolean).map(p=>({t:p.name,s:(p.tracks&&p.tracks.total!=null?p.tracks.total+' songs':(p.items&&p.items.total!=null?p.items.total+' songs':'Playlist')),img:tnImg(p),ctx:p.uri,open:true})),r.s===200?'No playlists.':'Spotify doesn’t allow this for the app yet.');}
-  else if(t==='recent'){const r=await this.api('/me/player/recently-played?limit=30');const seen=new Set();
-    this.fill(((r.j&&r.j.items)||[]).map(x=>x.track).filter(x=>x&&!seen.has(x.id)&&seen.add(x.id)).map(x=>({t:x.name,s:x.artists.map(a=>a.name).join(', '),img:tnImg(x.album),uri:x.uri})),r.s===200?'Nothing played recently.':'Spotify doesn’t allow this for the app yet.');}
-  else if(t==='liked'){const r=await this.api('/me/tracks?limit=40');
-    this.fill(((r.j&&r.j.items)||[]).map(x=>x.track).filter(Boolean).map(x=>({t:x.name,s:x.artists.map(a=>a.name).join(', '),img:tnImg(x.album),uri:x.uri})),r.s===200?'No liked songs.':'Spotify doesn’t allow this for the app yet.');}
+/* railway crossings (level crossings) within about 1.5 km, from the road tiles */
+TN.Incidents.prototype.findRails=function(car){
+  const net=this.api.net;if(!net||!net.marks||!car||car.x==null) return;
+  const out=[],seen=new Set();
+  const pub={motorway:1,trunk:1,primary:1,secondary:1,tertiary:1,minor:1};
+  for(const m of net.marks.values()){if(m.kind!=='r') continue;const d=Math.hypot(m.x-car.x,m.z-car.z);if(d>1500) continue;
+    /* only crossings on public roads (not service roads inside rail yards and industrial sites) */
+    let road=null;net.near(m.x,m.z,5,(w,k)=>{if(road||!pub[w.cls]) return;if(TN.seg(w,k,m.x,m.z).d<5) road=w;});if(!road) continue;
+    /* crossings within 150 m of each other (double tracks, several tracks side by side) count as one */
+    if(out.some(o=>Math.hypot(o.pts[0][0]-m.x,o.pts[0][1]-m.z)<150)) continue;
+    out.push({id:'rail'+m.key,kind:'rail',pts:[[m.x,m.z]],ll:TN.fromLocal(m.x,m.z),desc:'',from:'',to:'',road:road.name||'',rail:true});}
+  const sig=out.map(o=>o.id).join('|');if(sig!==this.railSig){this.railSig=sig;this.rails=out;this.merge();}
 };
-/* ---------- Spotify key: choose, guide, paste ---------- */
-TN.Music.prototype.box=function(html,btns){
-  let d=document.getElementById('tn-mkey');
-  if(!d){d=document.createElement('div');d.id='tn-mkey';d.className='notr';document.body.appendChild(d);
-    const st=document.createElement('style');
-    st.textContent='#tn-mkey{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:31;width:min(600px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;box-sizing:border-box;background:rgb(var(--tn-panel-rgb,24 26 30) / .98);color:var(--tn-text,#fff);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.45);font:15px/1.45 system-ui,sans-serif;padding:20px 22px}'+
-      '#tn-mkey h3{margin:0 0 4px;font-size:20px;display:flex;align-items:center;gap:10px}#tn-mkey .sp{width:26px;height:26px;border-radius:50%;background:#1db954;color:#000;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}'+
-      '#tn-mkey .sub{opacity:.7;font-size:14px;margin-bottom:12px}#tn-mkey .st{display:flex;gap:12px;margin:10px 0}#tn-mkey .n{flex:none;width:26px;height:26px;border-radius:50%;background:#2f6fe4;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}'+
-      '#tn-mkey code{background:rgba(127,127,127,.2);padding:2px 7px;border-radius:6px;font-size:13.5px;word-break:break-all}#tn-mkey .qr{float:right;margin:0 0 8px 14px;background:#fff;padding:8px;border-radius:10px;line-height:0;text-align:center}#tn-mkey .qr small{display:block;color:#333;font-size:11px;line-height:1.3;margin-top:4px}'+
-      '#tn-mkey input{width:100%;box-sizing:border-box;font:16px ui-monospace,monospace;padding:12px 14px;border-radius:12px;border:2px solid #2f6fe4;background:rgba(127,127,127,.12);color:inherit;margin-top:6px;outline:none}'+
-      '#tn-mkey .bt{display:flex;gap:10px;margin-top:16px;clear:both}#tn-mkey .bt button{flex:1;border:0;border-radius:14px;padding:12px;font:700 15px system-ui;cursor:pointer;background:rgba(127,127,127,.2);color:inherit}#tn-mkey .bt button.g{background:#1db954;color:#000}#tn-mkey .bt button:disabled{opacity:.4}'+
-      '#tn-mkey .ok{font-size:14px;margin-top:8px;min-height:20px}#tn-mkey .cp{border:0;background:#2f6fe4;color:#fff;border-radius:10px;padding:2px 9px;font:600 12px system-ui;margin-left:6px;cursor:pointer}';
-    document.head.appendChild(st);}
-  d.innerHTML=html+'<div class="bt">'+btns.map((b,i)=>'<button data-i="'+i+'"'+(b[2]?' class="'+b[2]+'"':'')+'>'+b[0]+'</button>').join('')+'</div>';
-  d.querySelectorAll('.bt button').forEach(x=>x.onclick=()=>btns[+x.dataset.i][1]());
-  d.style.display='block';return d;
+/* speed and red-light cameras (Transports Quebec's open data, refreshed weekly with the road tiles) */
+TN.Incidents.prototype.loadCams=async function(){
+  if(this.camsLoading||this.cams) return;this.camsLoading=true;
+  try{let j=null;try{const c=JSON.parse(localStorage.getItem('tn2_cams')||'null');if(c&&Date.now()-c.t<86400000) j=c.j;}catch(e){}
+    if(!j){const r=await fetch((this.api.roadsBase||'https://app.mapkoon.com/tessynav-roads/')+'radars.json?d='+new Date().toISOString().slice(0,10));if(!r.ok) throw 0;j=await r.json();
+      try{localStorage.setItem('tn2_cams',JSON.stringify({t:Date.now(),j:j}));}catch(e){}}
+    const K={f:'camera',r:'redlight',fr:'speedred',m:'mobile'};
+    this.cams=(j.r||[]).map(e=>{const lng=e[0],lat=e[1];let dir=e[3];
+      /* on the island of Montreal and in Laval, "north" follows the street grid, about 35 degrees west of true north */
+      if(dir>=0&&lat>45.40&&lat<45.72&&lng>-73.98&&lng<-73.47) dir=(dir-35+360)%360;
+      return {id:'cam'+(e[4]||lng+','+lat),kind:K[e[2]]||'camera',pts:[TN.toLocal(lng,lat)],ll:[lng,lat],dir:dir,desc:e[5]||'',from:'',to:'',road:'',cam:true};});
+    this.merge();
+  }catch(e){this.camsTried=Date.now();}
+  this.camsLoading=false;
 };
-TN.Music.prototype.unbox=function(){const d=document.getElementById('tn-mkey');if(d) d.style.display='none';};
-TN.Music.prototype.choose=function(){
-  const own=this.own(),hd='<h3><span class="sp">♫</span>Spotify</h3>';
-  if(this.tok) this.box(hd+'<div class="sub">Connected'+(own?' with <b>your own key</b>.':' with MapKoon’s key.')+'</div>',
-      [[own?'Change my key':'Use my own Spotify key',()=>this.guide(1)],['Disconnect',()=>{this.save(null);this.now=null;this.render();this.unbox();this.msg('Spotify disconnected.');}],['Close',()=>this.unbox()]]);
-  else this.box(hd+'<div class="sub">Control Spotify from MapKoon: what’s playing, search, your playlists. Needs <b>Spotify Premium</b>.</div>'+
-      (own?'<div>Your own key is saved. Tap <b>Connect</b> to log in to Spotify.</div>':'<div><b>Use my own Spotify key</b> works for everyone (about 5 minutes, once). <b>Quick connect</b> only works for Spotify accounts invited to MapKoon.</div>'),
-      own?[['Connect',()=>{this.unbox();this.login();},'g'],['Change my key',()=>this.guide(1)],['Remove my key',()=>{this.ls('tn_sp_cid',null);this.choose();}],['Cancel',()=>this.unbox()]]
-         :[['Use my own Spotify key',()=>this.guide(1),'g'],['Quick connect',()=>{this.unbox();this.login();}],['Cancel',()=>this.unbox()]]);
+TN.Incidents.prototype.nearest=function(max){
+  const c=this.api.getCar&&this.api.getCar();if(!c||c.x==null||this.list.length<=max) return this.list;
+  return this.list.slice().sort((a,b)=>Math.hypot(a.pts[0][0]-c.x,a.pts[0][1]-c.z)-Math.hypot(b.pts[0][0]-c.x,b.pts[0][1]-c.z)).slice(0,max);};
+TN.Incidents.prototype.drawMarkers=function(){
+  if(typeof maplibregl==='undefined') return;
+  const c=this.api.getCar&&this.api.getCar(),follow=this.api.following?this.api.following():true;
+  const vis=i=>{if(i.kind==='jam'&&i.sev<2) return false;if(!c||c.x==null) return true;
+    const dx=i.pts[0][0]-c.x,dz=i.pts[0][1]-c.z,d=Math.hypot(dx,dz);if(d>(i.rail||i.school?800:3000)) return false;
+    if(follow&&d>150){const h=(c.hd||0)*Math.PI/180;if((dx*Math.sin(h)-dz*Math.cos(h))/d<0.2) return false;}return true;};
+  const shown=[];for(const i of this.nearest(40).filter(vis)){
+    if(shown.some(o=>o.kind===i.kind&&Math.hypot(o.pts[0][0]-i.pts[0][0],o.pts[0][1]-i.pts[0][1])<40)) continue;shown.push(i);}
+  const keep=new Set(shown.map(i=>i.id));
+  for(const [id,m] of this.markers) if(!keep.has(id)){try{m.remove();}catch(e){}this.markers.delete(id);}
+  const night=(this.api.scene&&this.api.scene.night||0)>0.45;
+  for(const it of shown){if(this.markers.has(it.id)) continue;
+    const el=document.createElement('div');el.className='tn-inc '+it.kind+(it.user?' user':'')+(it.sev===3?' stand':'');el.innerHTML=TN.ROCCO(it.sev===3?'stand':it.kind,40,night);
+    el.title=it.title||TN.ROCCO_TITLE[it.kind];el.onclick=e=>{e.stopPropagation();this.show(it,null,true);};
+    this.markers.set(it.id,new maplibregl.Marker({element:el}).setLngLat(it.ll).addTo(this.api.map));}
 };
-/* screen 1: the steps, with a QR code that opens the help page on the phone (easier than typing in the car) */
-TN.Music.prototype.guide=function(step){
-  const red=this.redirect,copy=t=>{try{navigator.clipboard.writeText(t);this.msg('Copied.');}catch(e){}};
-  if(step===1){
-    const d=this.box('<h3><span class="sp">♫</span>Connect your own Spotify</h3><div class="sub">For search and playlists. About 5 minutes, once. Needs Spotify Premium.</div>'+
-      '<div class="qr" id="tn-mqr"><small>Scan with<br>your phone</small></div>'+
-      '<div class="st"><div class="n">1</div><div>On your phone, scan the code (or open <b>developer.spotify.com/dashboard</b>) and log in with your Spotify account. Accept the terms.</div></div>'+
-      '<div class="st"><div class="n">2</div><div>Tap <b>Create app</b>. Name: <code>MapKoon</code><br>Can’t see it? Browser menu → <b>Desktop site</b>.</div></div>'+
-      '<div class="st"><div class="n">3</div><div>Redirect URI: <code>'+red+'</code><button class="cp" data-c="1">Copy</button><br>Tick <b>Web API</b>, then <b>Save</b>.</div></div>'+
-      '<div class="st"><div class="n">4</div><div>Open your app’s <b>Settings</b> and copy the <b>Client ID</b>.<br><span style="opacity:.7;font-size:13px">Never the Client Secret: it isn’t needed.</span></div></div>',
-      [['Next: paste the key',()=>this.guide(2),'g'],['Cancel',()=>this.unbox()]]);
-    d.querySelector('[data-c]').onclick=()=>copy(red);
-    const draw=()=>{const q=document.getElementById('tn-mqr');if(!q||typeof qrcode!=='function') return;
-      const g=qrcode(0,'M');g.addData(TN.SPOTIFY_HELP);g.make();q.insertAdjacentHTML('afterbegin',g.createSvgTag(4,0));};
-    if(typeof qrcode==='function') draw();
-    else{const s=document.createElement('script');s.src='js/qr.js?v=1';s.onload=draw;document.head.appendChild(s);}
-    return;}
-  /* screen 2: paste and connect (checked before it goes to Spotify) */
-  const d=this.box('<h3><span class="sp">♫</span>Paste your Client ID</h3><div class="sub">Step 5 of 5</div>'+
-    '<div>Paste the Client ID from your Spotify app:</div><input id="tn-mcid" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="32 letters and numbers">'+
-    '<div class="ok" id="tn-mok"></div><div style="font-size:12.5px;opacity:.65;margin-top:8px">Your key is saved only in this browser. MapKoon never sees your Spotify password: you log in on Spotify’s own page. Remove it any time with ⚙ in the music panel.</div>',
-    [['Back',()=>this.guide(1)],['Connect Spotify',()=>{const v=inp.value.trim();if(!/^[0-9a-f]{32}$/i.test(v)) return;
-      this.ls('tn_sp_cid',v.toLowerCase());this.save(null);this.unbox();this.login();},'g']]);
-  const inp=d.querySelector('#tn-mcid'),ok=d.querySelector('#tn-mok'),go=d.querySelector('.bt .g');
-  const chk=()=>{const v=inp.value.trim();const good=/^[0-9a-f]{32}$/i.test(v);go.disabled=!good;
-    ok.style.color=good?'#7ee2a0':'#ffb4a8';
-    ok.textContent=!v?'':good?'✓ Looks right (32 letters and numbers)':v.length!==32?'That’s '+v.length+' characters; a Client ID has 32.':'Only letters a–f and numbers 0–9.';};
-  inp.oninput=chk;const cur=this.ls('tn_sp_cid');if(cur) inp.value=cur;chk();setTimeout(()=>{try{inp.focus();}catch(e){}},50);
+TN.Incidents.prototype.clear=function(){for(const m of this.markers.values()){try{m.remove();}catch(e){}}this.markers.clear();this.hide();};
+/* distance from the car to an incident, along the route if there is one, otherwise straight ahead */
+/* the stretch of road ahead of you, as a line with distances: the route (when navigating), otherwise the road you're on
+   followed through the road network (at each junction the most natural continuation, preferring the same street) */
+TN.Incidents.prototype.wayAhead=function(car,maxL){
+  const nav=this.api.nav,R=nav&&nav.active?nav.route:null,pts=[],cum=[];
+  /* (a point every 10 m is plenty: the route has one about every metre, and checking every incident against 1,500 of them,
+     4 times a second, slowed the highway with a route to about 50 fps) */
+  if(R){const i0=nav.idx||0,s0=R.cum[i0]||0;let lc=-1e9,i=i0;for(;i<R.pts.length&&R.cum[i]-s0<=maxL+50;i++){if(R.cum[i]-lc>=10){pts.push(R.pts[i]);cum.push(R.cum[i]-s0);lc=R.cum[i];}}
+    const j=Math.min(i,R.pts.length)-1;if(j>i0&&R.cum[j]!==lc){pts.push(R.pts[j]);cum.push(R.cum[j]-s0);}return pts.length>1?{pts,cum}:null;}
+  const T=(this.api.getCar&&this.api.getCar())||car,net=this.api.net;let w=T.w||car.w,dir=T.dir||car.dir||1,s=T.w?T.s:car.s;
+  if(!net||!w||!w.pts||s==null){
+    /* (no road known right now, e.g. in the middle of a turn: a straight line ahead in your direction) */
+    const hr=(car.hd||0)*Math.PI/180,fx=Math.sin(hr),fz=-Math.cos(hr);
+    for(let d=0;d<=maxL;d+=10){pts.push([car.x+fx*d,car.z+fz*d]);cum.push(d);}return {pts,cum};}
+  let acc=0,prev=[car.x,car.z];pts.push(prev);cum.push(0);
+  const add=q=>{acc+=Math.hypot(q[0]-prev[0],q[1]-prev[1]);pts.push(q);cum.push(acc);prev=q;};
+  for(let hop=0;hop<10&&acc<maxL;hop++){
+    let endI;
+    if(dir>0){for(let i=0;i<w.pts.length&&acc<maxL;i++) if(w.cum[i]>s+0.5) add(w.pts[i]);endI=w.pts.length-1;}
+    else{for(let i=w.pts.length-1;i>=0&&acc<maxL;i--) if(w.cum[i]<s-0.5) add(w.pts[i]);endI=0;}
+    if(acc>=maxL) break;
+    const a=w.pts[dir>0?Math.max(0,endI-1):Math.min(w.pts.length-1,endI+1)],b=w.pts[endI];let hx=b[0]-a[0],hz=b[1]-a[1];const hl=Math.hypot(hx,hz)||1;hx/=hl;hz/=hl;
+    const lst=(net.keys&&net.keys.get(w.keys[endI]))||[];let best=null;
+    for(const [v,i] of lst){if(v===w||v.tun===undefined&&!v.pts) continue;
+      for(const d of [1,-1]){
+        if(d>0&&i>=v.pts.length-1) continue;if(d<0&&i<=0) continue;if(d<0&&v.ow) continue;
+        const q=v.pts[i+d];let vx=q[0]-v.pts[i][0],vz=q[1]-v.pts[i][1];const vl=Math.hypot(vx,vz)||1;vx/=vl;vz/=vl;
+        const cos=vx*hx+vz*hz;if(cos<0.5) continue;   /* (no sharp turns: more than 60 degrees is not "straight on") */
+        const sc=cos+(v.name&&v.name===w.name?0.3:0);if(!best||sc>best.sc) best={v,d,i,sc};}}
+    if(!best) break;
+    w=best.v;dir=best.d;s=w.cum[best.i];}
+  return pts.length>1?{pts,cum}:null;
 };
-if(typeof document!=='undefined') TN.music=new TN.Music();
+/* the closest incident on your way: within 12 m of the way ahead, and (for those that follow a road: traffic,
+   closures, works) going in your direction; first alert at about 1.5 km at highway speed, 600 m in the city */
+TN.Incidents.prototype.ahead=function(car,moderate){
+  const now=Date.now();
+  if(car.v!=null&&(car.v||0)<2&&!(this.api.nav&&this.api.nav.active)) return null;   /* (no route and parked: no alerts) */
+  const maxD=(car.v||0)>19.5?1500:600;
+  if(!this.wayC||now-this.wayC.t>500||Math.hypot(car.x-this.wayC.x,car.z-this.wayC.z)>15){this.wayC={t:now,x:car.x,z:car.z,way:this.wayAhead(car,maxD)};}
+  const W=this.wayC.way;if(!W) return null;
+  const P=W.pts,C=W.cum;let best=null;
+  for(const it of this.list){
+    if(it.mine) continue;   /* (your own reports: on the map, but no alert) */
+    if(it.cam&&it.dir>=0&&Math.abs((((car.hd||0)-it.dir)+540)%360-180)>75) continue;   /* (camera facing the other way) */
+    if((it.kind==='jam'&&it.sev<2)!==!!moderate) continue;   /* (moderate traffic is checked on its own: said, not shown) */
+    if(it.kind==='jam'&&it.pts.some(p=>Math.hypot(p[0]-car.x,p[1]-car.z)<40)) continue;   /* (already in that jam) */
+    /* (quick skip: nothing of it near the way ahead) */
+    const p0=it.pts[0];if(Math.hypot(p0[0]-car.x,p0[1]-car.z)>maxD+3000) continue;
+    if(it.mtq&&it.dirH!=null&&Math.abs((((car.hd||0)-it.dirH)+540)%360-180)>80) continue;   /* (the other direction) */
+    const follows=it.pts.length>=2&&!it.rail&&!it.cam&&!it.user&&!it.school&&!it.mtq;
+    let d=null;
+    for(let k=0;k<it.pts.length;k++){const p=it.pts[k];
+      let ix=0,iz=0;if(follows){const q=it.pts[Math.min(it.pts.length-1,k+1)],o=it.pts[Math.max(0,k-1)];ix=q[0]-o[0];iz=q[1]-o[1];const l=Math.hypot(ix,iz)||1;ix/=l;iz/=l;}
+      for(let i=0;i<P.length-1;i++){const a=P[i],b=P[i+1],sx=b[0]-a[0],sz=b[1]-a[1],l2=sx*sx+sz*sz||1;
+        const u=Math.max(0,Math.min(1,((p[0]-a[0])*sx+(p[1]-a[1])*sz)/l2)),qx=a[0]+sx*u,qz=a[1]+sz*u;
+        if(Math.hypot(p[0]-qx,p[1]-qz)>(it.school?(it.point?60:45):it.mtq?30:12)) continue;
+        if(follows){const l=Math.sqrt(l2);if((ix*sx+iz*sz)/l<0.7) continue;}   /* (cross street or the other direction) */
+        const dd=C[i]+(C[i+1]-C[i])*u;
+        if(it.school&&dd<25) continue;   /* (a school you're already beside or past doesn't alert) */
+        if(dd>=0&&dd<=maxD&&(d==null||dd<d)) d=dd;break;}
+      if(d!=null&&d<50) break;}
+    if(d!=null&&(!best||d<best.d)) best={it:it,d:d};
+  }
+  return best;
+};
+TN.Incidents.prototype.fun=function(){return !(TN.settings&&TN.settings.fun===false);};
+TN.Incidents.prototype.show=function(it,d,tapped){
+  const key=it.id+':'+(d==null?'':Math.round(d/50))+':'+this.fun();if(this.cardKey===key&&this.card.style.display==='flex') return;this.cardKey=key;
+  const night=(this.api.scene&&this.api.scene.night||0)>0.45;
+  if(this.alertFor!==it.id){this.joke=(TN.ROCCO_JOKES[it.sev===3?'stand':it.kind]||TN.ROCCO_JOKES.unknown);this.joke=this.joke[Math.floor(Math.random()*this.joke.length)];this.alertFor=it.id;
+    /* said once per incident, when it first comes up ahead */
+    if(!tapped&&TN.voice&&d!=null&&!(this.spoken||(this.spoken=new Set())).has(it.id)){this.spoken.add(it.id);
+      TN.voice.say((it.user?(it.title||TN.ROCCO_TITLE[it.kind])+' reported':(it.title||TN.ROCCO_TITLE[it.kind]))+' ahead, '+(d<950?Math.round(d/50)*50+' metres':(d/1000).toFixed(1)+' kilometres'));}}
+  const dist=d==null?'':' \u00b7 '+(d<950?Math.round(d/50)*50+' m':(d/1000).toFixed(1)+' km');
+  const jamInfo=it.kind==='jam'?[(it.delay>=60?'+'+Math.round(it.delay/60)+' min':''),(it.len?(it.len<950?Math.round(it.len/50)*50+' m':(it.len/1000).toFixed(1)+' km')+' long':'')].filter(Boolean).join(' \u00b7 '):'';
+  const detail=[jamInfo,it.kind==='jam'?'':it.desc,it.road,it.from&&it.to?it.from+' \u2192 '+it.to:it.from].filter(Boolean).join(' \u00b7 ');
+  const who=it.user?'Reported by a driver \u00b7 '+Math.max(1,Math.round((Date.now()-it.t)/60000))+' min ago'+(it.up?' \u00b7 '+it.up+' confirmed':''):'';
+  const canVote=it.user&&!it.mine&&!this.reports.voted.has(it.id)&&(d==null||d<500);
+  this.card.innerHTML=(this.fun()?TN.ROCCO(it.sev===3?'stand':it.kind,50,night):'')+'<div style="min-width:0;flex:1"><b>'+TN.esc((it.title||TN.ROCCO_TITLE[it.kind])+dist)+'</b>'+
+    (detail?'<small>'+TN.esc(detail)+'</small>':'')+(who?'<small>'+TN.esc(who)+'</small>':'')+(this.fun()&&(!TN.isPro||TN.isPro())?'<small class="joke">'+TN.esc(this.joke)+'</small>':'')+'</div>'+
+    (canVote?'<button class="v up">Still there</button><button class="v down">Gone</button>':'');
+  if(canVote){this.card.querySelector('.up').onclick=()=>{this.reports.vote(it.id,true);this.toast('Thanks! Rocco updated it.');this.hide();};
+    this.card.querySelector('.down').onclick=()=>{this.reports.vote(it.id,false);this.toast('Thanks! Rocco crossed it out.');this.hide();};}
+  this.card.style.display='flex';this.shownAt=Date.now();this.tapped=!!tapped;
+};
+TN.Incidents.prototype.hide=function(){if(this.card) this.card.style.display='none';this.alertFor=null;this.cardKey=null;};
+TN.Incidents.prototype.toast=function(msg){const t=document.createElement('div');t.className='hud';t.style.cssText='left:50%;top:84px;transform:translateX(-50%);z-index:9;font-size:15px;padding:10px 16px';
+  t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{try{t.parentNode&&t.parentNode.removeChild(t);}catch(e){}},3500);};
+/* the Report button and its grid of Rocco buttons */
+TN.Incidents.prototype.openReport=function(){
+  const g=this.grid;g.style.display='grid';document.body.classList.add('tn-reporting');
+  g.innerHTML=TN.REPORT_KINDS.map(k=>'<button data-k="'+k+'">'+TN.ROCCO(k,52)+'<span>'+TN.ROCCO_TITLE[k]+'</span></button>').join('')+'<button class="x" data-k="">Cancel</button>';
+  g.querySelectorAll('button').forEach(b=>b.onclick=async()=>{g.style.display='none';document.body.classList.remove('tn-reporting');const k=b.dataset.k;if(!k) return;
+    const c=this.api.getCar&&this.api.getCar(),ll=c&&c.x!=null?TN.fromLocal(c.x,c.z):null;if(!ll){this.toast('Waiting for GPS\u2026');return;}
+    /* (5 seconds to undo before it's shared: alerts were sent by accidental taps while driving) */
+    const undone=await new Promise(res=>{const t=document.createElement('div');t.className='hud';
+      t.style.cssText='left:50%;top:84px;transform:translateX(-50%);z-index:9;font-size:15px;padding:8px 10px 8px 16px;display:flex;gap:12px;align-items:center';
+      t.innerHTML='<span>'+TN.esc(TN.ROCCO_TITLE[k]||k)+' alert in 5 s</span><button style="font:600 15px system-ui;padding:8px 16px;border-radius:10px;border:0;background:#2f6fe4;color:#fff">Undo</button>';
+      document.body.appendChild(t);let done=false;const fin=v=>{if(done) return;done=true;try{t.parentNode&&t.parentNode.removeChild(t);}catch(e){}res(v);};
+      t.querySelector('button').onclick=ev=>{ev.stopPropagation();fin(true);};setTimeout(()=>fin(false),5000);});
+    if(undone){this.toast('Alert cancelled');if(this.api.note) this.api.note('report cancelled',{kind:k});return;}
+    try{await this.reports.send(k,ll[0],ll[1],c.hd||0);this.toast('Thanks! Rocco will warn other drivers.');this.repFetch=0;
+      if(this.api.note) this.api.note('report sent',{kind:k});}
+    catch(e){this.toast('Could not send the report right now');if(this.api.note) this.api.note('report failed',{err:String(e.message||e)});}});
+};
+TN.Incidents.prototype.update=function(car,lng,lat){
+  if(TN.settings&&TN.settings.incidents===false){if(this.markers.size) this.clear();return;}
+  const now=Date.now();
+  const moved=this.lastPos?TN.distLL(this.lastPos,[lng,lat]):1e9;
+  if(now-this.lastFetch>120000||moved>3000){this.lastFetch=now;this.lastPos=[lng,lat];this.fetch(lng,lat);}
+  if(!this.cams&&!this.camsLoading&&now-(this.camsTried||0)>300000) this.loadCams();
+  if(now-(this.railT||0)>2000){this.railT=now;this.findRails(car);this.findSchools(car);}
+  if(now-(this.mtqT||0)>300000) this.loadMtq(car);
+  if(now-this.repFetch>60000){this.repFetch=now;this.reports.fetch(lng,lat).then(()=>this.merge());}
+  if(!car||car.x==null) return;
+  /* a tapped badge shows its card for 8 s; otherwise the next incident ahead within reach */
+  if(this.tapped&&now-this.shownAt<8000) return;
+  /* the trip list or the route overview is open: alerts wait until it's closed */
+  {const nv=this.api.nav;if(nv&&nv.ov&&nv.ov.style.display!=='none'){if(this.card.style.display!=='none') this.hide();return;}}
+  const a=this.ahead(car),am=this.ahead(car,true);
+  const life=this.life||(this.life=new Map());
+  let showIt=false;
+  if(a){
+    const L=life.get(a.it.id)||{first:0,near:0};
+    if(!L.first){L.first=now;}
+    if(a.d<250&&!L.near) L.near=now;
+    life.set(a.it.id,L);
+    showIt=now-L.first<8000||(L.near&&now-L.near<6000);}
+  if(am&&TN.voice&&!(this.spoken||(this.spoken=new Set())).has(am.it.id)){this.spoken.add(am.it.id);
+    TN.voice.say('Moderate traffic ahead, '+(am.d<950?Math.round(am.d/50)*50+' metres':(am.d/1000).toFixed(1)+' kilometres'));}
+  if(showIt) this.show(a.it,a.d,false);else if(this.card&&this.card.style.display!=='none') this.hide();
+  /* the map badges: every 2 s, the ones within 4 km (and ahead of the car while following it) */
+  if(now-(this.mkT||0)>2000){this.mkT=now;this.drawMarkers();}
+};
+
+/* ---------- driver reports (Firebase over the web: anonymous sign-in + the reports database) ---------- */
+TN.Reports=function(inc){this.inc=inc;this.list=[];this.lastFetch=0;this.voted=new Set();};
+TN.REPORT_KINDS=['police','accident','jam','stand','closed','lane','works','breakdown','pothole','hazard','ice','fog','flood','rain','wind'];
+TN.REPORT_LIFE={police:60,accident:120,jam:30,stand:30,breakdown:60,fog:120,rain:120,wind:120,flood:180};   /* minutes (traffic changes quickly) */   /* minutes a report stays up (default 4 h) */
+TN.Reports.prototype.token=async function(){
+  /* an anonymous identity for this car, kept between drives; its pass is renewed when it expires (1 hour) */
+  let a=null;try{a=JSON.parse(localStorage.getItem('tn2_fb')||'null');}catch(e){}
+  if(a&&a.exp>Date.now()+60000) return a;
+  let r;
+  if(a&&a.refresh){r=await fetch('https://securetoken.googleapis.com/v1/token?key='+TN.FB.apiKey,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(a.refresh)});
+    if(r.ok){const j=await r.json();a={id:j.id_token,refresh:j.refresh_token,uid:j.user_id,exp:Date.now()+(+j.expires_in)*1000};}else a=null;}
+  if(!a){r=await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key='+TN.FB.apiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})});
+    if(!r.ok) throw new Error('sign-in '+r.status);const j=await r.json();a={id:j.idToken,refresh:j.refreshToken,uid:j.localId,exp:Date.now()+(+j.expiresIn)*1000};}
+  try{localStorage.setItem('tn2_fb',JSON.stringify(a));}catch(e){}
+  return a;
+};
+TN.Reports.prototype.base=function(){return 'https://firestore.googleapis.com/v1/projects/'+TN.FB.projectId+'/databases/(default)/documents';};
+/* send a report at the car's position (the time is stamped by the server). Reports are deleted 30 days after they're
+   posted by a nightly job in the private feedback repository (alert-cleanup.yml), as the privacy policy promises */
+TN.Reports.prototype.send=async function(kind,lng,lat,hd){
+  const a=await this.token(),id='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const name='projects/'+TN.FB.projectId+'/databases/(default)/documents/reports/'+id;
+  const body={writes:[{update:{name:name,fields:{uid:{stringValue:a.uid},kind:{stringValue:kind},lat:{doubleValue:lat},lng:{doubleValue:lng},hd:{doubleValue:Math.round(hd||0)},up:{integerValue:'0'},down:{integerValue:'0'}}},
+    currentDocument:{exists:false},updateTransforms:[{fieldPath:'t',setToServerValue:'REQUEST_TIME'},{fieldPath:'last',setToServerValue:'REQUEST_TIME'}]}]};
+  const r=await fetch(this.base()+':commit',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+a.id},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error('report '+r.status);
+  this.lastFetch=0;return id;
+};
+/* "Still there" (+1 up) or "Gone" (+1 down) */
+TN.Reports.prototype.vote=async function(id,up){
+  if(this.voted.has(id)) return;this.voted.add(id);
+  const a=await this.token(),name='projects/'+TN.FB.projectId+'/databases/(default)/documents/reports/'+id;
+  const body={writes:[{transform:{document:name,fieldTransforms:[{fieldPath:up?'up':'down',increment:{integerValue:'1'}},{fieldPath:'last',setToServerValue:'REQUEST_TIME'}]}}]};
+  await fetch(this.base()+':commit',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+a.id},body:JSON.stringify(body)});
+  this.lastFetch=0;
+};
+/* the reports around the car (a band of latitude, then the rest filtered here), every minute */
+TN.Reports.prototype.fetch=async function(lng,lat){
+  try{
+    const a=await this.token();this.me=a.uid;
+    const q={structuredQuery:{from:[{collectionId:'reports'}],where:{compositeFilter:{op:'AND',filters:[
+      {fieldFilter:{field:{fieldPath:'lat'},op:'GREATER_THAN_OR_EQUAL',value:{doubleValue:lat-0.06}}},
+      {fieldFilter:{field:{fieldPath:'lat'},op:'LESS_THAN_OR_EQUAL',value:{doubleValue:lat+0.06}}}]}},limit:300}};
+    const r=await fetch(this.base()+':runQuery',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+a.id},body:JSON.stringify(q)});
+    if(!r.ok){this.err=r.status;return;}
+    const rows=await r.json(),now=Date.now(),out=[];
+    for(const row of rows){const d=row.document;if(!d||!d.fields) continue;const f=d.fields;
+      const g=k=>f[k]?(f[k].doubleValue!=null?+f[k].doubleValue:f[k].integerValue!=null?+f[k].integerValue:f[k].stringValue!=null?f[k].stringValue:f[k].timestampValue||null):null;
+      const kind=g('kind'),t=Date.parse(g('t')||''),last=Date.parse(g('last')||'')||t,up=g('up')||0,down=g('down')||0,rl=g('lat'),rn=g('lng');
+      if(!kind||!t||Math.abs(rn-lng)>0.09) continue;
+      const life=(TN.REPORT_LIFE[kind]||240)*60000;
+      if(now-last>life) continue;            /* expired (a "still there" keeps it alive) */
+      if(down>=2&&down>up) continue;         /* drivers said it's gone */
+      /* driver traffic reports become jams: heavy traffic, or a standstill */
+      const isJam=kind==='jam'||kind==='stand';
+      out.push({id:d.name.split('/').pop(),kind:isJam?'jam':kind,sev:isJam?(kind==='stand'?3:2):0,title:isJam?TN.ROCCO_TITLE[kind]:null,
+        pts:[TN.toLocal(rn,rl)],ll:[rn,rl],desc:'',from:'',to:'',road:'',user:true,t:t,up:up,down:down,mine:g('uid')===(this.me||'')});}
+    this.list=out;this.err=null;
+  }catch(e){this.err='net';}
+};
