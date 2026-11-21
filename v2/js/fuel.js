@@ -1,4 +1,4 @@
-/* MapKoon v2 — fuel.js (v1.3, Nov 21 2026)
+/* MapKoon v2 — fuel.js (v1.4, Nov 21 2026: concrete pad, two pillars per island)
    Gas stations as simple 3D canopies: landmarks to turn by ("right after the gas station"), not a gas finder
    (MapKoon drivers drive Teslas). No names, prices or logos: a white canopy on pillars, a thin coloured band, pump
    islands underneath, and the underside lit at night like real stations.
@@ -23,7 +23,7 @@ TN.Fuel.prototype.load=function(){
 TN.Fuel.prototype.mats=function(){
   if(this.M) return this.M;
   this.M={roof:new THREE.MeshLambertMaterial({color:0xf4f6f8}),grey:new THREE.MeshLambertMaterial({color:0x9aa1a9}),
-    glow:new THREE.MeshBasicMaterial({color:0xfff4d6}),day:new THREE.MeshLambertMaterial({color:0xe6e9ec}),
+    glow:new THREE.MeshBasicMaterial({color:0xfff4d6}),pad:new THREE.MeshLambertMaterial({color:0xb9bdc2}),day:new THREE.MeshLambertMaterial({color:0xe6e9ec}),
     band:[0xd64545,0x2f7d4f,0x2f6fe4,0xe08a1e,0x6b4fc9].map(c=>new THREE.MeshLambertMaterial({color:c}))};
   return this.M;
 };
@@ -38,16 +38,17 @@ TN.Fuel.prototype.make=function(st,x,z,hd,h){
   const roof=[box(-W,W,top-th,top,-L,L)];
   const band=[box(-W-0.03,W+0.03,top-0.62,top-0.38,-L-0.03,L+0.03)];
   const under=[box(-W+0.4,W-0.4,top-th-0.02,top-th,-L+0.4,L-0.4)];
+  const pad=[box(-W-2.5,W+2.5,0.01,0.05,-L-3,L+3)];   /* the concrete pad under the canopy */
   const grey=[];
   const nI=Math.max(1,Math.min(4,Math.round(l/7))),step=l/nI;
   for(let i=0;i<nI;i++){const zc=-L+step*(i+0.5);
     grey.push(box(-0.6,0.6,0,0.2,zc-2.1,zc+2.1));                               /* island curb */
     grey.push(box(-0.35,0.35,0.2,1.7,zc-1.1,zc-0.5),box(-0.35,0.35,0.2,1.7,zc+0.5,zc+1.1));   /* pumps */
-    grey.push(box(-0.14,0.14,0.2,top-th,zc-0.14,zc+0.14));                       /* pillar */
+    grey.push(box(-0.16,0.16,0.2,top-th,zc-2.05,zc-1.73),box(-0.16,0.16,0.2,top-th,zc+1.73,zc+2.05));   /* two pillars, at the island's ends */
   }
   const g=new THREE.Group(),c=Math.abs(Math.round(st[0]*1e4+st[1]*1e4))%M.band.length;
   const add=(geo,m)=>{const o=new THREE.Mesh(geo,m);g.add(o);return o;};
-  add(merge(roof),M.roof);add(merge(band),M.band[c]);const u=add(merge(under),M.day);add(merge(grey),M.grey);
+  add(merge(pad),M.pad);add(merge(roof),M.roof);add(merge(band),M.band[c]);const u=add(merge(under),M.day);add(merge(grey),M.grey);
   g.userData.under=u;g.position.set(x,h,z);g.rotation.y=-hd;
   this.scene.three.scene.add(g);return g;
 };
