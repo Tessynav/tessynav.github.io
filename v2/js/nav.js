@@ -1881,4 +1881,3 @@ TN.Nav.prototype.roccoArriveShow=function(text,charging){
   document.body.appendChild(el);
   clearTimeout(this.rarrT);this.rarrT=setTimeout(()=>{try{el.remove();}catch(e){}},9400);
 };
-
