@@ -1,4 +1,4 @@
-/* MapKoon v2 — music.js (v6: the key comes from the phone, nothing to type in the car; v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
+/* MapKoon v2 — music.js (v7: the song shows up faster; v6: the key comes from the phone, nothing to type in the car; v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
    A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
    to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
    (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
@@ -65,7 +65,7 @@ TN.Music.prototype.api=async function(path,opt){
     return {s:r.status,j:j};
   }catch(e){return {s:0,j:null};}
 };
-/* what's playing: every 5 s with the panel open, every 10 s otherwise; nothing while the screen is off */
+/* what's playing (see below for how often); nothing while the screen is off */
 TN.Music.prototype.poll=async function(){
   clearTimeout(this.pollT);if(!this.tok||document.hidden){this.render();return;}
   const r=await this.api('/me/player?additional_types=episode');
@@ -73,7 +73,11 @@ TN.Music.prototype.poll=async function(){
   /* a Spotify account not invited to MapKoon's key: Spotify answers 403; point to the own-key guide (once) */
   if(r.s===403&&!this.own()&&!this.told403){this.told403=true;this.msg('This Spotify account isn\u2019t invited to MapKoon\u2019s key. Tap \u2699 in the music panel \u2192 Use my own Spotify key.');}
   this.render();
-  this.pollT=setTimeout(()=>this.poll(),this.open?5000:10000);
+  /* (v7, Nov 21: faster. While music plays: every 3 s (panel open) or 4 s, and right when the song ends (+0.4 s), so the
+     next song shows up at once; paused or nothing playing: every 10 s. Spotify has no "tell me when it changes", only asking) */
+  const N=this.now,play=!!(N&&N.is_playing);let wait=play?(this.open?3000:4000):10000;
+  if(play&&N.item&&N.item.duration_ms&&N.progress_ms!=null){const left=N.item.duration_ms-N.progress_ms+400;if(left>300&&left<wait) wait=left;}
+  this.pollT=setTimeout(()=>this.poll(),wait);
 };
 /* the car's Spotify (or whichever device is playing) */
 TN.Music.prototype.device=async function(){
