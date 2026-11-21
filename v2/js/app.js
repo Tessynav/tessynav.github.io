@@ -310,7 +310,10 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
      pointed out ("at 12:30 I turned on ..."); the same time is what the recording uses */
   let recTick=null;
   const recTime=()=>{const s=Math.max(0,Math.floor((Date.now()-rec.t0)/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
-  $('rec').onclick=async()=>{
+  $('rec').onclick=async(ev,force)=>{
+    /* (a drive not uploaded yet: offered first, so a new recording doesn't replace it) */
+    if(!rec.rec&&!force){const old=rec.saved();if(old&&old.g&&old.g.length>50){panel('Your last drive ('+Math.round((old.dur||0)/60000)+' min) isn’t uploaded yet.',
+      [['Upload it',()=>uploadTrip(old)],['Record anyway',()=>{hide();try{localStorage.removeItem('tn2_rec');}catch(e){}$('rec').onclick(null,true);}],['Close',hide]]);return;}}
     if(!rec.rec){rec.start();try{if(nav&&nav.active) nav.noteRoute();}catch(e){}$('rec').textContent='■ Stop 0:00';$('rec').style.color='#ff6b6b';$('rec').classList.add('on');
       recTick=setInterval(()=>{if(rec.rec) $('rec').textContent='■ Stop '+recTime();},1000);return;}
     if(recTick){clearInterval(recTick);recTick=null;}
@@ -321,9 +324,21 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     panel('Encrypting and uploading…',[]);
     try{const name=await TN.up.upload(trip);
       /* remember it in this car's list of recordings (Trips button) */
-      try{const L=JSON.parse(localStorage.getItem('tn2_trips')||'[]');L.unshift({n:name,t:Date.now(),d:Math.round((trip.dur||0)/60000)});localStorage.setItem('tn2_trips',JSON.stringify(L.slice(0,40)));}catch(e){}
+      try{localStorage.removeItem('tn2_rec');}catch(e){}
+  try{const L=JSON.parse(localStorage.getItem('tn2_trips')||'[]');L.unshift({n:name,t:Date.now(),d:Math.round((trip.dur||0)/60000)});localStorage.setItem('tn2_trips',JSON.stringify(L.slice(0,40)));}catch(e){}
 panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>Send this name to Claude.</small>',[['Close',hide]]);}
-    catch(e){panel('Upload failed:<br><small>'+String(e.message||e)+'</small>',[['Try again',()=>uploadTrip(trip)],['Close',hide]]);}
+    catch(e){panel('Upload failed:<br><small>'+String(e.message||e)+'</small><br><small>Your drive is kept in this car, it will be offered again next time.</small>',[['Try again',()=>uploadTrip(trip)],['Set up',()=>upCode(trip)],['Close',hide]]);}
+  }
+  /* (Nov 21: upload setup in the car with the short code from the phone) */
+  function upCode(trip){
+    const st='display:block;width:260px;max-width:80vw;margin:8px auto;padding:9px;font-size:16px;border-radius:8px;border:0';
+    panel('<b>Set up upload</b><br><small>On your phone: app.mapkoon.com/v1.html → Trips → Setup → Share to car.<br>Then type that code and your trip password here.</small>'+
+      '<input id="up-code" placeholder="6-character code" autocapitalize="off" autocomplete="off" style="'+st+'">'+
+      '<input id="up-cpass" type="password" placeholder="Trip password" style="'+st+'">',
+      [['Connect',async()=>{const c=$('up-code').value.trim().toLowerCase(),p=$('up-cpass').value;if(!c||!p) return;
+        panel('Connecting…',[]);
+        try{await TN.up.useCode(c,p);if(trip) uploadTrip(trip);else panel('Connected! This car can now upload trips.',[['Close',hide]]);}
+        catch(e){panel('Could not connect: '+String(e.message||e),[['Try again',()=>upCode(trip)],['Close',hide]]);}}],['Close',hide]]);
   }
   /* ---------- Trips: the list of recordings ---------- */
   function tripLabel(n){const m=n.match(/trip-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/);if(!m) return '';
@@ -483,7 +498,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   if($('trips')) $('trips').onclick=showTrips;
   const saved=rec.saved();
   if(saved&&saved.g&&saved.g.length>50) setTimeout(()=>panel('A recording was saved before the app closed ('+Math.round((saved.dur||0)/60000)+' min).',
-    [['Upload it',()=>{try{localStorage.removeItem('tn2_rec');}catch(e){}uploadTrip(saved);}],['Delete',()=>{try{localStorage.removeItem('tn2_rec');}catch(e){}hide();}]]),1500);
+    [['Upload it',()=>uploadTrip(saved)],['Delete',()=>{try{localStorage.removeItem('tn2_rec');}catch(e){}hide();}]]),1500);
 
   /* ---------- version and updates ----------
      The check asks GitHub itself (not the website copy, which can be up to 10 minutes behind), so it sees an

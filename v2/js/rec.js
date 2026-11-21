@@ -63,8 +63,8 @@ TN.Rec.prototype.save=function(){
 TN.Rec.prototype.stop=function(){
   if(!this.rec) return null;
   clearInterval(this.timer);this.rec.dur=this.t();
-  const r=this.rec;this.rec=null;
-  try{localStorage.removeItem('tn2_rec');}catch(e){}
+  /* (v2, Nov 21: the drive stays saved in this browser until it is uploaded; a failed upload never loses it) */
+  this.save();const r=this.rec;this.rec=null;
   return r;
 };
 TN.Rec.prototype.saved=function(){try{const s=localStorage.getItem('tn2_rec');return s?JSON.parse(s):null;}catch(e){return null;}};
@@ -72,6 +72,24 @@ TN.Rec.prototype.saved=function(){try{const s=localStorage.getItem('tn2_rec');re
 /* ---------- upload (same encryption and repository as the main app) ---------- */
 TN.up={
   get:k=>{try{return localStorage.getItem('up:'+k)||'';}catch(e){return '';}},
+  set:(k,v)=>{try{localStorage.setItem('up:'+k,v);}catch(e){}},
+  unb64:s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0)),
+  async decrypt(text,pass){const e=JSON.parse(text);
+    const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);
+    const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:TN.up.unb64(e.salt),iterations:e.iter||200000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+    let pt=new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:TN.up.unb64(e.iv)},key,TN.up.unb64(e.data)));
+    if(e.gz) pt=new Uint8Array(await new Response(new Blob([pt]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+    return JSON.parse(new TextDecoder().decode(pt));},
+  /* the car code made on the phone (MapKoon v1 page → Trips → Setup → Share to car): no long token to type in the car */
+  async useCode(code,pass){const repo=TN.up.get('repo')||'Tessynav/tessynav-trips';
+    const r=await fetch('https://api.github.com/repos/'+repo+'/contents/setup/'+code+'.json',{headers:{'Accept':'application/vnd.github+json'}});
+    if(!r.ok) throw new Error(r.status===404?'code not found':'error '+r.status);
+    const j=await r.json();let s;
+    try{s=await TN.up.decrypt(atob(j.content.replace(/\n/g,'')),pass);}catch(e){throw new Error('wrong password');}
+    TN.up.set('repo',s.repo);TN.up.set('token',s.token);TN.up.set('pass',pass);
+    try{await fetch('https://api.github.com/repos/'+s.repo+'/contents/setup/'+code+'.json',{method:'DELETE',
+      headers:{'Accept':'application/vnd.github+json','Content-Type':'application/json','Authorization':'Bearer '+s.token},body:JSON.stringify({message:'Remove setup code',sha:j.sha})});}catch(e){}
+  },
   b64:bytes=>{let s='';const c=0x8000;for(let i=0;i<bytes.length;i+=c) s+=String.fromCharCode.apply(null,bytes.subarray(i,i+c));return btoa(s);},
   async gzip(bytes){if(typeof CompressionStream==='undefined') return null;
     const out=new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip')));return new Uint8Array(await out.arrayBuffer());},
@@ -88,7 +106,7 @@ TN.up={
     return 'trip-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'-v2';},
   async upload(trip){
     const token=TN.up.get('token'),pass=TN.up.get('pass'),repo=TN.up.get('repo')||'Tessynav/tessynav-trips';
-    if(!token||!pass) throw new Error('Upload is not set up in this browser yet. Open the main MapKoon once and use Trips → Setup.');
+    if(!token||!pass) throw new Error('Upload is not set up in this browser yet. Your drive is kept here: tap Set up.');
     const body=await TN.up.encrypt(trip,pass);
     let name=TN.up.name(trip);
     const put=n=>fetch('https://api.github.com/repos/'+repo+'/contents/trips/'+n+'.json',{method:'PUT',

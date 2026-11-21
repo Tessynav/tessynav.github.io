@@ -1,4 +1,4 @@
-/* MapKoon v2 — music.js (v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
+/* MapKoon v2 — music.js (v6: the key comes from the phone, nothing to type in the car; v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
    A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
    to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
    (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
@@ -195,7 +195,7 @@ TN.Music.prototype.box=function(html,btns){
     st.textContent='#tn-mkey{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:31;width:min(600px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;box-sizing:border-box;background:rgb(var(--tn-panel-rgb,24 26 30) / .98);color:var(--tn-text,#fff);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.45);font:15px/1.45 system-ui,sans-serif;padding:20px 22px}'+
       '#tn-mkey h3{margin:0 0 4px;font-size:20px;display:flex;align-items:center;gap:10px}#tn-mkey .sp{width:26px;height:26px;border-radius:50%;background:#1db954;color:#000;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}'+
       '#tn-mkey .sub{opacity:.7;font-size:14px;margin-bottom:12px}#tn-mkey .st{display:flex;gap:12px;margin:10px 0}#tn-mkey .n{flex:none;width:26px;height:26px;border-radius:50%;background:#2f6fe4;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}'+
-      '#tn-mkey code{background:rgba(127,127,127,.2);padding:2px 7px;border-radius:6px;font-size:13.5px;word-break:break-all}#tn-mkey .qr{float:right;margin:0 0 8px 14px;background:#fff;padding:8px;border-radius:10px;line-height:0;text-align:center}#tn-mkey .qr small{display:block;color:#333;font-size:11px;line-height:1.3;margin-top:4px}'+
+      '#tn-mkey code{background:rgba(127,127,127,.2);padding:2px 7px;border-radius:6px;font-size:13.5px;word-break:break-all}#tn-mkey .qr .pc{font:700 17px ui-monospace,monospace;letter-spacing:.12em;color:#111;text-align:center;margin-top:4px}#tn-mkey .qr{float:right;margin:0 0 8px 14px;background:#fff;padding:8px;border-radius:10px;line-height:0;text-align:center}#tn-mkey .qr small{display:block;color:#333;font-size:11px;line-height:1.3;margin-top:4px}'+
       '#tn-mkey input{width:100%;box-sizing:border-box;font:16px ui-monospace,monospace;padding:12px 14px;border-radius:12px;border:2px solid #2f6fe4;background:rgba(127,127,127,.12);color:inherit;margin-top:6px;outline:none}'+
       '#tn-mkey .bt{display:flex;gap:10px;margin-top:16px;clear:both}#tn-mkey .bt button{flex:1;border:0;border-radius:14px;padding:12px;font:700 15px system-ui;cursor:pointer;background:rgba(127,127,127,.2);color:inherit}#tn-mkey .bt button.g{background:#1db954;color:#000}#tn-mkey .bt button:disabled{opacity:.4}'+
       '#tn-mkey .ok{font-size:14px;margin-top:8px;min-height:20px}#tn-mkey .cp{border:0;background:#2f6fe4;color:#fff;border-radius:10px;padding:2px 9px;font:600 12px system-ui;margin-left:6px;cursor:pointer}';
@@ -214,20 +214,34 @@ TN.Music.prototype.choose=function(){
       own?[['Connect',()=>{this.unbox();this.login();},'g'],['Change my key',()=>this.guide(1)],['Remove my key',()=>{this.ls('tn_sp_cid',null);this.choose();}],['Cancel',()=>this.unbox()]]
          :[['Use my own Spotify key',()=>this.guide(1),'g'],['Quick connect',()=>{this.unbox();this.login();}],['Cancel',()=>this.unbox()]]);
 };
+/* (v6, Nov 21: no typing in the car. The guide shows a 6-character code; the QR opens the help page on the phone with
+   that code already in it; after creating the Spotify app, the driver pastes the Client ID on the phone and taps
+   "Send to my car". The car checks every 3 s while the guide is open, fills it in and connects. Typing stays possible) */
+TN.Music.prototype.pairStart=function(){
+  if(!this.pair){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',a=new Uint8Array(6);crypto.getRandomValues(a);this.pair=Array.from(a,b=>A[b%A.length]).join('');this.pairT0=Date.now();}
+  clearInterval(this.pairTimer);
+  this.pairTimer=setInterval(async()=>{
+    const bx=document.getElementById('tn-mkey');if(!bx||bx.style.display==='none'||Date.now()-this.pairT0>10*60e3){clearInterval(this.pairTimer);this.pairTimer=null;if(Date.now()-this.pairT0>10*60e3) this.pair=null;return;}
+    try{const r=await fetch((TN.TESLA_SERVER||'https://tessynav.mznwattar.workers.dev')+'/pair?code='+this.pair);const j=await r.json();
+      if(j&&j.v&&/^[0-9a-f]{32}$/i.test(j.v)){clearInterval(this.pairTimer);this.pairTimer=null;this.pair=null;this.got=j.v.toLowerCase();this.guide(2);}}catch(e){}
+  },3000);
+};
+TN.Music.prototype.pairUrl=function(){return TN.SPOTIFY_HELP+'?pair='+this.pair;};
 /* screen 1: the steps, with a QR code that opens the help page on the phone (easier than typing in the car) */
 TN.Music.prototype.guide=function(step){
   const red=this.redirect,copy=t=>{try{navigator.clipboard.writeText(t);this.msg('Copied.');}catch(e){}};
+  this.pairStart();
   if(step===1){
     const d=this.box('<h3><span class="sp">♫</span>Connect your own Spotify</h3><div class="sub">For search and playlists. About 5 minutes, once. Needs Spotify Premium.</div>'+
-      '<div class="qr" id="tn-mqr"><small>Scan with<br>your phone</small></div>'+
+      '<div class="qr" id="tn-mqr"><small>Scan with<br>your phone</small><div class="pc">'+this.pair+'</div></div>'+
       '<div class="st"><div class="n">1</div><div>On your phone, scan the code (or open <b>developer.spotify.com/dashboard</b>) and log in with your Spotify account. Accept the terms.</div></div>'+
       '<div class="st"><div class="n">2</div><div>Tap <b>Create app</b>. Name: <code>MapKoon</code><br>Can’t see it? Browser menu → <b>Desktop site</b>.</div></div>'+
       '<div class="st"><div class="n">3</div><div>Redirect URI: <code>'+red+'</code><button class="cp" data-c="1">Copy</button><br>Tick <b>Web API</b>, then <b>Save</b>.</div></div>'+
-      '<div class="st"><div class="n">4</div><div>Open your app’s <b>Settings</b> and copy the <b>Client ID</b>.<br><span style="opacity:.7;font-size:13px">Never the Client Secret: it isn’t needed.</span></div></div>',
-      [['Next: paste the key',()=>this.guide(2),'g'],['Cancel',()=>this.unbox()]]);
+      '<div class="st"><div class="n">4</div><div>Copy the <b>Client ID</b> (app <b>Settings</b>), paste it on the phone page and tap <b>Send to my car</b>. It appears here by itself, nothing to type.<br><span style="opacity:.7;font-size:13px">Never the Client Secret: it isn’t needed.</span></div></div>',
+      [['Type it instead',()=>this.guide(2)],['Cancel',()=>this.unbox()]]);
     d.querySelector('[data-c]').onclick=()=>copy(red);
     const draw=()=>{const q=document.getElementById('tn-mqr');if(!q||typeof qrcode!=='function') return;
-      const g=qrcode(0,'M');g.addData(TN.SPOTIFY_HELP);g.make();q.insertAdjacentHTML('afterbegin',g.createSvgTag(4,0));};
+      const g=qrcode(0,'M');g.addData(this.pairUrl());g.make();q.insertAdjacentHTML('afterbegin',g.createSvgTag(4,0));};
     if(typeof qrcode==='function') draw();
     else{const s=document.createElement('script');s.src='js/qr.js?v=1';s.onload=draw;document.head.appendChild(s);}
     return;}
@@ -241,6 +255,9 @@ TN.Music.prototype.guide=function(step){
   const chk=()=>{const v=inp.value.trim();const good=/^[0-9a-f]{32}$/i.test(v);go.disabled=!good;
     ok.style.color=good?'#7ee2a0':'#ffb4a8';
     ok.textContent=!v?'':good?'✓ Looks right (32 letters and numbers)':v.length!==32?'That’s '+v.length+' characters; a Client ID has 32.':'Only letters a–f and numbers 0–9.';};
-  inp.oninput=chk;const cur=this.ls('tn_sp_cid');if(cur) inp.value=cur;chk();setTimeout(()=>{try{inp.focus();}catch(e){}},50);
+  inp.oninput=chk;const cur=this.ls('tn_sp_cid');if(cur) inp.value=cur;
+  if(this.got){inp.value=this.got;this.got=null;chk();ok.textContent='✓ Received from your phone. Connecting…';
+    setTimeout(()=>{if(!go.disabled) go.click();},1200);return;}
+  chk();setTimeout(()=>{try{inp.focus();}catch(e){}},50);
 };
 if(typeof document!=='undefined') TN.music=new TN.Music();
