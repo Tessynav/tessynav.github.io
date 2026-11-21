@@ -4,7 +4,7 @@
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.ACCOUNT_URL='https://tessynav.github.io/account.html';   /* (the MapKoon website's Account page; mapkoon.com once the domain is set up) */
+TN.ACCOUNT_URL='https://app.mapkoon.com/account.html';   /* (the MapKoon website's Account page; mapkoon.com once the domain is set up) */
 TN.SETDEF={habits:false,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,railTurns:true,buses:false,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
