@@ -171,24 +171,37 @@ TN.Buses.prototype.update=function(dt,cx,cz){
    From the same weekly files: the stops in the ~2 km squares around you; drawn within 450 m (at most 40): a pole with
    a blue sign and the route numbers that stop there. */
 TN.Buses.prototype.stopSign=function(name,routes){
-  const c=document.createElement('canvas');c.width=256;c.height=160;const x=c.getContext('2d');
-  x.fillStyle='#0b5ed7';x.fillRect(0,0,256,160);x.fillStyle='#fff';x.font='bold 54px sans-serif';x.textAlign='center';x.textBaseline='middle';
-  x.fillText('\u{1F68C}',50,48);x.font='bold 40px sans-serif';x.fillText((routes||[]).slice(0,3).join(' '),160,48);
-  x.font='22px sans-serif';let nm=name||'';if(nm.length>22) nm=nm.slice(0,21)+'…';x.fillText(nm,128,118);
-  return new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c),side:THREE.DoubleSide});
+  /* (v2.1, Nov 20: text shrinks to fit, so route numbers and the stop name are never cut) */
+  const c=document.createElement('canvas');c.width=384;c.height=224;const x=c.getContext('2d');
+  x.fillStyle='#0b5ed7';x.fillRect(0,0,384,224);x.fillStyle='#ffffff';x.fillRect(6,6,372,4);
+  const fit=(t,max,px,bold)=>{let f=px;do{x.font=(bold?'bold ':'')+f+'px sans-serif';f-=2;}while(x.measureText(t).width>max&&f>12);};
+  x.textBaseline='middle';x.fillStyle='#fff';
+  x.textAlign='left';x.font='56px sans-serif';x.fillText('\u{1F68C}',14,66);
+  const R=(routes||[]).slice(0,4).join('  ');x.textAlign='center';fit(R,280,64,true);x.fillText(R,236,68);
+  let nm=name||'';const parts=nm.split(' / ');x.textAlign='center';
+  if(parts.length===2&&nm.length>24){fit(parts[0],360,32,false);x.fillText(parts[0],192,146);fit(parts[1],360,32,false);x.fillText(parts[1],192,188);}
+  else{fit(nm,360,34,false);x.fillText(nm,192,164);}
+  return new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)});
 };
 TN.Buses.prototype.makeStop=function(st){
   const g=new THREE.Group();
-  if(!this.poleGeo){this.poleGeo=new THREE.CylinderGeometry(0.06,0.06,3.0,8);this.poleGeo.translate(0,1.5,0);this.poleMat=new THREE.MeshLambertMaterial({color:0x9aa3ad});this.signGeo=new THREE.PlaneGeometry(1.1,0.69);}
+  if(!this.poleGeo){this.poleGeo=new THREE.CylinderGeometry(0.06,0.06,3.1,8);this.poleGeo.translate(0,1.55,0);this.poleMat=new THREE.MeshLambertMaterial({color:0x9aa3ad});this.signGeo=new THREE.PlaneGeometry(1.2,0.7);}
   g.add(new THREE.Mesh(this.poleGeo,this.poleMat));
-  const m=this.stopSign(st[1],st[4]),sg=new THREE.Mesh(this.signGeo,m);sg.position.y=2.75;g.add(sg);g.userData.mat=m;g.userData.sign=sg;
+  /* the sign hangs beside the top of the pole like a flag, toward the street, readable from both directions along it
+     (two faces, so the text is never mirrored) */
+  const m=this.stopSign(st[1],st[4]),flag=new THREE.Group();
+  const f1=new THREE.Mesh(this.signGeo,m);f1.position.set(0.66,0,0.01);flag.add(f1);
+  const f2=new THREE.Mesh(this.signGeo,m);f2.position.set(0.66,0,-0.01);f2.rotation.y=Math.PI;flag.add(f2);
+  flag.position.y=2.7;g.add(flag);g.userData.mat=m;
   const q=TN.toLocal(st[3],st[2]);
-  /* on the sidewalk side: nudged off the road, facing along it */
   let best=null;this.net.near(q[0],q[1],20,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,q[0],q[1]);if(!best||r.d<best.r.d) best={r:r,w:w,k:k};});
   let x=q[0],z=q[1],h=0;
-  if(best){const r=best.r,hw=TN.width(best.w)/2+1.2;h=best.w.hs?best.w.hs[best.k]:(best.w.br?best.w.H:0);
-    const nx=q[0]-r.qx,nz=q[1]-r.qz,nl=Math.hypot(nx,nz);if(nl>0.3){x=r.qx+nx/nl*Math.max(hw,nl);z=r.qz+nz/nl*Math.max(hw,nl);}
-    sg.rotation.y=-Math.atan2(r.tx,-r.tz)+Math.PI/2;}
+  if(best){const r=best.r,hw=TN.width(best.w)/2+1.0;h=best.w.hs?best.w.hs[best.k]:(best.w.br?best.w.H:0);
+    let nx=q[0]-r.qx,nz=q[1]-r.qz,nl=Math.hypot(nx,nz);
+    if(nl<0.3){nx=r.tz;nz=-r.tx;nl=1;}   /* (exactly on the road line: put it on the right-hand side) */
+    nx/=nl;nz/=nl;x=r.qx+nx*Math.max(hw,nl);z=r.qz+nz*Math.max(hw,nl);
+    /* the flag's local +x points from the pole toward the street (−n); its face looks along the street */
+    flag.rotation.y=Math.atan2(nz,-nx);}
   g.position.set(x,h,z);this.scene.three.scene.add(g);return g;
 };
 TN.Buses.prototype.clearStops=function(){if(!this.stops) return;for(const g of this.stops.values()){this.scene.three.scene.remove(g);try{g.userData.mat.map.dispose();g.userData.mat.dispose();}catch(e){}}this.stops.clear();};
