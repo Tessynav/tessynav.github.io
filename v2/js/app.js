@@ -43,6 +43,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
+  const buses=TN.Buses?new TN.Buses(scene,net):null;TN.rec=rec;TN.buses=buses;   /* (STM live buses, Settings → The city) */
   const landmarks=TN.Landmarks?new TN.Landmarks(scene):null;
   const garage=TN.Garage?new TN.Garage({scene:scene,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;
   /* Can I park here? (City of Montréal parking signs, read when you stop) */
@@ -51,7 +52,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const ground=TN.Ground?new TN.Ground(scene,net,trees,season):null;   /* fallen leaves, snowy ground and car */
   const water=TN.Water?new TN.Water(scene):null;
   /* the settings menu (gear button) */
-  const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,night:()=>night()}):null;
+  const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,buses:buses,night:()=>night()}):null;
   if(settings){try{settings.build();}catch(e){}}
   /* navigation: search, route, directions */
   const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
@@ -804,6 +805,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(buildings){try{buildings.update(ahead.lng,ahead.lat,lastFps);}catch(e){}}
       if(landmarks){try{landmarks.update(ac.lng,ac.lat);}catch(e){}}
       if(rem){try{const tr0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);TN.prof('rem',performance.now()-tr0);}catch(e){}}
+      if(buses){try{const tb0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);buses.update(dt,q[0],q[1]);TN.prof('buses',performance.now()-tb0);}catch(e){}}
       if(parking){try{parking.update(dt);}catch(e){}}
       if(water){try{water.update(dt,ahead.lng,ahead.lat);}catch(e){}}
       if(season){try{if(follow&&car&&car.x!=null) season.update(dt,car.x,car.y||0,car.z,lastFps);else{const q=TN.toLocal(ac.lng,ac.lat);season.update(dt,q[0],0,q[1],lastFps);}}catch(e){}}
@@ -839,6 +841,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(buildings){try{buildings.update(c.lng,c.lat,lastFps);}catch(e){}}
       if(landmarks){try{landmarks.update(c.lng,c.lat);}catch(e){}}
       if(rem){try{const q=TN.toLocal(c.lng,c.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
+      if(buses){try{const q=TN.toLocal(c.lng,c.lat);buses.update(dt,q[0],q[1]);}catch(e){}}
       if(season){try{const q=TN.toLocal(c.lng,c.lat);season.update(dt,q[0],0,q[1],lastFps);}catch(e){}}
       if(water){try{water.update(dt,c.lng,c.lat);}catch(e){}}
     }
