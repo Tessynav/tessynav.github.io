@@ -1,4 +1,4 @@
-/* MapKoon v2 — buses.js (v2, Nov 20: buses ride their route's real road path, and bus stops are shown; v1: a first look)
+/* MapKoon v2 — buses.js (v3, Nov 21: the next buses on the stop signs, from STM's live predictions; v2, Nov 20: buses ride their route's real road path, and bus stops are shown; v1: a first look)
    Switched on in Settings → 3D details → STM live buses.
    STM's buses where they really are: every 30 s the app asks our server (/buses on the Worker) for the buses within
    about 1.5 km; the server asks STM at most once every 30 s for everyone and keeps a copy. Each bus is drawn on the
@@ -201,28 +201,53 @@ TN.Buses.prototype.update=function(dt,cx,cz){
    From the same weekly files: the stops in the ~2 km squares around you; drawn within 450 m (at most 40): a pole with
    a blue sign and the route numbers that stop there. */
 TN.Buses.prototype.stopSign=function(name,routes){
-  /* (v2.1, Nov 20: text shrinks to fit, so route numbers and the stop name are never cut) */
-  const c=document.createElement('canvas');c.width=384;c.height=224;const x=c.getContext('2d');
-  x.fillStyle='#0b5ed7';x.fillRect(0,0,384,224);x.fillStyle='#ffffff';x.fillRect(6,6,372,4);
+  const c=document.createElement('canvas');c.width=384;c.height=300;
+  const m=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)});m.userData={c:c,name:name,routes:routes};
+  this.paintStop(m,null);return m;
+};
+/* (v2.1, Nov 20: text shrinks to fit, so route numbers and the stop name are never cut;
+   v3, Nov 21: a white band at the bottom with the next buses from STM's live predictions: "12 · 4 min   168 · 11 min") */
+TN.Buses.prototype.paintStop=function(m,times){
+  const U=m.userData,c=U.c,x=c.getContext('2d'),name=U.name,routes=U.routes;
+  x.clearRect(0,0,384,300);x.fillStyle='#0b5ed7';x.fillRect(0,0,384,300);x.fillStyle='#ffffff';x.fillRect(6,6,372,4);
   const fit=(t,max,px,bold)=>{let f=px;do{x.font=(bold?'bold ':'')+f+'px sans-serif';f-=2;}while(x.measureText(t).width>max&&f>12);};
   x.textBaseline='middle';x.fillStyle='#fff';
   x.textAlign='left';x.font='56px sans-serif';x.fillText('\u{1F68C}',14,66);
   const R=(routes||[]).slice(0,4).join('  ');x.textAlign='center';fit(R,280,64,true);x.fillText(R,236,68);
   let nm=name||'';const parts=nm.split(' / ');x.textAlign='center';
-  if(parts.length===2&&nm.length>24){fit(parts[0],360,32,false);x.fillText(parts[0],192,146);fit(parts[1],360,32,false);x.fillText(parts[1],192,188);}
-  else{fit(nm,360,34,false);x.fillText(nm,192,164);}
-  return new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)});
+  if(parts.length===2&&nm.length>24){fit(parts[0],360,32,false);x.fillText(parts[0],192,140);fit(parts[1],360,32,false);x.fillText(parts[1],192,180);}
+  else{fit(nm,360,34,false);x.fillText(nm,192,158);}
+  /* the next buses */
+  x.fillStyle='#ffffff';x.fillRect(8,214,368,78);
+  let txt='';
+  if(times&&times.length){const now=Date.now(),seen=new Set(),out=[];
+    for(const [r,t] of times){const mn=Math.round((t*1000-now)/60000);if(mn<-1||seen.has(r)) continue;seen.add(r);out.push(r+' · '+(mn<=0?'now':mn+' min'));if(out.length>=2) break;}
+    txt=out.join('    ');}
+  x.fillStyle=txt?'#0b2e66':'#7a8696';x.textAlign='center';fit(txt||(times?'No bus soon':'…'),356,38,true);x.fillText(txt||(times?'No bus soon':'…'),192,254);
+  m.map.needsUpdate=true;
+};
+/* the next buses at the nearest stops: every 30 s, for the 12 nearest within 300 m (one small request) */
+TN.Buses.prototype.pollTimes=async function(cx,cz){
+  if(this.timesBusy||!this.stops||!this.stops.size) return;
+  const list=[...this.stops.entries()].map(([id,g])=>[Math.hypot(g.position.x-cx,g.position.z-cz),id,g]).filter(e=>e[0]<300).sort((a,b)=>a[0]-b[0]).slice(0,12);
+  if(!list.length) return;this.timesBusy=true;
+  try{const r=await fetch((TN.TESLA_SERVER||'https://tessynav.mznwattar.workers.dev')+'/arrivals?stops='+list.map(e=>encodeURIComponent(e[1])).join(','));
+    const j=r.ok?await r.json():null;
+    if(j&&j.stops){this.times=this.times||new Map();for(const [d,id,g] of list){const T=j.stops[id]||[];this.times.set(id,T);if(this.stops.get(id)===g) this.paintStop(g.userData.mat,T);}
+      if(TN.fb&&!this.timesNoted){this.timesNoted=true;TN.fb.note('bus times',{stops:list.length,with:list.filter(e=>(j.stops[e[1]]||[]).length).length});}}}
+  catch(e){}finally{this.timesBusy=false;}
 };
 TN.Buses.prototype.makeStop=function(st){
   const g=new THREE.Group();
-  if(!this.poleGeo){this.poleGeo=new THREE.CylinderGeometry(0.06,0.06,3.1,8);this.poleGeo.translate(0,1.55,0);this.poleMat=new THREE.MeshLambertMaterial({color:0x9aa3ad});this.signGeo=new THREE.PlaneGeometry(1.2,0.7);}
+  if(!this.poleGeo){this.poleGeo=new THREE.CylinderGeometry(0.06,0.06,3.1,8);this.poleGeo.translate(0,1.55,0);this.poleMat=new THREE.MeshLambertMaterial({color:0x9aa3ad});this.signGeo=new THREE.PlaneGeometry(1.2,0.94);}
   g.add(new THREE.Mesh(this.poleGeo,this.poleMat));
   /* the sign hangs beside the top of the pole like a flag, toward the street, readable from both directions along it
      (two faces, so the text is never mirrored) */
   const m=this.stopSign(st[1],st[4]),flag=new THREE.Group();
   const f1=new THREE.Mesh(this.signGeo,m);f1.position.set(0.66,0,0.01);flag.add(f1);
   const f2=new THREE.Mesh(this.signGeo,m);f2.position.set(0.66,0,-0.01);f2.rotation.y=Math.PI;flag.add(f2);
-  flag.position.y=2.7;g.add(flag);g.userData.mat=m;
+  flag.position.y=2.62;g.add(flag);g.userData.mat=m;
+  const T=this.times&&this.times.get(st[0]);if(T) this.paintStop(m,T);
   const q=TN.toLocal(st[3],st[2]);
   let best=null;this.net.near(q[0],q[1],20,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,q[0],q[1]);if(!best||r.d<best.r.d) best={r:r,w:w,k:k};});
   let x=q[0],z=q[1],h=0;
@@ -246,4 +271,8 @@ TN.Buses.prototype.updateStops=function(dt,cx,cz){
   const keep=[...want.values()].sort((a,b)=>a[0]-b[0]).slice(0,40),ids=new Set(keep.map(k=>k[1][0]));
   for(const [id,g] of this.stops) if(!ids.has(id)){this.scene.three.scene.remove(g);try{g.userData.mat.map.dispose();g.userData.mat.dispose();}catch(e){}this.stops.delete(id);}
   for(const [d,st] of keep) if(!this.stops.has(st[0])) this.stops.set(st[0],this.makeStop(st));
+  /* next buses: every 30 s; the minutes on the signs count down every 30 s in between too */
+  this.timesT=(this.timesT||0)-2;
+  if(this.timesT<=0){this.timesT=30;this.pollTimes(cx,cz);}
+  else if(this.times&&Math.round(this.timesT)%30===14) for(const [id,g] of this.stops){const T=this.times.get(id);if(T) this.paintStop(g.userData.mat,T);}
 };
