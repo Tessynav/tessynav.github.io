@@ -601,7 +601,7 @@ TN.Nav.prototype.setRoute=function(rt){
   try{if(TN.prefetchRoute&&rt&&rt.geometry) TN.prefetchRoute(rt.geometry.coordinates);}catch(e){}   /* (the map data along the route, saved in advance) */
   /* a new route starts from scratch: where the car is along it, its lane, the release timers (a leftover position
      from a previous route made the car look for itself in the wrong part of the new one, for the whole trip) */
-  this.blk=null;this.pi=0;this.ps=null;this.latS=null;this.laneI=null;this.latF=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;
+  this.blk=null;this.pi=0;this.ps=null;this.noGlue=false;this.latS=null;this.laneI=null;this.latF=null;this.relT=0;this.turnW=0;this.relAt=0;this.fullT=0;
   /* the route line in local metres, densified to about every 5 m, with distances along it */
   const C=rt.geometry.coordinates,pts=[];
   /* each corner of the route becomes a real arc, about as wide as a car drives (up to 12 m radius, tighter
@@ -1294,6 +1294,10 @@ TN.Nav.prototype.noteRoute=function(rt){
   try{const d=this.dest;if(d) this.note('route to',{name:d.name,place:[+d.lng.toFixed(5),+d.lat.toFixed(5)],km:+(rt.distance/1000).toFixed(2),reroute:false,mid:true});}catch(e){}
 };
 TN.Nav.prototype.place=function(base,L,now,dt){
+  /* (Nov 20, trip 22:08: in the last metres, turning into the driveway, the car was let go, caught again, let go again:
+     a wobble just before arriving. In the last 25 m of the route the car is let go once, for good, and follows you) */
+  if(this.noGlue) return null;
+  if(this.route&&this.ps!=null&&this.route.L-this.ps<25){this.noGlue=true;this.note('released',{why:'arriving',left:Math.round(this.route.L-this.ps)});this.relAt=Date.now();this.ps=null;this.latD=null;return null;}
   const R=this.route;if(!R||!this.active||!L||!base||base.x==null) return null;
   /* where the GPS is along the route (searching around the last place) */
   let bi=this.pi||this.idx||0,bd=1e18;
@@ -1389,7 +1393,9 @@ TN.Nav.prototype.place=function(base,L,now,dt){
     const cx0=px+mi(1),cz0=pz+mi(2);let lc=(base.x-cx0)*(-uz)+(base.z-cz0)*ux;
     /* (Nov 20, "on rails" in turns: through a turn the line no longer follows where the GPS puts the car across the road;
        it eases back to its own place, and the car rides on it. Blended by how much of a turn this is) */
-    if(TN.railTurns()){const tw0=this.turnWeight();if(tw0>0) lc=lc+(lo-lc)*tw0;}
+    /* (only at real turns, not gentle bends of the road: in bends it pulled the car about 1 m sideways onto the route's
+       middle and back, trip 22:08 on Rue des Mésanges) */
+    if(TN.railTurns()){const tw0=this.turnWeight(true);if(tw0>0) lc=lc+(lo-lc)*tw0;}
     /* (v3, Nov 18: v2 kept the line still while the car was within 1.3 m of it and slid it over only past that, so the
        car looked like it was chasing the line (trip 13:46). Back to the line following the car smoothly (about 1 s), which
        drove well in the morning (trip 08:22); kept from v2: more than 5 m off is somewhere else (a parking lot, a service
@@ -1509,7 +1515,7 @@ TN.Nav.prototype.reroute=async function(){
    70 m before a turn on the route, is full from 30 m before to 25 m after it, and ends 50 m after */
 /* the car rides the route line in turns (Settings → Car on the route → Car on rails in turns; on by default) */
 TN.railTurns=()=>!(TN.settings&&TN.settings.railTurns===false);
-TN.Nav.prototype.turnWeight=function(){
+TN.Nav.prototype.turnWeight=function(stepsOnly){
   const R=this.route;if(!R||!R.steps||this.ps==null) return 0;
   let w=0;const s=this.ps;
   for(const st of R.steps){
@@ -1520,7 +1526,7 @@ TN.Nav.prototype.turnWeight=function(){
     if(sm>w) w=sm;}
   /* also wherever the route line itself curves, with or without an instruction: loop ramps, long highway curves,
      curved bridge approaches (an instruction marks only where they start) */
-  if(w<1){const c=this.curveAt(s);if(c>w) w=c;}
+  if(w<1&&!stepsOnly){const c=this.curveAt(s);if(c>w) w=c;}
   return w;
 };
 /* how curved the route is around distance s: the change of direction between 25 m before and 25 m after
