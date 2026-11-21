@@ -1,4 +1,4 @@
-/* MapKoon v2 — fuel.js (v1, Nov 21 2026)
+/* MapKoon v2 — fuel.js (v1.1, Nov 21 2026)
    Gas stations as simple 3D canopies: landmarks to turn by ("right after the gas station"), not a gas finder
    (MapKoon drivers drive Teslas). No names, prices or logos: a white canopy on pillars, a thin coloured band, pump
    islands underneath, and the underside lit at night like real stations.
@@ -8,7 +8,8 @@
    Light: each canopy is built once from merged pieces (4 drawing jobs), only within ~800 m, at most 10.
    Settings → 3D details → Gas stations. ?fuel=0 turns them off. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
-TN.FUEL_URL='https://app.mapkoon.com/tessynav-roads/fuel/fuel.json';
+/* (read from the repository itself, like the parking rules: the roads site only publishes the road tiles) */
+TN.FUEL_URL='https://raw.githubusercontent.com/Tessynav/tessynav-roads/main/fuel/fuel.json';
 
 TN.Fuel=function(scene,net){
   this.scene=scene;this.net=net;this.on=true;this.list=null;this.built=new Map();this.t=0;this.loading=false;
