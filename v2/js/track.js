@@ -329,7 +329,11 @@ TN.Track.prototype.frame=function(now,dt){
   /* parked in a parking space: after 2 s stopped, the car settles between the painted lines of the nearest space */
   if(L.v<0.5){if(!this.stopT) this.stopT=now;}else{this.stopT=0;this.stall=null;}
   if(this.stopT&&now-this.stopT>2000&&this.net.stallNear){
-    if(!this.stall||now-(this.stallT||0)>3000){this.stall=this.net.stallNear(L.x,L.z,this.car&&this.car.hd!=null?this.car.hd:(this.hd||0));this.stallT=now;}
+    if(!this.stall||now-(this.stallT||0)>3000){/* (Nov 21: the car's real direction (the Tesla's compass), not the direction of the road it was drawn on: parked
+       nose-in, the car points across the aisle, so every space was refused as "turned the wrong way" and the car stayed
+       in the middle of the aisle. Trip 15:38: compass 341°, aisle 73°) */
+      const rh=L.hd!=null?L.hd:this.hd!=null?this.hd:(this.car&&this.car.hd!=null?this.car.hd:0);
+      this.stall=this.net.stallNear(L.x,L.z,rh);this.stallT=now;}
     const S=this.stall,c=this.car;
     if(S&&c&&c.x!=null){
       const k=1-Math.exp(-dt*2.5);c.x+=(S.x-c.x)*k;c.z+=(S.z-c.z)*k;
