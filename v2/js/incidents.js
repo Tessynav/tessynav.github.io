@@ -5,7 +5,7 @@
    - on the map: a small round Rocco badge for each incident
    - ahead of you (on your route, or straight ahead when there is no route): an alert card, the important part big
      ("Road works · 600 m"), Rocco and his one-liner smaller ("Fun mode" in the settings turns the jokes off)
-   The key is restricted to tessynav.github.io. */
+   The key is restricted to tessynav.github.io and app.mapkoon.com. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.TT='SFsP1S1bN56sxYRuHDYyJpLTgg5Pva1k';
 /* Firebase (driver reports). These web settings are meant to be public; the database rules decide what is allowed. */
@@ -188,7 +188,7 @@ TN.Incidents.prototype.findRails=function(car){
 TN.Incidents.prototype.loadCams=async function(){
   if(this.camsLoading||this.cams) return;this.camsLoading=true;
   try{let j=null;try{const c=JSON.parse(localStorage.getItem('tn2_cams')||'null');if(c&&Date.now()-c.t<86400000) j=c.j;}catch(e){}
-    if(!j){const r=await fetch((this.api.roadsBase||'https://tessynav.github.io/tessynav-roads/')+'radars.json?d='+new Date().toISOString().slice(0,10));if(!r.ok) throw 0;j=await r.json();
+    if(!j){const r=await fetch((this.api.roadsBase||'https://app.mapkoon.com/tessynav-roads/')+'radars.json?d='+new Date().toISOString().slice(0,10));if(!r.ok) throw 0;j=await r.json();
       try{localStorage.setItem('tn2_cams',JSON.stringify({t:Date.now(),j:j}));}catch(e){}}
     const K={f:'camera',r:'redlight',fr:'speedred',m:'mobile'};
     this.cams=(j.r||[]).map(e=>{const lng=e[0],lat=e[1];let dir=e[3];
