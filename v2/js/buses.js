@@ -1,219 +1,467 @@
-/* MapKoon v2 — buses.js (v2, Nov 20: buses ride their route's real road path, and bus stops are shown; v1: a first look)
-   Switched on in Settings → 3D details → STM live buses.
-   STM's buses where they really are: every 30 s the app asks our server (/buses on the Worker) for the buses within
-   about 1.5 km; the server asks STM at most once every 30 s for everyone and keeps a copy. Each bus is drawn on the
-   road it is on (white, blue stripe, its route number on its signs), and between updates it keeps going at its reported speed
-   along that road, then glides to the next reported spot. At most 12 buses, the nearest. Route number on lit signs (front, back, sides).
-   Data © Société de transport de Montréal (CC BY 4.0), credited on the map while the buses are shown. Unofficial: no STM
-   logo. ?bus=1 switches it on for a test, ?bus=0 off. */
+/* TessyNav v2 — buildings.js
+   Detailed buildings around the car (about 1.1 km each way; steps back to 600 m if the screen gets slow), on top of the map's
+   plain buildings further away. A building cut in pieces by the map tiles is styled as the whole building:
+   - houses and small buildings get a pitched (hip) roof; larger buildings a flat roof with a low parapet
+   - colours by type: brick for houses and plexes, concrete/beige for mid-rise, glassy grey-blue for towers
+   - windows drawn by a small graphics program (no images to download), in rows and floors
+   - at night about a third of the windows light up (more in office towers), in a mix of warm yellow, soft white,
+     cool white and dim orange, each at its own brightness (always the same ones per building)
+   Built to stay light: each area is ONE drawing job, built a few hundred buildings per frame, kept while near.
+   ?buildings=0 in the address switches the detailed buildings off. Nothing here touches the car or the roads. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
-TN.Buses=function(scene,net){
-  this.scene=scene;this.net=net;this.on=false;this.buses=new Map();this.pollT=0;this.busy=false;this.mats=null;this.lastOk=0;
-  try{const s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};this.on=!!s.buses;}catch(e){}
-  if(typeof location!=='undefined'){if(/[?&]bus=1/.test(location.search)) this.on=true;if(/[?&]bus=0/.test(location.search)) this.on=false;}
+TN.Buildings=function(scene,net){
+  this.scene=scene;this.net=net||null;this.on=!(typeof location!=='undefined'&&/[?&]buildings=0/.test(location.search));
+  this.cells=new Map();this.job=null;this.mat=null;this.night=0;this.slowT=0;this.range=2;
 };
-TN.Buses.prototype.build=function(){
-  if(this.geo) return;
-  const W=1.28,H=3.15,L=6.1;   /* a 12 m STM bus: 2.55 m wide; front at -z (heading 0 = north) */
-  const box=(x0,x1,y0,y1,z0,z1)=>{const g=new THREE.BoxGeometry(x1-x0,y1-y0,z1-z0);g.translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2);return g;};
-  this.geo={body:box(-W,W,0.35,H,-L,L),stripe:box(-W-0.02,W+0.02,0.55,1.05,-L+0.1,L-0.1),win:box(-W-0.03,W+0.03,1.55,2.55,-L+1.2,L-0.6),
-    front:box(-W+0.15,W-0.15,1.2,2.75,-L-0.03,-L),head:box(-W+0.2,W-0.2,0.7,0.95,-L-0.04,-L),tail:box(-W+0.15,W-0.15,0.75,1.05,L,L+0.04),
-    wheel:new THREE.CylinderGeometry(0.5,0.5,0.35,12)};
-  this.mats={body:new THREE.MeshLambertMaterial({color:0xf3f5f7}),stripe:new THREE.MeshLambertMaterial({color:0x0b5ed7}),
-    win:new THREE.MeshBasicMaterial({color:0x1d2935}),winLit:new THREE.MeshBasicMaterial({color:0xffe7a3}),
-    head:new THREE.MeshBasicMaterial({color:0xfff6d8}),tail:new THREE.MeshBasicMaterial({color:0xff3030}),wheel:new THREE.MeshLambertMaterial({color:0x222222})};
+TN.Buildings.prototype.material=function(){
+  if(this.mat) return this.mat;
+  this.mat=new THREE.ShaderMaterial({
+    uniforms:Object.assign({night:{value:this.night},clean:{value:0}},TN.CUTU||{}),
+    vertexColors:true,side:THREE.DoubleSide,
+    vertexShader:[
+      'attribute vec3 wuv;',
+      'varying vec3 vCol;varying vec3 vUv;varying float vShade;varying vec3 vCutW;',
+      'void main(){vCol=color;vUv=wuv;vCutW=(modelMatrix*vec4(position,1.0)).xyz;',
+      '  vec3 n=normalize(normal);vShade=0.80+0.20*abs(n.x)+0.10*max(n.y,0.0);',
+      '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'].join('\n'),
+    fragmentShader:[
+      (TN.CUTGLSL||'varying vec3 vCutW;float tnCutK(){return 0.0;}'),
+      'uniform float night;uniform float clean;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
+      'float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
+      'void main(){',
+      '  float tnK=tnCutK();if(tnK>0.97) discard;float al=1.0-tnK;',
+      /* Clean view (Codriver-like): flatter, lighter walls (less shading) and soft daytime windows */
+      '  float sh=mix(vShade,0.82+0.18*vShade,clean);vec3 wall=mix(vCol,mix(vCol,vec3(0.93,0.92,0.89),0.18),clean)*sh*(1.0-0.62*night);',
+      '  if(vUv.z<0.0){gl_FragColor=vec4(wall,al);return;}',
+      '  vec2 cell=vec2(floor(vUv.x/3.2),floor(vUv.y/3.0));vec2 f=vec2(fract(vUv.x/3.2),fract(vUv.y/3.0));',
+      '  float win=step(0.22,f.x)*step(f.x,0.78)*step(0.28,f.y)*step(f.y,0.80)*step(1.0,vUv.y);',
+      /* night windows: homes mostly warm yellow with soft white, some cool white and a few dim orange; offices (tall
+         buildings) more lit windows, whiter and cooler; each window its own brightness. Always the same per window. */
+      '  float off=step(999.5,vUv.z);float sd=mod(vUv.z,1000.0);',
+      '  float lit=step(hh(cell+vec2(sd,sd*1.7)),mix(0.33,0.55,off));',
+      '  float r=hh(cell*1.37+vec2(sd*0.31,sd*2.3));',
+      '  vec3 warm=vec3(1.0,0.77,0.36);vec3 soft=vec3(1.0,0.93,0.78);vec3 cool=vec3(0.84,0.90,1.0);vec3 dimo=vec3(0.89,0.55,0.25);',
+      '  vec3 lc=off>0.5?(r<0.35?soft:(r<0.75?cool:(r<0.92?warm:dimo))):(r<0.55?warm:(r<0.80?soft:(r<0.92?cool:dimo)));',
+      '  lc*=0.7+0.3*hh(cell+vec2(sd*3.1,5.0));',
+      '  vec3 day=mix(vec3(0.30,0.37,0.45),mix(wall,vec3(0.55,0.66,0.76),0.55),clean);vec3 dark=vec3(0.07,0.08,0.11);',
+      '  vec3 wc=mix(day,mix(dark,lc,lit),night);',
+      '  gl_FragColor=vec4(mix(wall,wc,win),al);}'].join('\n'),transparent:true
+  });
+  return this.mat;
 };
-/* the route number: lit amber signs above the windscreen and on the back (planes on the bus: sprites don't work in
-   the map's 3D layer) */
-TN.Buses.prototype.sign=function(txt){
-  const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');
-  x.fillStyle='#0d0f12';x.fillRect(0,0,256,64);x.fillStyle='#ffb31a';x.font='bold 50px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,128,35);
-  const m=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)}),g=new THREE.Group(),pg=new THREE.PlaneGeometry(2.1,0.55);
-  const f=new THREE.Mesh(pg,m);f.position.set(0,2.95,-6.14);f.rotation.y=Math.PI;g.add(f);   /* front (faces -z) */
-  const b=new THREE.Mesh(pg,m);b.position.set(0,2.95,6.14);g.add(b);                          /* back (faces +z) */
-  for(const sx of [-1,1]){const sd=new THREE.Mesh(new THREE.PlaneGeometry(1.4,0.4),m);sd.position.set(sx*1.31,2.85,-4.6);sd.rotation.y=sx*Math.PI/2;g.add(sd);}
-  g.userData.mat=m;return g;
-};
-TN.Buses.prototype.make=function(route){
-  this.build();const G=this.geo,M=this.mats,g=new THREE.Group();
-  const add=(geo,m)=>{const o=new THREE.Mesh(geo,m);g.add(o);return o;};
-  add(G.body,M.body);add(G.stripe,M.stripe);const w=add(G.win,M.win);add(G.front,M.win);add(G.head,M.head);add(G.tail,M.tail);
-  for(const [x,z] of [[-1.1,-3.9],[1.1,-3.9],[-1.1,3.6],[1.1,3.6]]){const o=add(G.wheel,M.wheel);o.rotation.z=Math.PI/2;o.position.set(x,0.5,z);}
-  g.add(this.sign(route||'?'));g.userData.win=w;
-  this.scene.three.scene.add(g);return g;
-};
-TN.Buses.prototype.free=function(b){if(b.g){this.scene.three.scene.remove(b.g);const sg=b.g.children[b.g.children.length-1];try{const m=sg.userData.mat;m.map.dispose();m.dispose();}catch(e){}}};
-TN.Buses.prototype.clear=function(){for(const b of this.buses.values()) this.free(b);this.buses.clear();this.credit(false);this.clearStops&&this.clearStops();};
-/* "Bus data: STM" next to the map's other credits, while buses are shown */
-TN.Buses.prototype.credit=function(show){
-  try{const el=document.querySelector('.maplibregl-ctrl-attrib-inner');if(!el) return;let s=el.querySelector('.tn-stm');
-    if(show&&!s){s=document.createElement('span');s.className='tn-stm';s.textContent=' | Bus data: STM (unofficial)';el.appendChild(s);}
-    else if(!show&&s) s.remove();}catch(e){}
-};
-/* the road under a point, going in a direction (buses are kept on the road surface, on their side of it) */
-TN.Buses.prototype.snap=function(x,z,hd){
-  let best=null;const ux=Math.sin(hd),uz=-Math.cos(hd);
-  this.net.near(x,z,25,(w,k)=>{if(w.tun||w.cls==='service'&&!w.name) return;const r=TN.seg(w,k,x,z);
-    const dot=r.tx*ux+r.tz*uz,al=Math.abs(dot),sc=r.d+(1-al)*25+(w.ow&&dot<0?30:0);   /* (a one-way going the other way: the other carriageway) */
-    if(!best||sc<best.sc) best={sc:sc,r:r,w:w,k:k};});
-  if(!best||best.r.d>30) return null;
-  const r=best.r,w=best.w,k=best.k;let tx=r.tx,tz=r.tz;if(tx*ux+tz*uz<0){tx=-tx;tz=-tz;}
-  const side=w.ow?0:Math.min(3.2,TN.width(w)/4);   /* two-way roads: on the right-hand half */
-  const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
-  return {x:r.qx-tz*side,z:r.qz+tx*side,hd:Math.atan2(tx,-tz),h:h};
-};
-/* ---------- each route's real road path (v2) ----------
-   STM's schedule file, turned into small files by our weekly job (tessynav-transit): which path each trip follows,
-   and the path itself. A bus with a known path rides exactly on it; without one (not loaded yet, or a bus out of
-   service) it is placed on the nearest road as before. */
-TN.TRANSIT=TN.TRANSIT||'https://tessynav.github.io/tessynav-transit/data/';
-TN.Buses.prototype.getJSON=function(cache,key,url){
-  if(!cache.has(key)) cache.set(key,fetch(url).then(r=>r.ok?r.json():null).catch(()=>null));
-  return cache.get(key);
-};
-TN.Buses.prototype.pathFor=async function(route,trip){
-  this.tripC=this.tripC||new Map();this.shapeC=this.shapeC||new Map();
-  if(!route||!trip) return null;
-  const T=await this.getJSON(this.tripC,route,TN.TRANSIT+'trips/'+encodeURIComponent(route)+'.json');
-  const t=T&&T[trip];if(!t) return null;
-  const key=t[0];
-  const P=await this.getJSON(this.shapeC,'s'+key,TN.TRANSIT+'shapes/'+encodeURIComponent(key)+'.json');
-  if(!P||P.length<2) return null;
-  if(!P.loc){const pts=P.map(c=>TN.toLocal(c[0],c[1])),cum=[0];for(let k=1;k<pts.length;k++) cum.push(cum[k-1]+Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]));P.loc={pts:pts,cum:cum,L:cum[cum.length-1],head:t[1]};}
-  return P.loc;
-};
-/* where a point is along a path (searching near s0 first when given) */
-TN.Buses.prototype.proj=function(S,x,z,s0){
-  let best=1e18,bs=0;const P=S.pts,C=S.cum;
-  for(let k=0;k<P.length-1;k++){if(s0!=null&&(C[k+1]<s0-400||C[k]>s0+800)) continue;
-    const a=P[k],b=P[k+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz||1;let u=((x-a[0])*dx+(z-a[1])*dz)/l2;u=Math.max(0,Math.min(1,u));
-    const d=(a[0]+dx*u-x)**2+(a[1]+dz*u-z)**2;if(d<best){best=d;bs=C[k]+u*(C[k+1]-C[k]);}}
-  return {s:bs,d:Math.sqrt(best)};
-};
-TN.Buses.prototype.along=function(S,s){
-  s=Math.max(0,Math.min(S.L,s));const C=S.cum,P=S.pts;let lo=0,hi=C.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(C[m]<=s) lo=m;else hi=m;}
-  const a=P[lo],b=P[hi],t=(s-C[lo])/((C[hi]-C[lo])||1);
-  /* direction from a little behind to a little ahead (smooth through corners) */
-  const p=(d)=>{d=Math.max(0,Math.min(S.L,d));let l=0,h=C.length-1;while(h-l>1){const m=(l+h)>>1;if(C[m]<=d) l=m;else h=m;}const tt=(d-C[l])/((C[h]-C[l])||1);return [P[l][0]+(P[h][0]-P[l][0])*tt,P[l][1]+(P[h][1]-P[l][1])*tt];};
-  const p1=p(s-4),p2=p(s+4);
-  return {x:a[0]+(b[0]-a[0])*t,z:a[1]+(b[1]-a[1])*t,hd:Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]))};
-};
-/* the height and side of the road at a point on the path (two-way roads: the bus keeps to the right-hand half) */
-TN.Buses.prototype.road=function(x,z,hd){
-  let best=null;const ux=Math.sin(hd),uz=-Math.cos(hd);
-  this.net.near(x,z,8,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,x,z);const dot=r.tx*ux+r.tz*uz,sc=r.d+(1-Math.abs(dot))*20+(w.ow&&dot<0?30:0);if(!best||sc<best.sc) best={sc:sc,w:w,k:k,r:r};});
-  if(!best||best.r.d>10) return {h:0,side:1.7};
-  const w=best.w,k=best.k,r=best.r;
-  return {h:w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0),side:w.ow?0:Math.min(2.4,TN.width(w)/4)};
-};
-TN.Buses.prototype.poll=async function(cx,cz){
-  if(this.busy) return;this.busy=true;
-  try{const ll=TN.fromLocal(cx,cz);
-    const r=await fetch((TN.TESLA_SERVER||'https://tessynav.mznwattar.workers.dev')+'/buses?lat='+ll[1].toFixed(5)+'&lon='+ll[0].toFixed(5)+'&r=1500');
-    const j=await r.json();if(!r.ok||!j.buses) throw new Error(j.error||r.status);
-    this.lastOk=Date.now();const seen=new Set();let n=0,onPath=0;
-    for(const b of j.buses){if(n>=12) break;const [id,route,la,lo,brg,spd,ts,dir,trip]=b;if(!id) continue;
-      const q=TN.toLocal(lo,la),hd=(brg==null?0:brg)*Math.PI/180;
-      const age=ts?Math.max(0,Math.min(45,Date.now()/1000-ts)):0,v=Math.max(0,Math.min(25,spd||0));
-      if(Math.hypot(q[0]-cx,q[1]-cz)>1600) continue;
-      seen.add(id);n++;
-      let B=this.buses.get(id);
-      const S=await this.pathFor(route,trip);
-      if(S){/* on its route's path: how far along it, plus the distance it has driven since STM's reading */
-        const pr=this.proj(S,q[0],q[1],B&&B.S===S?B.s:null);
-        if(pr.d<40){const sT=Math.min(S.L,pr.s+v*Math.min(age,30));onPath++;
-          if(!B){B={id:id,route:route,S:S,s:sT,v:v,g:this.make(route)};this.buses.set(id,B);}
-          else if(B.S!==S){B.S=S;B.s=sT;}
-          B.sT=sT;B.v=v;continue;}}
-      /* no path: the nearest road, as before */
-      let x=q[0]+Math.sin(hd)*v*Math.min(age,15),z=q[1]-Math.cos(hd)*v*Math.min(age,15);
-      if(!this.snap(x,z,hd)){x=q[0];z=q[1];}
-      if(B&&B.S){B.S=null;}
-      if(!B){const s=this.snap(x,z,hd);if(!s) continue;B={id:id,route:route,x:s.x,z:s.z,hd:s.hd,h:s.h,v:v,g:this.make(route)};this.buses.set(id,B);}
-      B.tx=x;B.tz=z;B.thd=hd;B.v=v;B.glide=3;
+TN.Buildings.prototype.setNight=function(nt){this.night=nt;if(this.mat) this.mat.uniforms.night.value=nt;};
+/* the Clean view's look, blended in smoothly (follows the camera's own blend) */
+TN.Buildings.prototype.setClean=function(){if(this.mat&&this.mat.uniforms.clean){const v=TN._ck||0;if(Math.abs(this.mat.uniforms.clean.value-v)>0.002) this.mat.uniforms.clean.value=v;}};
+/* building shapes of one area, from the map tiles already loaded */
+TN.Buildings.prototype.collect=function(ck){
+  const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function') return [];
+  const [cx,cy]=ck.split(',').map(Number);
+  const out=[],seen=new Set();
+  /* the map scan is the slow part (every building in every loaded map tile): done once and reused for up to 20 s,
+     or until the car has moved 800 m; the pieces are only grouped by building here, their sizes are measured
+     later and only for the buildings actually needed */
+  const nowT=performance.now(),cp=this.lastCenter||[0,0];
+  const moved=this.scan&&this.scan.at?Math.hypot((cp[0]-this.scan.at[0])*78000,(cp[1]-this.scan.at[1])*111000):0;
+  if(this.scan&&nowT-this.scan.t<20000&&moved<800){var fs=this.scan.fs,byId=this.scan.byId,whole=this.scan.whole;}
+  else{
+  var fs=[];try{fs=TN.srcFeat(map,'building');}catch(e){return [];}
+  var byId=new Map(),whole=new Map();
+  for(const f of fs){if(f.id==null||!f.geometry) continue;const a=byId.get(f.id);if(a) a.push(f);else byId.set(f.id,[f]);}
+  this.scan={t:nowT,fs:fs,byId:byId,whole:whole,at:cp.slice()};}
+  /* a building on a tile edge arrives in pieces (same id): its whole size, so each piece is styled as the whole
+     building (not as a small house); measured once per building, when first needed */
+  const wholeOf=id=>{let o=whole.get(id);if(o) return o;o={a:0,n:0};const seenPiece=new Set();
+    for(const f of byId.get(id)||[]){const g=f.geometry,list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+      for(const rings of list){const r=rings[0];if(!r||r.length<4) continue;const pk=r[0][0].toFixed(6)+','+r[0][1].toFixed(6);if(seenPiece.has(pk)) continue;seenPiece.add(pk);
+        let A=0;for(let i=0;i<r.length-1;i++){const p=TN.toLocal(r[i][0],r[i][1]),q=TN.toLocal(r[i+1][0],r[i+1][1]);A+=p[0]*q[1]-q[0]*p[1];}
+        o.a+=Math.abs(A)/2;o.n++;}}
+    whole.set(id,o);return o;};
+  for(const f of fs){
+    const g=f.geometry;if(!g) continue;
+    const list=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+    const pr=f.properties||{},H=+pr.render_height||8,B=+pr.render_min_height||0;
+    for(const rings of list){
+      const r=rings[0];if(!r||r.length<4) continue;
+      let sx=0,sy=0;for(const p of r){sx+=p[0];sy+=p[1];}sx/=r.length;sy/=r.length;
+      /* each building belongs to the area its middle is in (no doubles) */
+      if(Math.floor(sx/TN.CELL)!==cx||Math.floor(sy/TN.CELL)!==cy) continue;
+      const key=r[0][0].toFixed(6)+','+r[0][1].toFixed(6)+','+H;if(seen.has(key)) continue;seen.add(key);
+      const wh=f.id!=null?wholeOf(f.id):null;
+      out.push({ring:r.slice(0,-1).map(p=>TN.toLocal(p[0],p[1])),H:H,B:B,id:f.id,wa:wh?wh.a:0,parts:wh?wh.n:1});
+      this.idSeen=(this.idSeen||0)+1;if(f.id==null) this.idMissing=(this.idMissing||0)+1;
     }
-    for(const [id,B] of this.buses) if(!seen.has(id)){this.free(B);this.buses.delete(id);}
-    this.credit(this.buses.size>0);
-    TN.rec&&TN.rec.note&&TN.rec.note('buses',{all:j.n,near:j.buses.length,shown:this.buses.size,onPath:onPath});
-  }catch(e){TN.rec&&TN.rec.note&&TN.rec.note('buses',{error:String(e&&e.message||e).slice(0,80)});}
-  this.busy=false;
+  }
+  /* nothing found in a scan made before this area's map tiles arrived: scan again once */
+  if(!out.length&&!this._rescan&&nowT-this.scan.t>3000){this._rescan=true;this.scan=null;try{return this.collect(ck);}finally{this._rescan=false;}}
+  return out;
 };
-TN.Buses.prototype.update=function(dt,cx,cz){
-  if(!this.on||!this.scene.three||typeof THREE==='undefined'){if(this.buses.size) this.clear();if(this.stops&&this.stops.size) this.clearStops();return;}
-  this.pollT-=dt;if(this.pollT<=0){this.pollT=30;this.poll(cx,cz);}
-  try{this.updateStops(dt,cx,cz);}catch(e){}
-  const night=(this.scene.night||0)>0.5;
-  for(const B of this.buses.values()){
-    if(B.S){
-      /* on its path: keeps going at its speed; catches up with (or waits for) the newest reading gently, never backwards */
-      const gap=(B.sT!=null?B.sT:B.s)-B.s;let v=B.v;
-      if(gap>3) v=B.v+Math.min(8,gap/4);else if(gap<-3) v=Math.max(0,B.v*0.3);
-      B.s=Math.min(B.S.L,B.s+v*dt);if(B.sT!=null) B.sT+=B.v*dt;
-      const p=this.along(B.S,B.s),rd=this.road(p.x,p.z,p.hd);
-      const ux=Math.sin(p.hd),uz=-Math.cos(p.hd);
-      const tx=p.x-uz*rd.side,tz=p.z+ux*rd.side;
-      if(B.x==null){B.x=tx;B.z=tz;B.hd=p.hd;}
-      const k=Math.min(1,dt*6);B.x+=(tx-B.x)*k;B.z+=(tz-B.z)*k;
-      const dh=((p.hd-B.hd+3*Math.PI)%(2*Math.PI))-Math.PI;B.hd+=dh*Math.min(1,dt*4);B.h=rd.h;
-    }else{
-      let x=B.x+Math.sin(B.hd)*B.v*dt,z=B.z-Math.cos(B.hd)*B.v*dt;
-      if(B.glide>0&&B.tx!=null){const k=Math.min(1,dt/B.glide);x+=(B.tx-x)*k;z+=(B.tz-z)*k;B.tx+=Math.sin(B.thd)*B.v*dt;B.tz-=Math.cos(B.thd)*B.v*dt;B.glide-=dt;}
-      const s=this.snap(x,z,B.glide>0&&B.thd!=null?B.thd:B.hd);
-      if(s){const k=Math.min(1,dt*5);x+=(s.x-x)*k;z+=(s.z-z)*k;B.h=s.h;
-        const dh=((s.hd-B.hd+3*Math.PI)%(2*Math.PI))-Math.PI;B.hd+=dh*Math.min(1,dt*3);}
-      B.x=x;B.z=z;}
-    B.g.position.set(B.x,(B.h||0)+0.02,B.z);B.g.rotation.y=-B.hd;
-    const wm=night?this.mats.winLit:this.mats.win;if(B.g.userData.win.material!==wm) B.g.userData.win.material=wm;
+TN.segX=function(a,b,c,d){const cr=(o,p,q)=>(p[0]-o[0])*(q[1]-o[1])-(p[1]-o[1])*(q[0]-o[0]);
+  const d1=cr(c,d,a),d2=cr(c,d,b),d3=cr(a,b,c),d4=cr(a,b,d);return ((d1>0)!==(d2>0))&&((d3>0)!==(d4>0));};
+TN.Buildings.prototype.crossesRoad=function(ring){
+  const net=this.net;if(!net||ring.length<3) return false;
+  let cx=0,cz=0,r=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=ring.length;cz/=ring.length;
+  for(const p of ring) r=Math.max(r,Math.hypot(p[0]-cx,p[1]-cz));if(r>150) return false;
+  let hit=false;
+  const test=(w,i)=>{
+    if(w.tun||w.br||w.pa) return;
+    const a=w.pts[i],b=w.pts[i+1];
+    /* the street's line runs through the footprint: it crosses an edge, or its middle lies inside */
+    const m=[(a[0]+b[0])/2,(a[1]+b[1])/2];let inside=false;
+    for(let k=0,j=ring.length-1;k<ring.length;j=k++){const A=ring[k],B=ring[j];
+      if(((A[1]>m[1])!==(B[1]>m[1]))&&(m[0]<(B[0]-A[0])*(m[1]-A[1])/((B[1]-A[1])||1e-9)+A[0])) inside=!inside;}
+    if(inside){hit=true;return true;}
+    let n=0;for(let k=0;k<ring.length;k++) if(TN.segX(a,b,ring[k],ring[(k+1)%ring.length])) n++;
+    if(n>=2){hit=true;return true;}
+  };
+  const G=net._sg;
+  if(G){let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+    const seen=new Set();
+    for(let gx=Math.floor(x0/10);gx<=Math.floor(x1/10);gx++) for(let gz=Math.floor(z0/10);gz<=Math.floor(z1/10);gz++){
+      const l=G.get(gx*1e6+gz);if(!l) continue;
+      for(const e of l){const k=e[0].id+':'+e[1];if(seen.has(k)) continue;seen.add(k);if(test(e[0],e[1])) return true;}}
+    return false;}
+  net.near(cx,cz,r,test);
+  return hit;
+};
+/* is this footprint in the water? (the map's rivers and lakes, read again every 30 s): its middle and 4 points
+   halfway to its corners are checked, and at least 4 of the 5 must be in water, so buildings on a pier or the shore stay */
+TN.Buildings.prototype.inWater=function(ring){
+  const map=this.scene.map;if(!map||typeof map.querySourceFeatures!=='function'||ring.length<3) return false;
+  const now=performance.now();
+  if(!this.water||now-this.water.t>30000){const list=[];
+    try{for(const f of TN.srcFeat(map,'water')){const g=f.geometry;
+      const P=g&&g.type==='Polygon'?[g.coordinates]:g&&g.type==='MultiPolygon'?g.coordinates:[];
+      for(const rings of P){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of rings[0]){if(q[0]<a0)a0=q[0];if(q[0]>a1)a1=q[0];if(q[1]<b0)b0=q[1];if(q[1]>b1)b1=q[1];}list.push({rings:rings,bb:[a0,a1,b0,b1]});}}}catch(e){}
+    this.water={t:now,list:list};}
+  const W=this.water.list;if(!W.length) return false;
+  let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=ring.length;cz/=ring.length;
+  const st=Math.max(1,Math.floor(ring.length/4)),pts=[[cx,cz]];for(let i=0;i<ring.length&&pts.length<5;i+=st) pts.push([(cx+ring[i][0])/2,(cz+ring[i][1])/2]);
+  const inPoly=(x,y,rings)=>{const inR=r=>{let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/((b[1]-a[1])||1e-12)+a[0])) c=!c;}return c;};
+    if(!inR(rings[0])) return false;for(let k=1;k<rings.length;k++) if(inR(rings[k])) return false;return true;};
+  let wet=0;for(const p of pts){const ll=TN.fromLocal(p[0],p[1]);
+    for(const u of W){const b=u.bb;if(ll[0]<b[0]||ll[0]>b[1]||ll[1]<b[2]||ll[1]>b[3]) continue;if(inPoly(ll[0],ll[1],u.rings)){wet++;break;}}}
+  return wet>=Math.min(4,pts.length);
+};
+TN.Buildings.prototype.overRem=function(ring){
+  const net=this.net;if(!net||!net.rem||!net.rem.size) return false;
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+  const inside=(x,z)=>{let c=false;for(let k=0,j=ring.length-1;k<ring.length;j=k++){const A=ring[k],B=ring[j];
+    if(((A[1]>z)!==(B[1]>z))&&(x<(B[0]-A[0])*(z-A[1])/((B[1]-A[1])||1e-9)+A[0])) c=!c;}return c;};
+  for(const w of net.rem.values()){const b=w.bb;if(b[1]<x0||b[0]>x1||b[3]<z0||b[2]>z1) continue;
+    for(let i=0;i<w.pts.length-1;i++){const a=w.pts[i],c=w.pts[i+1];
+      for(const t of [0.25,0.5,0.75]) if(inside(a[0]+(c[0]-a[0])*t,a[1]+(c[1]-a[1])*t)) return true;}}
+  return false;
+};
+/* building details from our building tiles (v2 packs: "m", one entry per building, 0 when none):
+   [roof shape, type, roof height x10, wall colour (RGB number, -1 none), roof colour (-1 none)]
+   roof: 1 gabled, 2 hipped, 3 pyramidal, 4 dome, 5 skillion, 9 a guess for a house (gabled or hipped by shape)
+   type: 1 house, 2 apartments, 3 commercial, 4 industrial, 5 religious, 6 school, 7 civic or hospital, 8 garage */
+TN.bMeta=function(m){if(!m||!Array.isArray(m)) return null;return {roof:m[0]|0,cls:m[1]|0,rh:(m[2]|0)/10,wc:m[3]==null?-1:m[3],rc:m[4]==null?-1:m[4]};};
+TN.rgbHex=v=>'#'+(v>>>0).toString(16).padStart(6,'0').slice(-6);
+TN.Buildings.prototype.palette=function(H,seed,area,cls){
+  const pick=a=>a[seed%a.length];
+  /* by type, when the data says what the building is */
+  if(cls===1) return pick(['#a65a43','#8e4b3a','#b46b54','#9c5f4a','#c8b08f','#b9a185','#d8cfbf','#a8a39a']);
+  if(cls===3) return pick(['#d9d6cf','#c9c6bd','#e2ddd2','#b9b7b0','#cfc6b4']);
+  if(cls===4) return pick(['#a9a59c','#9b978e','#b8b2a5','#8f9496']);
+  if(cls===5) return pick(['#b9b1a3','#a79f92','#c4baa8']);
+  if(cls===6) return pick(['#a65a43','#b46b54','#c9b28f','#bfae96']);
+  if(cls===7) return pick(['#c8c4ba','#d6d1c6','#b8b4aa']);
+  if(cls===8) return pick(['#a8a6a0','#b5b2aa']);
+  /* low but large (a mall, a warehouse, a school): concrete/beige, not house brick */
+  if(H<=13&&area>900) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
+  if(H<=13) return pick(['#a65a43','#8e4b3a','#b46b54','#9c5f4a','#c8b08f','#b9a185']);
+  if(H<=32) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
+  return pick(['#9fb0bf','#b7c3cd','#8e9eae','#a9b3bb']);
+};
+TN.Buildings.prototype.addBuilding=function(G,b,J){
+  let ring=b.ring;const n=ring.length;if(n<3) return;
+  const map=this.scene.map,fs=b.id!=null?{source:'openmaptiles',sourceLayer:'building',id:b.id}:null;
+  /* a building where one of our landmark models stands (the stadium's stands, for example): left out */
+  if(TN.landmarkHide&&TN.landmarkHide.length){let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
+    if(TN.landmarkHide.some(h=>Math.hypot(cx-h.x,cz-h.z)<h.r)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}}
+  /* a building standing in the river or a lake (like the house beside the Champlain Bridge): left out */
+  if(this.inWater&&this.inWater(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
+  /* a station roof over the REM tracks, mapped as a solid building: left out (the REM station is drawn instead) */
+  if(this.overRem(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
+  /* a building whose footprint crosses a street (a skybridge, a building over a road): room to drive underneath */
+  if(this.crossesRoad(ring)){const Bx=Math.max(b.B,b.H>=8?5.5:b.H*0.55);b={ring:ring,H:Math.max(b.H,Bx+2),B:Bx,id:b.id};
+    if(fs){try{map.setFeatureState(fs,{lift:Bx});}catch(e){}}}
+  /* the map's own plain copy of this building is flattened while the detailed one is shown */
+  if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}
+  /* clockwise rings in local x/z (z points south) give outward walls with this winding */
+  let area=0;for(let i=0;i<n;i++){const a=ring[i],c=ring[(i+1)%n];area+=a[0]*c[1]-c[0]*a[1];}
+  if(area<0) ring=ring.slice().reverse();area=Math.abs(area)/2;
+  if(area<12) return;
+  const seed=b.id!=null?(Math.abs(Math.floor(Number(b.id)))%997)+1:Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;
+  const wholeArea=Math.max(area,b.wa||0),pieces=b.parts||1;
+  const M=b.m||null;
+  const col=TN.hex(M&&M.wc>=0?TN.rgbHex(M.wc):this.palette(b.H,seed,wholeArea,M?M.cls:0));
+  /* a roof shape from the data: the walls stop where the roof starts (the building's height includes its roof) */
+  const dataRoof=M&&M.roof>0&&M.roof!==5&&b.B<b.H-2;
+  const rise0=dataRoof?(M.rh>0?Math.min(M.rh,b.H*0.6):Math.min(4,0.35*Math.sqrt(area))):0;
+  const top=dataRoof?Math.max(b.B+2,b.H-rise0):b.H,bot=b.B,ex=0.3;   /* slightly outside the map's own building, so it is covered */
+  if(TN.shadows&&G.s) TN.shadows.addBuilding(G.s,ring,top);   /* (its shadow on the ground, stretched later by the sun) */
+  let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
+  const out=ring.map(p=>{const dx=p[0]-cx,dz=p[1]-cz,l=Math.hypot(dx,dz)||1;return [p[0]+dx/l*ex,p[1]+dz/l*ex];});
+  const V=(x,y,z,nx,ny,nz,u,v,s,c)=>{G.p.push(x,y,z);G.n.push(nx,ny,nz);G.c.push(c[0],c[1],c[2]);G.w.push(u,v,s);return G.cnt++;};
+  const quadWall=(a,c,y0,y1,u0,len,s,cc)=>{
+    const nx=(c[1]-a[1])/len,nz=-(c[0]-a[0])/len;
+    const i0=V(a[0],y0,a[1],nx,0,nz,u0,y0-bot,s,cc),i1=V(c[0],y0,c[1],nx,0,nz,u0+len,y0-bot,s,cc);
+    const i2=V(c[0],y1,c[1],nx,0,nz,u0+len,y1-bot,s,cc),i3=V(a[0],y1,a[1],nx,0,nz,u0,y1-bot,s,cc);
+    G.i.push(i0,i2,i1,i0,i3,i2);
+  };
+  let run=0;
+  for(let i=0;i<n;i++){
+    const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
+    quadWall(a,c,bot,top,run,len,seed+(top-bot>=25?1000:0),col);run+=len;   /* (+1000: an office-height building) */
+  }
+  /* pitched roof: a shape from the data, or (no data) a whole small house in one piece */
+  const pitched=dataRoof||(b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1);
+  const rcol=TN.hex(M&&M.rc>=0?TN.rgbHex(M.rc):['#4b4542','#5a3f36','#3f4448'][seed%3]);
+  /* a gable roof (two slopes and a ridge) on a four-cornered building: from the data, or the guess for a house */
+  const gable=pitched&&out.length===4&&(M&&(M.roof===1||M.roof===9));
+  if(gable){
+    const rise=dataRoof?rise0:Math.min(3.2,0.32*Math.sqrt(area));
+    /* the ridge runs along the longer sides, from the middle of one short side to the other */
+    const L=k=>Math.hypot(out[(k+1)%4][0]-out[k][0],out[(k+1)%4][1]-out[k][1]);
+    const s0=L(0)+L(2)<L(1)+L(3)?0:1;   /* edges s0 and s0+2 are the short ones (the gable ends) */
+    const A=out[s0],B2=out[(s0+1)%4],C=out[(s0+2)%4],D=out[(s0+3)%4];
+    const m1=[(A[0]+B2[0])/2,(A[1]+B2[1])/2],m2=[(C[0]+D[0])/2,(C[1]+D[1])/2];
+    const face=(p,q,r,cc)=>{const ux=q[0]-p[0],uy=q[1]-p[1],uz=q[2]-p[2],vx=r[0]-p[0],vy=r[1]-p[1],vz=r[2]-p[2];
+      let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;
+      const i0=V(p[0],p[1],p[2],nx,ny,nz,0,0,-1,cc),i1=V(q[0],q[1],q[2],nx,ny,nz,0,0,-1,cc),i2=V(r[0],r[1],r[2],nx,ny,nz,0,0,-1,cc);G.i.push(i0,i1,i2,i0,i2,i1);};
+    const P3=(p,y)=>[p[0],y,p[1]],R1=P3(m1,top+rise),R2=P3(m2,top+rise);
+    /* the two slopes (each a long side up to the ridge) and the two gable-end triangles (wall colour) */
+    face(P3(B2,top),P3(C,top),R2,rcol);face(P3(B2,top),R2,R1,rcol);
+    face(P3(D,top),P3(A,top),R1,rcol);face(P3(D,top),R1,R2,rcol);
+    face(P3(A,top),P3(B2,top),R1,col);face(P3(C,top),P3(D,top),R2,col);
+  }else if(pitched){
+    /* low-poly hip roof up to the middle (hipped, pyramidal and dome roofs, and other house shapes) */
+    const rise=dataRoof?(M.roof===4?Math.max(rise0,0.5*Math.sqrt(area/Math.PI)):rise0):Math.min(3.2,0.32*Math.sqrt(area)),rc=rcol;
+    for(let i=0;i<n;i++){
+      const a=out[i],c=out[(i+1)%n];
+      const ux=c[0]-a[0],uz=c[1]-a[1],vx=cx-a[0],vy=rise,vz=cz-a[1];
+      /* face normal = u x v */
+      let nx=-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy;
+      const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;if(ny<0){nx=-nx;ny=-ny;nz=-nz;}
+      const i0=V(a[0],top,a[1],nx,ny,nz,0,0,-1,rc),i1=V(c[0],top,c[1],nx,ny,nz,0,0,-1,rc),i2=V(cx,top+rise,cz,nx,ny,nz,0,0,-1,rc);
+      G.i.push(i0,i2,i1);
+    }
+  }else{
+    /* flat roof a little above the walls, with a low parapet */
+    const rc=TN.hex(M&&M.rc>=0?TN.rgbHex(M.rc):['#6e6b66','#5f6266','#76736c'][seed%3]);
+    let tri=[];
+    try{tri=THREE.ShapeUtils.triangulateShape(out.map(p=>new THREE.Vector2(p[0],p[1])),[]);}catch(e){tri=[];}
+    const base=G.cnt;for(const p of out) V(p[0],top+0.05,p[1],0,1,0,0,0,-1,rc);
+    for(const t of tri) G.i.push(base+t[0],base+t[2],base+t[1]);
+    let r2=0;
+    for(let i=0;i<n;i++){const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
+      quadWall(a,c,top,top+0.5,r2,len,-1,rc);r2+=len;}
   }
 };
-/* ---------- bus stops (v2) ----------
-   From the same weekly files: the stops in the ~2 km squares around you; drawn within 450 m (at most 40): a pole with
-   a blue sign and the route numbers that stop there. */
-TN.Buses.prototype.stopSign=function(name,routes){
-  /* (v2.1, Nov 20: text shrinks to fit, so route numbers and the stop name are never cut) */
-  const c=document.createElement('canvas');c.width=384;c.height=224;const x=c.getContext('2d');
-  x.fillStyle='#0b5ed7';x.fillRect(0,0,384,224);x.fillStyle='#ffffff';x.fillRect(6,6,372,4);
-  const fit=(t,max,px,bold)=>{let f=px;do{x.font=(bold?'bold ':'')+f+'px sans-serif';f-=2;}while(x.measureText(t).width>max&&f>12);};
-  x.textBaseline='middle';x.fillStyle='#fff';
-  x.textAlign='left';x.font='56px sans-serif';x.fillText('\u{1F68C}',14,66);
-  const R=(routes||[]).slice(0,4).join('  ');x.textAlign='center';fit(R,280,64,true);x.fillText(R,236,68);
-  let nm=name||'';const parts=nm.split(' / ');x.textAlign='center';
-  if(parts.length===2&&nm.length>24){fit(parts[0],360,32,false);x.fillText(parts[0],192,146);fit(parts[1],360,32,false);x.fillText(parts[1],192,188);}
-  else{fit(nm,360,34,false);x.fillText(nm,192,164);}
-  return new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)});
+TN.Buildings.prototype.finish=function(G){
+  if(!G.cnt) return null;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(G.n,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
+  g.setAttribute('wuv',new THREE.Float32BufferAttribute(G.w,3));
+  g.setIndex(G.i);
+  const m=new THREE.Mesh(g,this.material());m.frustumCulled=false;
+  if(TN.shadows&&G.s){const sm=TN.shadows.mesh(G.s);if(sm) m.add(sm);}
+  return m;
 };
-TN.Buses.prototype.makeStop=function(st){
-  const g=new THREE.Group();
-  if(!this.poleGeo){this.poleGeo=new THREE.CylinderGeometry(0.06,0.06,3.1,8);this.poleGeo.translate(0,1.55,0);this.poleMat=new THREE.MeshLambertMaterial({color:0x9aa3ad});this.signGeo=new THREE.PlaneGeometry(1.2,0.7);}
-  g.add(new THREE.Mesh(this.poleGeo,this.poleMat));
-  /* the sign hangs beside the top of the pole like a flag, toward the street, readable from both directions along it
-     (two faces, so the text is never mirrored) */
-  const m=this.stopSign(st[1],st[4]),flag=new THREE.Group();
-  const f1=new THREE.Mesh(this.signGeo,m);f1.position.set(0.66,0,0.01);flag.add(f1);
-  const f2=new THREE.Mesh(this.signGeo,m);f2.position.set(0.66,0,-0.01);f2.rotation.y=Math.PI;flag.add(f2);
-  flag.position.y=2.7;g.add(flag);g.userData.mat=m;
-  const q=TN.toLocal(st[3],st[2]);
-  let best=null;this.net.near(q[0],q[1],20,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,q[0],q[1]);if(!best||r.d<best.r.d) best={r:r,w:w,k:k};});
-  let x=q[0],z=q[1],h=0;
-  if(best){const r=best.r,hw=TN.width(best.w)/2+1.0;h=best.w.hs?best.w.hs[best.k]:(best.w.br?best.w.H:0);
-    let nx=q[0]-r.qx,nz=q[1]-r.qz,nl=Math.hypot(nx,nz);
-    if(nl<0.3){nx=r.tz;nz=-r.tx;nl=1;}   /* (exactly on the road line: put it on the right-hand side) */
-    nx/=nl;nz/=nl;x=r.qx+nx*Math.max(hw,nl);z=r.qz+nz*Math.max(hw,nl);
-    /* the flag's local +x points from the pole toward the street (−n); its face looks along the street */
-    flag.rotation.y=Math.atan2(nz,-nx);}
-  g.position.set(x,h,z);this.scene.three.scene.add(g);return g;
+/* the shapes built in the background: already number arrays, straight onto the graphics card */
+TN.Buildings.prototype.finishTyped=function(R){
+  if(!R||!R.cnt) return null;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(R.p,3));g.setAttribute('normal',new THREE.BufferAttribute(R.nm,3));
+  g.setAttribute('color',new THREE.BufferAttribute(R.c,3));g.setAttribute('wuv',new THREE.BufferAttribute(R.w,3));
+  g.setIndex(new THREE.BufferAttribute(R.i,1));
+  const m=new THREE.Mesh(g,this.material());m.frustumCulled=false;
+  if(TN.shadows&&R.s&&R.s.cnt){const sm=TN.shadows.mesh({p:R.s.p,h:R.s.h,i:Array.from(R.s.i),cnt:R.s.cnt});if(sm) m.add(sm);}
+  return m;
 };
-TN.Buses.prototype.clearStops=function(){if(!this.stops) return;for(const g of this.stops.values()){this.scene.three.scene.remove(g);try{g.userData.mat.map.dispose();g.userData.mat.dispose();}catch(e){}}this.stops.clear();};
-TN.Buses.prototype.updateStops=function(dt,cx,cz){
-  this.stops=this.stops||new Map();this.stopTileC=this.stopTileC||new Map();this.stopT=(this.stopT||0)-dt;
-  if(this.stopT>0) return;this.stopT=2;
-  const ll=TN.fromLocal(cx,cz),T=0.02,tx=Math.floor(ll[0]/T),ty=Math.floor(ll[1]/T),want=new Map();
-  for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){const key=(tx+i)+'_'+(ty+j),L=this.stopTileC.get(key);
-    if(L===undefined){this.stopTileC.set(key,null);fetch(TN.TRANSIT+'stops/'+key+'.json').then(r=>r.ok?r.json():[]).then(a=>this.stopTileC.set(key,a||[])).catch(()=>this.stopTileC.set(key,[]));continue;}
-    if(!L) continue;
-    for(const st of L){const q=TN.toLocal(st[3],st[2]),d=Math.hypot(q[0]-cx,q[1]-cz);if(d<450) want.set(st[0],[d,st]);}}
-  const keep=[...want.values()].sort((a,b)=>a[0]-b[0]).slice(0,40),ids=new Set(keep.map(k=>k[1][0]));
-  for(const [id,g] of this.stops) if(!ids.has(id)){this.scene.three.scene.remove(g);try{g.userData.mat.map.dispose();g.userData.mat.dispose();}catch(e){}this.stops.delete(id);}
-  for(const [d,st] of keep) if(!this.stops.has(st[0])) this.stops.set(st[0],this.makeStop(st));
+TN.Buildings.prototype.free=function(k){
+  const e=this.cells.get(k);if(!e) return;
+  if(e.mesh){this.scene.three.scene.remove(e.mesh);e.mesh.geometry.dispose();
+    for(const ch of e.mesh.children){if(ch.geometry) ch.geometry.dispose();if(TN.shadows) TN.shadows.forget(ch);}}
+  if(e.ids){const map=this.scene.map;for(const id of e.ids){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}}}
+  this.cells.delete(k);
+};
+/* ---------- our own building tiles (Overture: OpenStreetMap plus the buildings it's missing) ---------- */
+TN.BTILES='https://app.mapkoon.com/tessynav-buildings/';
+TN.Buildings.prototype.tilesIndex=function(){
+  if(this.tidx||this.tidxLoading||Date.now()-(this.tidxT||0)<600000) return this.tidx;
+  this.tidxLoading=true;this.tidxT=Date.now();
+  fetch(TN.BTILES+'index.json?d='+new Date().toISOString().slice(0,10)).then(r=>r.ok?r.json():null).then(j=>{this.tidxLoading=false;if(j&&j.v>=1&&j.regions){   /* (v2: buildings with parts, roofs, types and colours; it was refused here, so every building came from the base map, on the screen's thread) */this.tidx=j;if(TN.Store) TN.Store.use('bld',j.date);}}).catch(()=>{this.tidxLoading=false;});
+  return null;
+};
+TN.Buildings.prototype.covered=function(lng,lat){const I=this.tilesIndex();return !!(I&&I.regions.some(r=>lng>=r.bbox[0]&&lng<r.bbox[2]&&lat>=r.bbox[1]&&lat<r.bbox[3]));};
+/* the buildings of one area from the tiles: undefined = not covered (use the map), null = still loading, [] = none */
+TN.Buildings.prototype.tileList=function(ck,lng,lat){
+  if(!this.covered(lng,lat)){if(this.tileMode){this.tileMode=false;try{this.scene.map.setLayoutProperty('tn-buildings','visibility','visible');}catch(e){}}return undefined;}
+  if(!this.tileMode){this.tileMode=true;try{this.scene.map.setLayoutProperty('tn-buildings','visibility','none');}catch(e){}}   /* (the map's plain copies would double ours) */
+  const [cx,cy]=ck.split(',').map(Number),key=Math.floor(cx/4)+'_'+Math.floor(cy/4);
+  const P=(this.tp||(this.tp=new Map())).get(key);
+  if(!P){this.loadPack(key);return null;}
+  if(P.st==='loading') return null;
+  if(P.st==='none') return [];
+  P.used=Date.now();
+  /* decoded only when that area is needed */
+  const raw=P.raw.get(ck);if(!raw) return [];
+  if(!raw.done){const ox=P.o[0],oy=P.o[1],out=[];
+    for(let ri=0;ri<raw.recs.length;ri++){const r=raw.recs[ri];let x=r[2],y=r[3];const ring=[TN.toLocal(ox+x/1e6,oy+y/1e6)];
+      for(let k=4;k<r.length;k+=2){x+=r[k];y+=r[k+1];ring.push(TN.toLocal(ox+x/1e6,oy+y/1e6));}
+      let A=0;for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length];A+=a[0]*b[1]-b[0]*a[1];}
+      out.push({ring:ring,H:r[0]/10,B:r[1]/10,id:null,wa:Math.abs(A)/2,parts:1,m:raw.ms?TN.bMeta(raw.ms[ri]):null});}
+    raw.list=out;raw.recs=null;raw.ms=null;raw.done=true;}
+  return raw.list;
+};
+TN.Buildings.prototype.packWaiting=function(ck){
+  const [cx,cy]=ck.split(',').map(Number),key=Math.floor(cx/4)+'_'+Math.floor(cy/4),P=(this.tp||(this.tp=new Map())).get(key);
+  if(!P){this.loadPack(key);return true;}return P.st==='loading';
+};
+TN.Buildings.prototype.loadPack=function(key){
+  const T=this.tp;T.set(key,{st:'loading'});
+  /* keep the 40 most recently used tiles */
+  if(T.size>40){let old=null,ot=1e18;for(const [k,v] of T){if(v.st!=='loading'&&(v.used||0)<ot){ot=v.used||0;old=k;}}if(old) T.delete(old);}
+  /* (from Tessy's storage when already saved; downloaded and saved otherwise) */
+  (TN.Store?TN.Store.json('bld',TN.BTILES+'b/'+key+'.json').then(j=>j&&j.missing?'none':j):fetch(TN.BTILES+'b/'+key+'.json').then(r=>{if(r.status===404) return 'none';return r.ok?r.json():null;})).then(j=>{
+    if(j==='none'){T.set(key,{st:'none',used:Date.now()});return;}
+    if(!j||!j.b){T.delete(key);return;}
+    /* grouped by area (by each building's first corner), decoded later when the area is built */
+    const raw=new Map(),C=TN.CELL;
+    for(let bi=0;bi<j.b.length;bi++){const r=j.b[bi];const lng=j.o[0]+r[2]/1e6,lat=j.o[1]+r[3]/1e6,ck=Math.floor(lng/C)+','+Math.floor(lat/C);let e=raw.get(ck);if(!e){e={recs:[],ms:[],done:false};raw.set(ck,e);}e.recs.push(r);e.ms.push(j.m?j.m[bi]||0:0);}
+    T.set(key,{st:'ok',o:j.o,raw:raw,used:Date.now()});
+  }).catch(()=>{T.delete(key);});
+};
+/* draw distance (both buildings and trees use it): areas further than this from the point ahead of the car are kept
+   but not drawn. It adapts to the frame rate: down to 450 m when the screen is slow (busy interchanges, downtown),
+   back up to 1000 m when it's smooth. The map's own haze already fades the distance, so it's hardly visible. */
+TN.lodFar=TN.lodFar||900;
+TN.lodTick=function(fps){
+  const now=performance.now();if(now-(TN._lodT||0)<500) return;const dt=(now-(TN._lodT||now))/1000;TN._lodT=now;
+  if(!fps) return;
+  if(fps<46){TN._lodSlow=(TN._lodSlow||0)+dt;TN._lodFast=0;}else if(fps>56){TN._lodFast=(TN._lodFast||0)+dt;TN._lodSlow=0;}else{TN._lodSlow=0;TN._lodFast=0;}
+  if(TN._lodSlow>=2){TN.lodFar=Math.max(450,TN.lodFar-100);TN._lodSlow=0;}
+  if(TN._lodFast>=8){TN.lodFar=Math.min(1000,TN.lodFar+100);TN._lodFast=0;}
+};
+/* show or hide whole areas by their distance (nearest edge of the area) from the point (lng, lat) */
+TN.lodApply=function(cells,lng,lat,far,getObj){
+  const q=TN.toLocal(lng,lat),C=TN.CELL;let shown=0,hidden=0;
+  for(const [k,e] of cells){const o=getObj(e);if(!o) continue;const [cx,cy]=k.split(',').map(Number);
+    const a=TN.toLocal(cx*C,cy*C),b=TN.toLocal(cx*C+C,cy*C+C);
+    const x0=Math.min(a[0],b[0]),x1=Math.max(a[0],b[0]),z0=Math.min(a[1],b[1]),z1=Math.max(a[1],b[1]);
+    const dx=q[0]<x0?x0-q[0]:q[0]>x1?q[0]-x1:0,dz=q[1]<z0?z0-q[1]:q[1]>z1?q[1]-z1:0;
+    const vis=Math.hypot(dx,dz)<far;if(o.visible!==vis) o.visible=vis;if(vis) shown++;else hidden++;}
+  return [shown,hidden];
+};
+TN.Buildings.prototype.update=function(lng,lat,fps){
+  try{this.setClean();}catch(e){}
+  try{TN.lodTick(fps);if(performance.now()-(this.lodT||0)>500){this.lodT=performance.now();TN.lodApply(this.cells,lng,lat,TN.lodFar,e=>e&&e.mesh);}}catch(e){}
+  if(!this.on||!this.scene.three) return;
+  if(fps){
+    if(fps<45) this.slowT++;else this.slowT=Math.max(0,this.slowT-1);
+    if(this.slowT>300&&this.range>0){this.range--;this.slowT=0;
+      const cx0=Math.floor(lng/TN.CELL),cy0=Math.floor(lat/TN.CELL);
+      for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number);if(Math.abs(x-cx0)>this.range||Math.abs(y-cy0)>this.range) this.free(k);}this.job=null;}
+    /* never switched off: at the shortest range they keep the area you are in; after a minute of smooth driving
+       the range grows back (up to the full 1.1 km) */
+    if(fps>=55) this.fastT=(this.fastT||0)+1;else this.fastT=0;
+    if(this.fastT>3600&&this.range<2){this.range++;this.fastT=0;}
+  }
+  this.lastCenter=[lng,lat];
+  const cx=Math.floor(lng/TN.CELL),cy=Math.floor(lat/TN.CELL),R=this.range,now=performance.now();
+  /* where you're heading: speed and direction from the last positions (smoothed), in areas per second */
+  {const p=this.mv;if(p&&now>p.t){const dt=(now-p.t)/1000;if(dt>0.25){
+      const vx=(lng-p.lng)/TN.CELL/dt,vy=(lat-p.lat)/TN.CELL/dt,k=Math.min(1,dt/2);
+      this.vx=(this.vx||0)+(vx-(this.vx||0))*k;this.vy=(this.vy||0)+(vy-(this.vy||0))*k;this.mv={lng:lng,lat:lat,t:now};}}
+    else this.mv={lng:lng,lat:lat,t:now};}
+  const mps=Math.hypot((this.vx||0)*TN.CELL*78000,(this.vy||0)*TN.CELL*111000);   /* (metres per second, roughly) */
+  const moving=mps>8&&R>=2;   /* (about 30 km/h and up: build what's ahead first; only the order changes) */
+  /* the extra reach ahead only at highway speed (about 55 km/h and up), where the direction is steady: downtown, with
+     turns and GPS noise, it dropped and rebuilt the same areas over and over (749 builds in 5 minutes instead of 60) */
+  const fast=mps>15&&R>=2;
+  const sp=Math.hypot(this.vx||0,this.vy||0)||1,ux=(this.vx||0)/sp,uy=(this.vy||0)/sp;
+  /* the point you'll reach in about 30 s (at most ~1.5 km ahead): areas are built closest to it first */
+  const look=moving?Math.min(3.2,sp*30):0,ax=cx+0.5+ux*look,ay=cy+0.5+uy*look;
+  /* ahead at speed: up to 2 extra areas beyond the usual range, in front of you only */
+  const ahead=(dx,dy)=>{if(!fast) return false;const d=Math.hypot(dx,dy);return d<=R+2.6&&(dx*ux+dy*uy)>0.55*d;};
+  this.aheadInfo={moving:moving,mps:Math.round(mps),look:+look.toFixed(1)};
+  for(const k of [...this.cells.keys()]){const [x,y]=k.split(',').map(Number),dx=x-cx,dy=y-cy,m=Math.max(Math.abs(dx),Math.abs(dy));
+    /* (dropped only when well out of range: at highway speed, areas up to 3 away are kept, so a change of direction
+       never drops something just built) */
+    if(m>R+1&&!(fast&&m<=R+3)) this.free(k);}
+  /* an area being built in the background: when it's back it goes on screen at once (the shapes arrive ready); if it
+     doesn't come back, it's built here as before */
+  if(this.job&&this.job.wait){
+    const J=this.job;
+    if(J.res){const t0=performance.now();this.job=null;const mesh=this.finishTyped(J.res);if(mesh) this.scene.three.scene.add(mesh);
+      this.cells.set(J.k,{mesh:mesh,n:J.res.n,t:now,tries:J.tries,ids:[]});TN.prof('buildings',performance.now()-t0);}
+    /* no answer yet: the background builder can be busy for a while (working out heights when a lot of map arrives,
+       right after opening the app); the area is simply asked again later. Only after three real failures in a row
+       are buildings built here for the next 2 minutes (it used to give up for the whole drive after one slow answer,
+       and then buildings slowed the screen down) */
+    else if(J.fail||now-J.t>20000){this.job=null;
+      if(J.fail){this.bgFails=(this.bgFails||0)+1;if(this.bgFails>=3){this.bgOff=true;this.bgOffT=now;this.bgFails=0;}}}
+    return;
+  }
+  /* keep building the current area: a few hundred buildings per frame */
+  if(this.job){
+    const t0=performance.now(),J=this.job;
+    this.net&&(this.net._sg=J.sg);
+    const bud=Math.min(3,TN.workLeft?TN.workLeft():3);if(bud<0.5) return;
+    while(J.i<J.list.length&&performance.now()-t0<bud){this.addBuilding(J.G,J.list[J.i++],J);}
+    this.net&&(this.net._sg=null);
+    if(J.i>=J.list.length){
+      const mesh=this.finish(J.G);if(mesh) this.scene.three.scene.add(mesh);
+      this.cells.set(J.k,{mesh:mesh,n:J.list.length,t:now,tries:J.tries,ids:J.ids});this.job=null;
+    }
+    TN.prof('buildings',performance.now()-t0);
+    return;
+  }
+  if(now-(this.lastStart||0)<400) return;
+  if(TN.workLeft&&TN.workLeft()<4) return;   /* starting a new area is the heavy part: only with budget left */
+  let best=null;const tileHere=this.covered(lng,lat);const E=moving?R+3:R;
+  for(let dx=-E;dx<=E;dx++) for(let dy=-E;dy<=E;dy++){
+    if((Math.abs(dx)>R||Math.abs(dy)>R)&&!ahead(dx,dy)) continue;
+    /* priority: nearest to where you'll be soon (or to you, when parked); your own area and its neighbours first */
+    const k=(cx+dx)+','+(cy+dy),e=this.cells.get(k),near=Math.max(Math.abs(dx),Math.abs(dy))<=1;
+    const d=near?(dx*dx+dy*dy)*0.25:(moving?Math.pow(cx+dx+0.5-ax,2)+Math.pow(cy+dy+0.5-ay,2):dx*dx+dy*dy);
+    /* an area that came out empty (often because its detailed map tiles, the ones with buildings, hadn't loaded
+       yet: far away the map only loads simpler tiles) is tried again: every 4, 8, 16, then 30 s, and every 4 s
+       once the car is in it or next to it, so it never stays empty by mistake */
+    if(e){const wait=d<=1?4000:Math.min(30000,4000*Math.pow(2,Math.min(e.tries,3)));
+      if(e.n||now-e.t<wait) continue;this.free(k);if(!best||d<best.d) best={k:k,d:d,tries:e.tries+1};continue;}
+    if(!best||d<best.d){if(tileHere&&this.packWaiting(k)) continue;best={k:k,d:d,tries:0};}   /* (tile still on its way: build the ready areas meanwhile) */
+  }
+  if(!best) return;
+  /* inside the area covered by our own building tiles (Overture), the buildings come from there; elsewhere (or if
+     the tiles can't be reached) from the map, as before */
+  /* our building tiles, with the background builder running: the area is decoded and built there */
+  if(this.bgOff&&now-(this.bgOffT||0)>120000) this.bgOff=false;   /* (tries the background builder again after 2 minutes) */
+  {const RW=TN.RW;if(RW&&RW.ready&&!RW.failed&&!this.bgOff&&this.covered(lng,lat)){
+    const [cx,cy]=best.k.split(',').map(Number),key=Math.floor(cx/4)+'_'+Math.floor(cy/4),P=(this.tp||(this.tp=new Map())).get(key);
+    if(!P){this.loadPack(key);this.lastStart=now;return;}
+    if(P.st==='loading'){this.lastStart=now;return;}
+    if(P.st==='ok'){const raw=P.raw.get(best.k);P.used=Date.now();
+      if(raw&&!raw.done&&raw.recs&&raw.recs.length){this.lastStart=now;
+        const id=++RW.id,J={k:best.k,wait:true,t:now,tries:best.tries};this.job=J;
+        RW.pend.set(id,(R,err)=>{if(err||!R) J.fail=true;else{J.res=R;this.bgFails=0;}});
+        try{RW.w.postMessage({t:'bld',k:best.k,id:id,o:P.o,recs:raw.recs,ms:raw.ms||null,shadows:!!TN.shadows});}catch(e){J.fail=true;}
+        return;}}}}
+  const tl=this.tileList(best.k,lng,lat);
+  if(tl===null){this.lastStart=now;return;}   /* (that tile is still on its way: try again shortly) */
+  this.lastStart=now;const t0=performance.now(),list=tl||this.collect(best.k);
+  if(!this.noIdMode&&(this.idSeen||0)>200&&(this.idMissing||0)>this.idSeen*0.5){
+    this.noIdMode=true;this.range=Math.max(this.range,2);
+    try{this.scene.map.setLayoutProperty('tn-buildings','visibility','none');}catch(e){}
+  }
+  let sg=null;if(this.net&&list.length){const [x,y]=best.k.split(',').map(Number),a=TN.toLocal(x*TN.CELL,(y+1)*TN.CELL),b=TN.toLocal((x+1)*TN.CELL,y*TN.CELL);
+    sg=this.net.segGrid([Math.min(a[0],b[0])-20,Math.max(a[0],b[0])+20,Math.min(a[1],b[1])-20,Math.max(a[1],b[1])+20]);}
+  this.job={k:best.k,list:list,i:0,tries:best.tries,G:{p:[],n:[],c:[],w:[],i:[],cnt:0,s:{p:[],h:[],i:[],cnt:0}},ids:[],sg:sg};
+  TN.prof('buildings',performance.now()-t0);
 };
