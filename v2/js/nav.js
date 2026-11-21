@@ -1386,7 +1386,10 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      turn lane or the left lane of a wide street the car sits on the line instead of beside it (Rue De Montbrun, Nov 17:
      5 m apart). The line goes back to its normal place 60-200 m ahead. */
   if(!(TN.settings&&TN.settings.glueRoute)&&this.latS==null&&base.x!=null){
-    const cx0=px+mi(1),cz0=pz+mi(2),lc=(base.x-cx0)*(-uz)+(base.z-cz0)*ux;
+    const cx0=px+mi(1),cz0=pz+mi(2);let lc=(base.x-cx0)*(-uz)+(base.z-cz0)*ux;
+    /* (Nov 20, "on rails" in turns: through a turn the line no longer follows where the GPS puts the car across the road;
+       it eases back to its own place, and the car rides on it. Blended by how much of a turn this is) */
+    if(TN.railTurns()){const tw0=this.turnWeight();if(tw0>0) lc=lc+(lo-lc)*tw0;}
     /* (v3, Nov 18: v2 kept the line still while the car was within 1.3 m of it and slid it over only past that, so the
        car looked like it was chasing the line (trip 13:46). Back to the line following the car smoothly (about 1 s), which
        drove well in the morning (trip 08:22); kept from v2: more than 5 m off is somewhere else (a parking lot, a service
@@ -1416,6 +1419,9 @@ TN.Nav.prototype.place=function(base,L,now,dt){
    let nearTurn=false;if(R.steps&&gh!=null&&L.v<14&&now-L.t<2500){const sNow=R.cum[j]||0;
      for(const st of R.steps){const dd=st.at-sNow;if(dd>-30&&dd<35&&st.type!=='depart'&&st.type!=='arrive'&&!/straight/.test(st.mod||'')){nearTurn=true;break;}}}
    let w=0;if(nearTurn){const dif=Math.abs(((gh-hd+540)%360)-180);w=Math.max(0,Math.min(1,(dif-8)/30));}
+   /* (Nov 20: "on rails" in turns (the default): the car follows the blue line's curve whatever path you really took,
+      tight or wide; your GPS only says how far along the turn you are. Leaving the route still releases the car) */
+   if(TN.railTurns()) w=0;
    this.turnW=(this.turnW||0)+(w-(this.turnW||0))*Math.min(1,dt*(w>(this.turnW||0)?6:2));
    /* (it follows the tracked car, which is kept on the road surface through turns, rather than the raw GPS point:
       the GPS can be a few metres off, on the sidewalk, and the car went over the curb and back onto the line; and
@@ -1501,6 +1507,8 @@ TN.Nav.prototype.reroute=async function(){
 };
 /* how much the car should follow the route's curve right now (0 on straight roads, 1 in a turn): gluing starts
    70 m before a turn on the route, is full from 30 m before to 25 m after it, and ends 50 m after */
+/* the car rides the route line in turns (Settings → Car on the route → Car on rails in turns; on by default) */
+TN.railTurns=()=>!(TN.settings&&TN.settings.railTurns===false);
 TN.Nav.prototype.turnWeight=function(){
   const R=this.route;if(!R||!R.steps||this.ps==null) return 0;
   let w=0;const s=this.ps;
