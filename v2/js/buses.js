@@ -1,219 +1,246 @@
-/* MapKoon v2 — buses.js (v2, Nov 20: buses ride their route's real road path, and bus stops are shown; v1: a first look)
-   Switched on in Settings → 3D details → STM live buses.
-   STM's buses where they really are: every 30 s the app asks our server (/buses on the Worker) for the buses within
-   about 1.5 km; the server asks STM at most once every 30 s for everyone and keeps a copy. Each bus is drawn on the
-   road it is on (white, blue stripe, its route number on its signs), and between updates it keeps going at its reported speed
-   along that road, then glides to the next reported spot. At most 12 buses, the nearest. Route number on lit signs (front, back, sides).
-   Data © Société de transport de Montréal (CC BY 4.0), credited on the map while the buses are shown. Unofficial: no STM
-   logo. ?bus=1 switches it on for a test, ?bus=0 off. */
+/* MapKoon v2 — music.js (v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
+   A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
+   to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
+   (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
+   and nothing goes through Tesla. Needs Spotify Premium; Spotify limits a personal app to 5 users.
+   Separate from the map and the car: if anything fails here, only the card is affected. ?music=0 switches it off. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
-
-TN.Buses=function(scene,net){
-  this.scene=scene;this.net=net;this.on=false;this.buses=new Map();this.pollT=0;this.busy=false;this.mats=null;this.lastOk=0;
-  try{const s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};this.on=!!s.buses;}catch(e){}
-  if(typeof location!=='undefined'){if(/[?&]bus=1/.test(location.search)) this.on=true;if(/[?&]bus=0/.test(location.search)) this.on=false;}
+TN.SPOTIFY_ID='69e3fcb20ecc487da3512617ba29158f';   /* MapKoon's own key: works for the people invited to it (Spotify allows 5) */
+TN.SPOTIFY_HELP='https://app.mapkoon.com/v2/spotify.html';
+TN.Music=function(){
+  this.on=typeof document!=='undefined'&&!/[?&]music=0/.test(location.search);
+  if(!this.on) return;
+  this.redirect=location.origin+location.pathname.replace(/[^/]*$/,'');   /* https://app.mapkoon.com/v2/ */
+  this.tok=this.load();this.now=null;this.pollT=null;this.open=false;this.tab='search';
+  this.ui();
+  const q=new URLSearchParams(location.search);
+  if(q.get('code')&&q.get('state')===this.ls('tn_sp_state')) this.finish(q.get('code'));
+  else if(q.get('error')&&q.get('state')){this.clean();this.msg('Spotify login was cancelled.');}
+  this.poll();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden) this.poll();});
 };
-TN.Buses.prototype.build=function(){
-  if(this.geo) return;
-  const W=1.28,H=3.15,L=6.1;   /* a 12 m STM bus: 2.55 m wide; front at -z (heading 0 = north) */
-  const box=(x0,x1,y0,y1,z0,z1)=>{const g=new THREE.BoxGeometry(x1-x0,y1-y0,z1-z0);g.translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2);return g;};
-  this.geo={body:box(-W,W,0.35,H,-L,L),stripe:box(-W-0.02,W+0.02,0.55,1.05,-L+0.1,L-0.1),win:box(-W-0.03,W+0.03,1.55,2.55,-L+1.2,L-0.6),
-    front:box(-W+0.15,W-0.15,1.2,2.75,-L-0.03,-L),head:box(-W+0.2,W-0.2,0.7,0.95,-L-0.04,-L),tail:box(-W+0.15,W-0.15,0.75,1.05,L,L+0.04),
-    wheel:new THREE.CylinderGeometry(0.5,0.5,0.35,12)};
-  this.mats={body:new THREE.MeshLambertMaterial({color:0xf3f5f7}),stripe:new THREE.MeshLambertMaterial({color:0x0b5ed7}),
-    win:new THREE.MeshBasicMaterial({color:0x1d2935}),winLit:new THREE.MeshBasicMaterial({color:0xffe7a3}),
-    head:new THREE.MeshBasicMaterial({color:0xfff6d8}),tail:new THREE.MeshBasicMaterial({color:0xff3030}),wheel:new THREE.MeshLambertMaterial({color:0x222222})};
+/* storage (wrapped: the Tesla browser keeps it, private windows may not) */
+TN.Music.prototype.ls=function(k,v){try{if(v===undefined) return localStorage.getItem(k);if(v===null) localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}return null;};
+TN.Music.prototype.load=function(){try{return JSON.parse(this.ls('tn_sp_tok')||'null');}catch(e){return null;}};
+TN.Music.prototype.save=function(t){this.tok=t;this.ls('tn_sp_tok',t?JSON.stringify(t):null);};
+/* the key in use: the driver's own (Settings guide) or MapKoon's */
+TN.Music.prototype.cid=function(){const c=this.ls('tn_sp_cid');return c&&/^[0-9a-f]{32}$/i.test(c)?c:TN.SPOTIFY_ID;};
+TN.Music.prototype.own=function(){return this.cid()!==TN.SPOTIFY_ID;};
+TN.Music.prototype.clean=function(){try{history.replaceState(null,'',location.pathname);}catch(e){}};
+/* login: PKCE (code verifier stays in this browser) */
+TN.Music.prototype.login=async function(){
+  const rnd=n=>{const c='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',a=new Uint8Array(n);crypto.getRandomValues(a);return Array.from(a,b=>c[b%62]).join('');};
+  const ver=rnd(64),st=rnd(16);
+  const dg=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ver));
+  const ch=btoa(String.fromCharCode(...new Uint8Array(dg))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  this.ls('tn_sp_ver',ver);this.ls('tn_sp_state',st);
+  const p=new URLSearchParams({client_id:this.cid(),response_type:'code',redirect_uri:this.redirect,state:st,code_challenge_method:'S256',code_challenge:ch,
+    scope:'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-read-recently-played user-library-read'});
+  location.href='https://accounts.spotify.com/authorize?'+p;
 };
-/* the route number: lit amber signs above the windscreen and on the back (planes on the bus: sprites don't work in
-   the map's 3D layer) */
-TN.Buses.prototype.sign=function(txt){
-  const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');
-  x.fillStyle='#0d0f12';x.fillRect(0,0,256,64);x.fillStyle='#ffb31a';x.font='bold 50px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,128,35);
-  const m=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)}),g=new THREE.Group(),pg=new THREE.PlaneGeometry(2.1,0.55);
-  const f=new THREE.Mesh(pg,m);f.position.set(0,2.95,-6.14);f.rotation.y=Math.PI;g.add(f);   /* front (faces -z) */
-  const b=new THREE.Mesh(pg,m);b.position.set(0,2.95,6.14);g.add(b);                          /* back (faces +z) */
-  for(const sx of [-1,1]){const sd=new THREE.Mesh(new THREE.PlaneGeometry(1.4,0.4),m);sd.position.set(sx*1.31,2.85,-4.6);sd.rotation.y=sx*Math.PI/2;g.add(sd);}
-  g.userData.mat=m;return g;
+TN.Music.prototype.finish=async function(code){
+  this.clean();
+  try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({grant_type:'authorization_code',code:code,redirect_uri:this.redirect,client_id:this.cid(),code_verifier:this.ls('tn_sp_ver')||''})});
+    const j=await r.json();if(!j.access_token) throw new Error(j.error_description||'no token');
+    this.save({a:j.access_token,r:j.refresh_token,e:Date.now()+(j.expires_in-60)*1000,c:this.cid()});this.msg('Spotify connected'+(this.own()?' with your own key.':'.'));this.poll();
+  }catch(e){this.msg('Spotify login failed: '+e.message);}
+  this.ls('tn_sp_ver',null);this.ls('tn_sp_state',null);
 };
-TN.Buses.prototype.make=function(route){
-  this.build();const G=this.geo,M=this.mats,g=new THREE.Group();
-  const add=(geo,m)=>{const o=new THREE.Mesh(geo,m);g.add(o);return o;};
-  add(G.body,M.body);add(G.stripe,M.stripe);const w=add(G.win,M.win);add(G.front,M.win);add(G.head,M.head);add(G.tail,M.tail);
-  for(const [x,z] of [[-1.1,-3.9],[1.1,-3.9],[-1.1,3.6],[1.1,3.6]]){const o=add(G.wheel,M.wheel);o.rotation.z=Math.PI/2;o.position.set(x,0.5,z);}
-  g.add(this.sign(route||'?'));g.userData.win=w;
-  this.scene.three.scene.add(g);return g;
+TN.Music.prototype.access=async function(){
+  if(!this.tok) return null;
+  if(Date.now()<this.tok.e) return this.tok.a;
+  try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({grant_type:'refresh_token',refresh_token:this.tok.r,client_id:this.tok.c||this.cid()})});
+    const j=await r.json();if(!j.access_token){this.save(null);this.render();return null;}
+    this.save({a:j.access_token,r:j.refresh_token||this.tok.r,e:Date.now()+(j.expires_in-60)*1000,c:this.tok.c});return this.tok.a;
+  }catch(e){return null;}
 };
-TN.Buses.prototype.free=function(b){if(b.g){this.scene.three.scene.remove(b.g);const sg=b.g.children[b.g.children.length-1];try{const m=sg.userData.mat;m.map.dispose();m.dispose();}catch(e){}}};
-TN.Buses.prototype.clear=function(){for(const b of this.buses.values()) this.free(b);this.buses.clear();this.credit(false);this.clearStops&&this.clearStops();};
-/* "Bus data: STM" next to the map's other credits, while buses are shown */
-TN.Buses.prototype.credit=function(show){
-  try{const el=document.querySelector('.maplibregl-ctrl-attrib-inner');if(!el) return;let s=el.querySelector('.tn-stm');
-    if(show&&!s){s=document.createElement('span');s.className='tn-stm';s.textContent=' | Bus data: STM (unofficial)';el.appendChild(s);}
-    else if(!show&&s) s.remove();}catch(e){}
+/* one Web API call; returns {s: status, j: json or null} */
+TN.Music.prototype.api=async function(path,opt){
+  const a=await this.access();if(!a) return {s:401,j:null};
+  try{const r=await fetch('https://api.spotify.com/v1'+path,Object.assign({},opt,{headers:Object.assign({Authorization:'Bearer '+a},opt&&opt.body?{'Content-Type':'application/json'}:{})}));
+    let j=null;if(r.status!==204){try{j=await r.json();}catch(e){}}
+    if(r.status===401){this.tok.e=0;}
+    return {s:r.status,j:j};
+  }catch(e){return {s:0,j:null};}
 };
-/* the road under a point, going in a direction (buses are kept on the road surface, on their side of it) */
-TN.Buses.prototype.snap=function(x,z,hd){
-  let best=null;const ux=Math.sin(hd),uz=-Math.cos(hd);
-  this.net.near(x,z,25,(w,k)=>{if(w.tun||w.cls==='service'&&!w.name) return;const r=TN.seg(w,k,x,z);
-    const dot=r.tx*ux+r.tz*uz,al=Math.abs(dot),sc=r.d+(1-al)*25+(w.ow&&dot<0?30:0);   /* (a one-way going the other way: the other carriageway) */
-    if(!best||sc<best.sc) best={sc:sc,r:r,w:w,k:k};});
-  if(!best||best.r.d>30) return null;
-  const r=best.r,w=best.w,k=best.k;let tx=r.tx,tz=r.tz;if(tx*ux+tz*uz<0){tx=-tx;tz=-tz;}
-  const side=w.ow?0:Math.min(3.2,TN.width(w)/4);   /* two-way roads: on the right-hand half */
-  const h=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
-  return {x:r.qx-tz*side,z:r.qz+tx*side,hd:Math.atan2(tx,-tz),h:h};
+/* what's playing: every 5 s with the panel open, every 10 s otherwise; nothing while the screen is off */
+TN.Music.prototype.poll=async function(){
+  clearTimeout(this.pollT);if(!this.tok||document.hidden){this.render();return;}
+  const r=await this.api('/me/player?additional_types=episode');
+  this.now=r.s===200&&r.j?r.j:null;
+  /* a Spotify account not invited to MapKoon's key: Spotify answers 403; point to the own-key guide (once) */
+  if(r.s===403&&!this.own()&&!this.told403){this.told403=true;this.msg('This Spotify account isn\u2019t invited to MapKoon\u2019s key. Tap \u2699 in the music panel \u2192 Use my own Spotify key.');}
+  this.render();
+  this.pollT=setTimeout(()=>this.poll(),this.open?5000:10000);
 };
-/* ---------- each route's real road path (v2) ----------
-   STM's schedule file, turned into small files by our weekly job (tessynav-transit): which path each trip follows,
-   and the path itself. A bus with a known path rides exactly on it; without one (not loaded yet, or a bus out of
-   service) it is placed on the nearest road as before. */
-TN.TRANSIT=TN.TRANSIT||'https://app.mapkoon.com/tessynav-transit/data/';
-TN.Buses.prototype.getJSON=function(cache,key,url){
-  if(!cache.has(key)) cache.set(key,fetch(url).then(r=>r.ok?r.json():null).catch(()=>null));
-  return cache.get(key);
+/* the car's Spotify (or whichever device is playing) */
+TN.Music.prototype.device=async function(){
+  if(this.now&&this.now.device) return this.now.device.id;
+  const r=await this.api('/me/player/devices');const d=(r.j&&r.j.devices)||[];
+  const pick=d.find(x=>x.is_active)||d.find(x=>/automobile/i.test(x.type)||/tesla|model/i.test(x.name))||d[0];
+  return pick?pick.id:null;
 };
-TN.Buses.prototype.pathFor=async function(route,trip){
-  this.tripC=this.tripC||new Map();this.shapeC=this.shapeC||new Map();
-  if(!route||!trip) return null;
-  const T=await this.getJSON(this.tripC,route,TN.TRANSIT+'trips/'+encodeURIComponent(route)+'.json');
-  const t=T&&T[trip];if(!t) return null;
-  const key=t[0];
-  const P=await this.getJSON(this.shapeC,'s'+key,TN.TRANSIT+'shapes/'+encodeURIComponent(key)+'.json');
-  if(!P||P.length<2) return null;
-  if(!P.loc){const pts=P.map(c=>TN.toLocal(c[0],c[1])),cum=[0];for(let k=1;k<pts.length;k++) cum.push(cum[k-1]+Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]));P.loc={pts:pts,cum:cum,L:cum[cum.length-1],head:t[1]};}
-  return P.loc;
+TN.Music.prototype.cmd=async function(kind,body){
+  const dev=await this.device();
+  if(!dev){this.msg('Open Spotify on the car once (Tesla music → Spotify), then try again.');return;}
+  const m={toggle:this.now&&this.now.is_playing?['PUT','/me/player/pause']:['PUT','/me/player/play'],next:['POST','/me/player/next'],prev:['POST','/me/player/previous'],play:['PUT','/me/player/play']}[kind];
+  const r=await this.api(m[1]+'?device_id='+dev,{method:m[0],body:body?JSON.stringify(body):undefined});
+  if(r.s===403) this.msg('Spotify refused this (it needs Premium, or Spotify limits this for new apps).');
+  else if(r.s===404) this.msg('No Spotify player found. Open Spotify on the car, then try again.');
+  setTimeout(()=>this.poll(),600);
 };
-/* where a point is along a path (searching near s0 first when given) */
-TN.Buses.prototype.proj=function(S,x,z,s0){
-  let best=1e18,bs=0;const P=S.pts,C=S.cum;
-  for(let k=0;k<P.length-1;k++){if(s0!=null&&(C[k+1]<s0-400||C[k]>s0+800)) continue;
-    const a=P[k],b=P[k+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz||1;let u=((x-a[0])*dx+(z-a[1])*dz)/l2;u=Math.max(0,Math.min(1,u));
-    const d=(a[0]+dx*u-x)**2+(a[1]+dz*u-z)**2;if(d<best){best=d;bs=C[k]+u*(C[k+1]-C[k]);}}
-  return {s:bs,d:Math.sqrt(best)};
+/* ---------- screen ---------- */
+TN.Music.prototype.ui=function(){
+  const st=document.createElement('style');
+  st.textContent='#tn-mus{left:240px;bottom:24px;display:flex;align-items:center;gap:10px;padding:8px 10px;max-width:min(420px,calc(100vw - 400px));height:44px;box-sizing:content-box}body.tn-routing #tn-mus{max-width:min(420px,calc(100vw - 530px))}'+
+    '@media (max-width:700px){#tn-mus{left:16px;top:122px;bottom:auto;max-width:calc(100vw - 52px)}}'+
+    '#tn-mus img{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none}#tn-mus .t{min-width:0;flex:1;cursor:pointer;line-height:1.25}'+
+    '#tn-mus .t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mus .t span{display:block;font-size:12px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+    '#tn-mus button,#tn-mpan button{background:none;border:0;color:inherit;cursor:pointer;padding:6px;border-radius:50%;flex:none}#tn-mus .pp{background:#1db954;color:#000;width:40px;height:40px}'+
+    '#tn-mpan{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9;width:min(560px,calc(100vw - 32px));height:min(620px,calc(100vh - 80px));display:none;flex-direction:column;background:rgb(var(--tn-panel-rgb,24 26 30) / .97);color:var(--tn-text,#fff);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.45);font-family:system-ui,sans-serif;overflow:hidden}'+
+    '#tn-mpan .hd{display:flex;gap:8px;align-items:center;padding:14px}#tn-mpan input{flex:1;font-size:17px;padding:10px 14px;border-radius:12px;border:0;background:rgba(127,127,127,.18);color:inherit;outline:none}'+
+    '#tn-mpan .tabs{display:flex;gap:6px;padding:0 14px 8px}#tn-mpan .tabs button{border-radius:16px;padding:6px 14px;font-size:14px;background:rgba(127,127,127,.15)}#tn-mpan .tabs button.on{background:#1db954;color:#000}'+
+    '#tn-mpan .ls{flex:1;overflow-y:auto;padding:0 8px 12px}#tn-mpan .it{display:flex;gap:12px;align-items:center;padding:8px;border-radius:10px;cursor:pointer}#tn-mpan .it:active{background:rgba(127,127,127,.2)}'+
+    '#tn-mpan .it img{width:48px;height:48px;border-radius:6px;object-fit:cover;flex:none;background:#333}#tn-mpan .it div{min-width:0}#tn-mpan .it b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mpan .it span{font-size:13px;opacity:.65}'+
+    '#tn-mpan .dh{display:flex;align-items:center;gap:8px;padding:4px 6px 10px;position:sticky;top:0;background:rgb(var(--tn-panel-rgb,24 26 30));z-index:1}#tn-mpan .dh b{flex:1;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#tn-mpan .dh button{border-radius:16px;padding:7px 14px;font-size:14px;background:rgba(127,127,127,.18)}#tn-mpan .dh .pa{background:#1db954;color:#000;font-weight:600}'+
+    '#tn-mpan .note{padding:20px;opacity:.7;text-align:center}#tn-mmsg{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);z-index:10;background:rgba(20,20,24,.92);color:#fff;padding:10px 16px;border-radius:12px;font:14px system-ui,sans-serif;display:none;max-width:80vw;text-align:center}';
+  document.head.appendChild(st);
+  const ic={p:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',z:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+    n:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6l8.5 6L6 18zM16 6h2v12h-2z"/></svg>',b:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M18 6l-8.5 6 8.5 6zM6 6h2v12H6z"/></svg>'};
+  this.ic=ic;
+  const el=document.createElement('div');el.id='tn-mus';el.className='hud notr';document.body.appendChild(el);this.el=el;
+  const pan=document.createElement('div');pan.id='tn-mpan';pan.className='notr';
+  pan.innerHTML='<div class="hd"><input placeholder="Search songs, artists, podcasts" enterkeyhint="search"><button class="ky" aria-label="Spotify settings" style="font-size:20px">\u2699</button><button class="x" aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'+
+    '<div class="tabs"><button data-t="search" class="on">Search</button><button data-t="lists">Playlists</button><button data-t="recent">Recent</button><button data-t="liked">Liked</button></div><div class="ls"></div>';
+  document.body.appendChild(pan);this.pan=pan;
+  const inp=pan.querySelector('input');let tm=null;
+  inp.oninput=()=>{clearTimeout(tm);tm=setTimeout(()=>{this.detail=null;this.setTab('search');this.search(inp.value);},350);};
+  pan.querySelector('.x').onclick=()=>this.close();
+  pan.querySelector('.ky').onclick=()=>{this.close();this.choose();};
+  pan.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{this.detail=null;this.setTab(b.dataset.t);this.list(b.dataset.t);});
+  const m=document.createElement('div');m.id='tn-mmsg';document.body.appendChild(m);this.m=m;
+  this.render();
 };
-TN.Buses.prototype.along=function(S,s){
-  s=Math.max(0,Math.min(S.L,s));const C=S.cum,P=S.pts;let lo=0,hi=C.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(C[m]<=s) lo=m;else hi=m;}
-  const a=P[lo],b=P[hi],t=(s-C[lo])/((C[hi]-C[lo])||1);
-  /* direction from a little behind to a little ahead (smooth through corners) */
-  const p=(d)=>{d=Math.max(0,Math.min(S.L,d));let l=0,h=C.length-1;while(h-l>1){const m=(l+h)>>1;if(C[m]<=d) l=m;else h=m;}const tt=(d-C[l])/((C[h]-C[l])||1);return [P[l][0]+(P[h][0]-P[l][0])*tt,P[l][1]+(P[h][1]-P[l][1])*tt];};
-  const p1=p(s-4),p2=p(s+4);
-  return {x:a[0]+(b[0]-a[0])*t,z:a[1]+(b[1]-a[1])*t,hd:Math.atan2(p2[0]-p1[0],-(p2[1]-p1[1]))};
+TN.Music.prototype.msg=function(t){if(!this.m) return;this.m.textContent=t;this.m.style.display='block';clearTimeout(this.mT);this.mT=setTimeout(()=>this.m.style.display='none',4500);};
+TN.Music.prototype.render=function(){
+  if(!this.el) return;const e=TN.esc||(s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])));
+  if(!this.tok){this.el.innerHTML='<button class="pp" aria-label="Connect Spotify" style="width:auto;border-radius:20px;padding:0 14px;font:600 14px system-ui">♫ Connect Spotify</button>';
+    this.el.querySelector('button').onclick=()=>this.choose();return;}
+  const it=this.now&&this.now.item,pl=this.now&&this.now.is_playing;
+  const img=it?((it.album||it.show||{}).images||[]).slice(-2)[0]:null;
+  const title=it?it.name:'Nothing playing',sub=it?(it.artists?it.artists.map(a=>a.name).join(', '):(it.show?it.show.name:'')):'Tap to search Spotify';
+  this.el.innerHTML=(img?'<img src="'+e(img.url)+'" alt="">':'')+'<div class="t"><b>'+e(title)+'</b><span>'+e(sub)+'</span></div>'+
+    '<button class="b" aria-label="Previous">'+this.ic.b+'</button><button class="pp" aria-label="Play or pause">'+(pl?this.ic.z:this.ic.p)+'</button><button class="n" aria-label="Next">'+this.ic.n+'</button>';
+  this.el.querySelector('.t').onclick=()=>this.show();
+  this.el.querySelector('.b').onclick=()=>this.cmd('prev');this.el.querySelector('.pp').onclick=()=>this.cmd('toggle');this.el.querySelector('.n').onclick=()=>this.cmd('next');
 };
-/* the height and side of the road at a point on the path (two-way roads: the bus keeps to the right-hand half) */
-TN.Buses.prototype.road=function(x,z,hd){
-  let best=null;const ux=Math.sin(hd),uz=-Math.cos(hd);
-  this.net.near(x,z,8,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,x,z);const dot=r.tx*ux+r.tz*uz,sc=r.d+(1-Math.abs(dot))*20+(w.ow&&dot<0?30:0);if(!best||sc<best.sc) best={sc:sc,w:w,k:k,r:r};});
-  if(!best||best.r.d>10) return {h:0,side:1.7};
-  const w=best.w,k=best.k,r=best.r;
-  return {h:w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0),side:w.ow?0:Math.min(2.4,TN.width(w)/4)};
+TN.Music.prototype.show=function(){this.open=true;this.pan.style.display='flex';if(this.detail) this.openList(this.detail);else this.list(this.tab);this.poll();};
+TN.Music.prototype.close=function(){this.open=false;this.pan.style.display='none';};
+TN.Music.prototype.setTab=function(t){this.tab=t;this.pan.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));};
+TN.Music.prototype.fill=function(items,note,head){
+  const ls=this.pan.querySelector('.ls'),e=TN.esc||(s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])));
+  const top=head?'<div class="dh"><button class="bk">\u2190 Back</button><b>'+e(head.t)+'</b><button class="pa">\u25b6 Play all</button></div>':'';
+  if(!items||!items.length){ls.innerHTML=top+'<div class="note">'+e(note||'Nothing here yet.')+'</div>';}
+  else ls.innerHTML=top+items.map((x,i)=>'<div class="it" data-i="'+i+'">'+(x.img?'<img src="'+e(x.img)+'" alt="">':'<img alt="">')+'<div><b>'+e(x.t)+'</b><span>'+e(x.s)+(x.open?' \u203a':'')+'</span></div></div>').join('');
+  if(head){ls.querySelector('.bk').onclick=()=>{this.detail=null;this.list(this.tab);};
+    ls.querySelector('.pa').onclick=()=>{this.cmd('play',{context_uri:head.ctx});this.msg('Playing: '+head.t);};}
+  ls.querySelectorAll('.it').forEach(d=>d.onclick=()=>{const x=items[+d.dataset.i];
+    if(x.open){this.openList(x);return;}
+    /* a song inside a playlist or album plays from there, and the rest of the list follows */
+    const body=x.inCtx?{context_uri:x.inCtx,offset:{uri:x.uri}}:x.ctx?{context_uri:x.ctx}:{uris:[x.uri]};
+    this.cmd('play',body);this.msg('Playing: '+x.t);});
+  ls.scrollTop=0;
 };
-TN.Buses.prototype.poll=async function(cx,cz){
-  if(this.busy) return;this.busy=true;
-  try{const ll=TN.fromLocal(cx,cz);
-    const r=await fetch((TN.TESLA_SERVER||'https://tessynav.mznwattar.workers.dev')+'/buses?lat='+ll[1].toFixed(5)+'&lon='+ll[0].toFixed(5)+'&r=1500');
-    const j=await r.json();if(!r.ok||!j.buses) throw new Error(j.error||r.status);
-    this.lastOk=Date.now();const seen=new Set();let n=0,onPath=0;
-    for(const b of j.buses){if(n>=12) break;const [id,route,la,lo,brg,spd,ts,dir,trip]=b;if(!id) continue;
-      const q=TN.toLocal(lo,la),hd=(brg==null?0:brg)*Math.PI/180;
-      const age=ts?Math.max(0,Math.min(45,Date.now()/1000-ts)):0,v=Math.max(0,Math.min(25,spd||0));
-      if(Math.hypot(q[0]-cx,q[1]-cz)>1600) continue;
-      seen.add(id);n++;
-      let B=this.buses.get(id);
-      const S=await this.pathFor(route,trip);
-      if(S){/* on its route's path: how far along it, plus the distance it has driven since STM's reading */
-        const pr=this.proj(S,q[0],q[1],B&&B.S===S?B.s:null);
-        if(pr.d<40){const sT=Math.min(S.L,pr.s+v*Math.min(age,30));onPath++;
-          if(!B){B={id:id,route:route,S:S,s:sT,v:v,g:this.make(route)};this.buses.set(id,B);}
-          else if(B.S!==S){B.S=S;B.s=sT;}
-          B.sT=sT;B.v=v;continue;}}
-      /* no path: the nearest road, as before */
-      let x=q[0]+Math.sin(hd)*v*Math.min(age,15),z=q[1]-Math.cos(hd)*v*Math.min(age,15);
-      if(!this.snap(x,z,hd)){x=q[0];z=q[1];}
-      if(B&&B.S){B.S=null;}
-      if(!B){const s=this.snap(x,z,hd);if(!s) continue;B={id:id,route:route,x:s.x,z:s.z,hd:s.hd,h:s.h,v:v,g:this.make(route)};this.buses.set(id,B);}
-      B.tx=x;B.tz=z;B.thd=hd;B.v=v;B.glide=3;
-    }
-    for(const [id,B] of this.buses) if(!seen.has(id)){this.free(B);this.buses.delete(id);}
-    this.credit(this.buses.size>0);
-    TN.rec&&TN.rec.note&&TN.rec.note('buses',{all:j.n,near:j.buses.length,shown:this.buses.size,onPath:onPath});
-  }catch(e){TN.rec&&TN.rec.note&&TN.rec.note('buses',{error:String(e&&e.message||e).slice(0,80)});}
-  this.busy=false;
+/* open a playlist, artist, album or podcast: its songs first, then Play all or tap one */
+TN.Music.prototype.openList=async function(x){
+  this.detail=x;this.fill([],'Loading\u2026',x);
+  const id=x.ctx.split(':').pop(),k=x.ctx.split(':')[1];let out=[],ok=false;
+  const tr=(t,ctx)=>t&&t.uri&&{t:t.name,s:(t.artists||[]).map(a=>a.name).join(', ')||(t.show?t.show.name:''),img:tnImg(t.album||t),uri:t.uri,inCtx:ctx};
+  if(k==='playlist'){for(const path of ['/playlists/'+id+'/items?limit=100','/playlists/'+id+'/tracks?limit=100']){
+      const r=await this.api(path);if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).map(i=>tr(i.track||i.item,x.ctx)).filter(Boolean);break;}}}
+  else if(k==='album'){const r=await this.api('/albums/'+id+'/tracks?limit=50');if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).map(t=>Object.assign(tr(t,x.ctx)||{},{img:x.img})).filter(o=>o.uri);}}
+  else if(k==='artist'){const r=await this.api('/artists/'+id+'/top-tracks?market=from_token');if(r.s===200&&r.j){ok=true;out=(r.j.tracks||[]).map(t=>tr(t,null)).filter(Boolean);}}
+  else if(k==='show'){const r=await this.api('/shows/'+id+'/episodes?limit=30&market=from_token');if(r.s===200&&r.j){ok=true;out=(r.j.items||[]).filter(Boolean).map(ep=>({t:ep.name,s:(ep.release_date||''),img:tnImg(ep)||x.img,uri:ep.uri}));}}
+  if(this.detail!==x) return;   /* (closed or opened something else meanwhile) */
+  this.fill(out,ok?'This list is empty.':'Spotify doesn\u2019t show this list to the app. Use Play all.',x);
 };
-TN.Buses.prototype.update=function(dt,cx,cz){
-  if(!this.on||!this.scene.three||typeof THREE==='undefined'){if(this.buses.size) this.clear();if(this.stops&&this.stops.size) this.clearStops();return;}
-  this.pollT-=dt;if(this.pollT<=0){this.pollT=30;this.poll(cx,cz);}
-  try{this.updateStops(dt,cx,cz);}catch(e){}
-  const night=(this.scene.night||0)>0.5;
-  for(const B of this.buses.values()){
-    if(B.S){
-      /* on its path: keeps going at its speed; catches up with (or waits for) the newest reading gently, never backwards */
-      const gap=(B.sT!=null?B.sT:B.s)-B.s;let v=B.v;
-      if(gap>3) v=B.v+Math.min(8,gap/4);else if(gap<-3) v=Math.max(0,B.v*0.3);
-      B.s=Math.min(B.S.L,B.s+v*dt);if(B.sT!=null) B.sT+=B.v*dt;
-      const p=this.along(B.S,B.s),rd=this.road(p.x,p.z,p.hd);
-      const ux=Math.sin(p.hd),uz=-Math.cos(p.hd);
-      const tx=p.x-uz*rd.side,tz=p.z+ux*rd.side;
-      if(B.x==null){B.x=tx;B.z=tz;B.hd=p.hd;}
-      const k=Math.min(1,dt*6);B.x+=(tx-B.x)*k;B.z+=(tz-B.z)*k;
-      const dh=((p.hd-B.hd+3*Math.PI)%(2*Math.PI))-Math.PI;B.hd+=dh*Math.min(1,dt*4);B.h=rd.h;
-    }else{
-      let x=B.x+Math.sin(B.hd)*B.v*dt,z=B.z-Math.cos(B.hd)*B.v*dt;
-      if(B.glide>0&&B.tx!=null){const k=Math.min(1,dt/B.glide);x+=(B.tx-x)*k;z+=(B.tz-z)*k;B.tx+=Math.sin(B.thd)*B.v*dt;B.tz-=Math.cos(B.thd)*B.v*dt;B.glide-=dt;}
-      const s=this.snap(x,z,B.glide>0&&B.thd!=null?B.thd:B.hd);
-      if(s){const k=Math.min(1,dt*5);x+=(s.x-x)*k;z+=(s.z-z)*k;B.h=s.h;
-        const dh=((s.hd-B.hd+3*Math.PI)%(2*Math.PI))-Math.PI;B.hd+=dh*Math.min(1,dt*3);}
-      B.x=x;B.z=z;}
-    B.g.position.set(B.x,(B.h||0)+0.02,B.z);B.g.rotation.y=-B.hd;
-    const wm=night?this.mats.winLit:this.mats.win;if(B.g.userData.win.material!==wm) B.g.userData.win.material=wm;
-  }
+const tnImg=o=>{const im=(o&&o.images)||[];return im.length?im[im.length-1].url:null;};
+TN.Music.prototype.search=async function(q){
+  q=(q||'').trim();if(q.length<2){this.fill([],'Type a song, an artist or a podcast.');return;}
+  const r=await this.api('/search?type=track,artist,playlist,show&limit=6&q='+encodeURIComponent(q));
+  if(r.s!==200||!r.j){this.fill([],r.s===403?'Spotify doesn’t allow search for this app yet.':'Search didn’t work. Check the connection.');return;}
+  const j=r.j,out=[];
+  ((j.artists&&j.artists.items)||[]).slice(0,2).forEach(a=>a&&out.push({t:a.name,s:'Artist',img:tnImg(a),ctx:a.uri,open:true}));
+  ((j.tracks&&j.tracks.items)||[]).forEach(t=>t&&out.push({t:t.name,s:t.artists.map(a=>a.name).join(', '),img:tnImg(t.album),uri:t.uri}));
+  ((j.playlists&&j.playlists.items)||[]).slice(0,3).forEach(p=>p&&out.push({t:p.name,s:'Playlist',img:tnImg(p),ctx:p.uri,open:true}));
+  ((j.shows&&j.shows.items)||[]).slice(0,2).forEach(p=>p&&out.push({t:p.name,s:'Podcast',img:tnImg(p),ctx:p.uri,open:true}));
+  this.fill(out,'No results.');
 };
-/* ---------- bus stops (v2) ----------
-   From the same weekly files: the stops in the ~2 km squares around you; drawn within 450 m (at most 40): a pole with
-   a blue sign and the route numbers that stop there. */
-TN.Buses.prototype.stopSign=function(name,routes){
-  /* (v2.1, Nov 20: text shrinks to fit, so route numbers and the stop name are never cut) */
-  const c=document.createElement('canvas');c.width=384;c.height=224;const x=c.getContext('2d');
-  x.fillStyle='#0b5ed7';x.fillRect(0,0,384,224);x.fillStyle='#ffffff';x.fillRect(6,6,372,4);
-  const fit=(t,max,px,bold)=>{let f=px;do{x.font=(bold?'bold ':'')+f+'px sans-serif';f-=2;}while(x.measureText(t).width>max&&f>12);};
-  x.textBaseline='middle';x.fillStyle='#fff';
-  x.textAlign='left';x.font='56px sans-serif';x.fillText('\u{1F68C}',14,66);
-  const R=(routes||[]).slice(0,4).join('  ');x.textAlign='center';fit(R,280,64,true);x.fillText(R,236,68);
-  let nm=name||'';const parts=nm.split(' / ');x.textAlign='center';
-  if(parts.length===2&&nm.length>24){fit(parts[0],360,32,false);x.fillText(parts[0],192,146);fit(parts[1],360,32,false);x.fillText(parts[1],192,188);}
-  else{fit(nm,360,34,false);x.fillText(nm,192,164);}
-  return new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)});
+TN.Music.prototype.list=async function(t){
+  if(t==='search'){this.search(this.pan.querySelector('input').value);return;}
+  this.fill([],'Loading…');
+  if(t==='lists'){const r=await this.api('/me/playlists?limit=40');this.fill(((r.j&&r.j.items)||[]).filter(Boolean).map(p=>({t:p.name,s:(p.tracks&&p.tracks.total!=null?p.tracks.total+' songs':(p.items&&p.items.total!=null?p.items.total+' songs':'Playlist')),img:tnImg(p),ctx:p.uri,open:true})),r.s===200?'No playlists.':'Spotify doesn’t allow this for the app yet.');}
+  else if(t==='recent'){const r=await this.api('/me/player/recently-played?limit=30');const seen=new Set();
+    this.fill(((r.j&&r.j.items)||[]).map(x=>x.track).filter(x=>x&&!seen.has(x.id)&&seen.add(x.id)).map(x=>({t:x.name,s:x.artists.map(a=>a.name).join(', '),img:tnImg(x.album),uri:x.uri})),r.s===200?'Nothing played recently.':'Spotify doesn’t allow this for the app yet.');}
+  else if(t==='liked'){const r=await this.api('/me/tracks?limit=40');
+    this.fill(((r.j&&r.j.items)||[]).map(x=>x.track).filter(Boolean).map(x=>({t:x.name,s:x.artists.map(a=>a.name).join(', '),img:tnImg(x.album),uri:x.uri})),r.s===200?'No liked songs.':'Spotify doesn’t allow this for the app yet.');}
 };
-TN.Buses.prototype.makeStop=function(st){
-  const g=new THREE.Group();
-  if(!this.poleGeo){this.poleGeo=new THREE.CylinderGeometry(0.06,0.06,3.1,8);this.poleGeo.translate(0,1.55,0);this.poleMat=new THREE.MeshLambertMaterial({color:0x9aa3ad});this.signGeo=new THREE.PlaneGeometry(1.2,0.7);}
-  g.add(new THREE.Mesh(this.poleGeo,this.poleMat));
-  /* the sign hangs beside the top of the pole like a flag, toward the street, readable from both directions along it
-     (two faces, so the text is never mirrored) */
-  const m=this.stopSign(st[1],st[4]),flag=new THREE.Group();
-  const f1=new THREE.Mesh(this.signGeo,m);f1.position.set(0.66,0,0.01);flag.add(f1);
-  const f2=new THREE.Mesh(this.signGeo,m);f2.position.set(0.66,0,-0.01);f2.rotation.y=Math.PI;flag.add(f2);
-  flag.position.y=2.7;g.add(flag);g.userData.mat=m;
-  const q=TN.toLocal(st[3],st[2]);
-  let best=null;this.net.near(q[0],q[1],20,(w,k)=>{if(w.tun) return;const r=TN.seg(w,k,q[0],q[1]);if(!best||r.d<best.r.d) best={r:r,w:w,k:k};});
-  let x=q[0],z=q[1],h=0;
-  if(best){const r=best.r,hw=TN.width(best.w)/2+1.0;h=best.w.hs?best.w.hs[best.k]:(best.w.br?best.w.H:0);
-    let nx=q[0]-r.qx,nz=q[1]-r.qz,nl=Math.hypot(nx,nz);
-    if(nl<0.3){nx=r.tz;nz=-r.tx;nl=1;}   /* (exactly on the road line: put it on the right-hand side) */
-    nx/=nl;nz/=nl;x=r.qx+nx*Math.max(hw,nl);z=r.qz+nz*Math.max(hw,nl);
-    /* the flag's local +x points from the pole toward the street (−n); its face looks along the street */
-    flag.rotation.y=Math.atan2(nz,-nx);}
-  g.position.set(x,h,z);this.scene.three.scene.add(g);return g;
+/* ---------- Spotify key: choose, guide, paste ---------- */
+TN.Music.prototype.box=function(html,btns){
+  let d=document.getElementById('tn-mkey');
+  if(!d){d=document.createElement('div');d.id='tn-mkey';d.className='notr';document.body.appendChild(d);
+    const st=document.createElement('style');
+    st.textContent='#tn-mkey{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:31;width:min(600px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;box-sizing:border-box;background:rgb(var(--tn-panel-rgb,24 26 30) / .98);color:var(--tn-text,#fff);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.45);font:15px/1.45 system-ui,sans-serif;padding:20px 22px}'+
+      '#tn-mkey h3{margin:0 0 4px;font-size:20px;display:flex;align-items:center;gap:10px}#tn-mkey .sp{width:26px;height:26px;border-radius:50%;background:#1db954;color:#000;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}'+
+      '#tn-mkey .sub{opacity:.7;font-size:14px;margin-bottom:12px}#tn-mkey .st{display:flex;gap:12px;margin:10px 0}#tn-mkey .n{flex:none;width:26px;height:26px;border-radius:50%;background:#2f6fe4;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}'+
+      '#tn-mkey code{background:rgba(127,127,127,.2);padding:2px 7px;border-radius:6px;font-size:13.5px;word-break:break-all}#tn-mkey .qr{float:right;margin:0 0 8px 14px;background:#fff;padding:8px;border-radius:10px;line-height:0;text-align:center}#tn-mkey .qr small{display:block;color:#333;font-size:11px;line-height:1.3;margin-top:4px}'+
+      '#tn-mkey input{width:100%;box-sizing:border-box;font:16px ui-monospace,monospace;padding:12px 14px;border-radius:12px;border:2px solid #2f6fe4;background:rgba(127,127,127,.12);color:inherit;margin-top:6px;outline:none}'+
+      '#tn-mkey .bt{display:flex;gap:10px;margin-top:16px;clear:both}#tn-mkey .bt button{flex:1;border:0;border-radius:14px;padding:12px;font:700 15px system-ui;cursor:pointer;background:rgba(127,127,127,.2);color:inherit}#tn-mkey .bt button.g{background:#1db954;color:#000}#tn-mkey .bt button:disabled{opacity:.4}'+
+      '#tn-mkey .ok{font-size:14px;margin-top:8px;min-height:20px}#tn-mkey .cp{border:0;background:#2f6fe4;color:#fff;border-radius:10px;padding:2px 9px;font:600 12px system-ui;margin-left:6px;cursor:pointer}';
+    document.head.appendChild(st);}
+  d.innerHTML=html+'<div class="bt">'+btns.map((b,i)=>'<button data-i="'+i+'"'+(b[2]?' class="'+b[2]+'"':'')+'>'+b[0]+'</button>').join('')+'</div>';
+  d.querySelectorAll('.bt button').forEach(x=>x.onclick=()=>btns[+x.dataset.i][1]());
+  d.style.display='block';return d;
 };
-TN.Buses.prototype.clearStops=function(){if(!this.stops) return;for(const g of this.stops.values()){this.scene.three.scene.remove(g);try{g.userData.mat.map.dispose();g.userData.mat.dispose();}catch(e){}}this.stops.clear();};
-TN.Buses.prototype.updateStops=function(dt,cx,cz){
-  this.stops=this.stops||new Map();this.stopTileC=this.stopTileC||new Map();this.stopT=(this.stopT||0)-dt;
-  if(this.stopT>0) return;this.stopT=2;
-  const ll=TN.fromLocal(cx,cz),T=0.02,tx=Math.floor(ll[0]/T),ty=Math.floor(ll[1]/T),want=new Map();
-  for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){const key=(tx+i)+'_'+(ty+j),L=this.stopTileC.get(key);
-    if(L===undefined){this.stopTileC.set(key,null);fetch(TN.TRANSIT+'stops/'+key+'.json').then(r=>r.ok?r.json():[]).then(a=>this.stopTileC.set(key,a||[])).catch(()=>this.stopTileC.set(key,[]));continue;}
-    if(!L) continue;
-    for(const st of L){const q=TN.toLocal(st[3],st[2]),d=Math.hypot(q[0]-cx,q[1]-cz);if(d<450) want.set(st[0],[d,st]);}}
-  const keep=[...want.values()].sort((a,b)=>a[0]-b[0]).slice(0,40),ids=new Set(keep.map(k=>k[1][0]));
-  for(const [id,g] of this.stops) if(!ids.has(id)){this.scene.three.scene.remove(g);try{g.userData.mat.map.dispose();g.userData.mat.dispose();}catch(e){}this.stops.delete(id);}
-  for(const [d,st] of keep) if(!this.stops.has(st[0])) this.stops.set(st[0],this.makeStop(st));
+TN.Music.prototype.unbox=function(){const d=document.getElementById('tn-mkey');if(d) d.style.display='none';};
+TN.Music.prototype.choose=function(){
+  const own=this.own(),hd='<h3><span class="sp">♫</span>Spotify</h3>';
+  if(this.tok) this.box(hd+'<div class="sub">Connected'+(own?' with <b>your own key</b>.':' with MapKoon’s key.')+'</div>',
+      [[own?'Change my key':'Use my own Spotify key',()=>this.guide(1)],['Disconnect',()=>{this.save(null);this.now=null;this.render();this.unbox();this.msg('Spotify disconnected.');}],['Close',()=>this.unbox()]]);
+  else this.box(hd+'<div class="sub">Control Spotify from MapKoon: what’s playing, search, your playlists. Needs <b>Spotify Premium</b>.</div>'+
+      (own?'<div>Your own key is saved. Tap <b>Connect</b> to log in to Spotify.</div>':'<div><b>Use my own Spotify key</b> works for everyone (about 5 minutes, once). <b>Quick connect</b> only works for Spotify accounts invited to MapKoon.</div>'),
+      own?[['Connect',()=>{this.unbox();this.login();},'g'],['Change my key',()=>this.guide(1)],['Remove my key',()=>{this.ls('tn_sp_cid',null);this.choose();}],['Cancel',()=>this.unbox()]]
+         :[['Use my own Spotify key',()=>this.guide(1),'g'],['Quick connect',()=>{this.unbox();this.login();}],['Cancel',()=>this.unbox()]]);
 };
+/* screen 1: the steps, with a QR code that opens the help page on the phone (easier than typing in the car) */
+TN.Music.prototype.guide=function(step){
+  const red=this.redirect,copy=t=>{try{navigator.clipboard.writeText(t);this.msg('Copied.');}catch(e){}};
+  if(step===1){
+    const d=this.box('<h3><span class="sp">♫</span>Connect your own Spotify</h3><div class="sub">For search and playlists. About 5 minutes, once. Needs Spotify Premium.</div>'+
+      '<div class="qr" id="tn-mqr"><small>Scan with<br>your phone</small></div>'+
+      '<div class="st"><div class="n">1</div><div>On your phone, scan the code (or open <b>developer.spotify.com/dashboard</b>) and log in with your Spotify account. Accept the terms.</div></div>'+
+      '<div class="st"><div class="n">2</div><div>Tap <b>Create app</b>. Name: <code>MapKoon</code><br>Can’t see it? Browser menu → <b>Desktop site</b>.</div></div>'+
+      '<div class="st"><div class="n">3</div><div>Redirect URI: <code>'+red+'</code><button class="cp" data-c="1">Copy</button><br>Tick <b>Web API</b>, then <b>Save</b>.</div></div>'+
+      '<div class="st"><div class="n">4</div><div>Open your app’s <b>Settings</b> and copy the <b>Client ID</b>.<br><span style="opacity:.7;font-size:13px">Never the Client Secret: it isn’t needed.</span></div></div>',
+      [['Next: paste the key',()=>this.guide(2),'g'],['Cancel',()=>this.unbox()]]);
+    d.querySelector('[data-c]').onclick=()=>copy(red);
+    const draw=()=>{const q=document.getElementById('tn-mqr');if(!q||typeof qrcode!=='function') return;
+      const g=qrcode(0,'M');g.addData(TN.SPOTIFY_HELP);g.make();q.insertAdjacentHTML('afterbegin',g.createSvgTag(4,0));};
+    if(typeof qrcode==='function') draw();
+    else{const s=document.createElement('script');s.src='js/qr.js?v=1';s.onload=draw;document.head.appendChild(s);}
+    return;}
+  /* screen 2: paste and connect (checked before it goes to Spotify) */
+  const d=this.box('<h3><span class="sp">♫</span>Paste your Client ID</h3><div class="sub">Step 5 of 5</div>'+
+    '<div>Paste the Client ID from your Spotify app:</div><input id="tn-mcid" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="32 letters and numbers">'+
+    '<div class="ok" id="tn-mok"></div><div style="font-size:12.5px;opacity:.65;margin-top:8px">Your key is saved only in this browser. MapKoon never sees your Spotify password: you log in on Spotify’s own page. Remove it any time with ⚙ in the music panel.</div>',
+    [['Back',()=>this.guide(1)],['Connect Spotify',()=>{const v=inp.value.trim();if(!/^[0-9a-f]{32}$/i.test(v)) return;
+      this.ls('tn_sp_cid',v.toLowerCase());this.save(null);this.unbox();this.login();},'g']]);
+  const inp=d.querySelector('#tn-mcid'),ok=d.querySelector('#tn-mok'),go=d.querySelector('.bt .g');
+  const chk=()=>{const v=inp.value.trim();const good=/^[0-9a-f]{32}$/i.test(v);go.disabled=!good;
+    ok.style.color=good?'#7ee2a0':'#ffb4a8';
+    ok.textContent=!v?'':good?'✓ Looks right (32 letters and numbers)':v.length!==32?'That’s '+v.length+' characters; a Client ID has 32.':'Only letters a–f and numbers 0–9.';};
+  inp.oninput=chk;const cur=this.ls('tn_sp_cid');if(cur) inp.value=cur;chk();setTimeout(()=>{try{inp.focus();}catch(e){}},50);
+};
+if(typeof document!=='undefined') TN.music=new TN.Music();
