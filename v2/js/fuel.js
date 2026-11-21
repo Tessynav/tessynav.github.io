@@ -1,4 +1,4 @@
-/* MapKoon v2 — fuel.js (v1.2, Nov 21 2026)
+/* MapKoon v2 — fuel.js (v1.3, Nov 21 2026)
    Gas stations as simple 3D canopies: landmarks to turn by ("right after the gas station"), not a gas finder
    (MapKoon drivers drive Teslas). No names, prices or logos: a white canopy on pillars, a thin coloured band, pump
    islands underneath, and the underside lit at night like real stations.
@@ -57,7 +57,8 @@ TN.Fuel.prototype.hideMap=function(){
   for(const f of TN.srcFeat(map,'building')){if(f.id==null) continue;const g=f.geometry;if(!g) continue;
     const r=g.type==='Polygon'?g.coordinates[0]:g.type==='MultiPolygon'?g.coordinates[0][0]:null;if(!r||!r.length) continue;
     let x=0,y=0;for(const q of r){x+=q[0];y+=q[1];}const c=TN.toLocal(x/r.length,y/r.length);
-    if(H.some(h=>Math.hypot(c[0]-h.x,c[1]-h.z)<h.r)) try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:f.id},{hide:true});}catch(e){}}
+    const L=H.some(h=>Math.hypot(c[0]-h.x,c[1]-h.z)<40)?r.map(p=>TN.toLocal(p[0],p[1])):null;
+    if(H.some(h=>Math.hypot(c[0]-h.x,c[1]-h.z)<h.r||(L&&Math.hypot(c[0]-h.x,c[1]-h.z)<40&&TN.inRing&&TN.inRing(h.x,h.z,L)))) try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:f.id},{hide:true});}catch(e){}}
 };
 TN.Fuel.prototype.drop=function(key){const g=this.built.get(key);if(!g) return;this.scene.three.scene.remove(g);g.traverse(o=>{if(o.geometry) o.geometry.dispose();});this.built.delete(key);
   if(TN.landmarkHide) TN.landmarkHide=TN.landmarkHide.filter(h=>h.id!=='fuel:'+key);};
@@ -84,7 +85,7 @@ TN.Fuel.prototype.update=function(dt,cx,cz){
       const hd=s[4]!=null?s[4]*Math.PI/180:rd.hd;   /* (OSM's canopy direction, or along the road) */
       this.built.set(i,this.make(s,q[0],q[1],hd,rd.h));
       /* the map's plain block where OpenStreetMap draws the canopy: left out */
-      if(s[2]&&TN.landmarkHide){TN.landmarkHide.push({id:'fuel:'+i,x:q[0],z:q[1],r:Math.min(s[2],s[3])/2});
+      if(s[2]&&TN.landmarkHide){TN.landmarkHide.push({id:'fuel:'+i,x:q[0],z:q[1],r:Math.min(s[2],s[3])/2,inside:true});
         /* (v1.2: the detailed buildings already drawn there are redrawn without it, and the map's plain box is hidden:
            the canopy was standing on a brick block) */
         if(TN.CELL) redo.add(Math.floor(s[1]/TN.CELL)+','+Math.floor(s[0]/TN.CELL));hideMap=true;}}

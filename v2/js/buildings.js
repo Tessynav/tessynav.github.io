@@ -175,12 +175,15 @@ TN.Buildings.prototype.palette=function(H,seed,area,cls){
   if(H<=32) return pick(['#c9c0b0','#bdb5a6','#d3c8b4','#b2aa9c']);
   return pick(['#9fb0bf','#b7c3cd','#8e9eae','#a9b3bb']);
 };
+TN.inRing=TN.inRing||function(x,z,R){let c=false;for(let i=0,j=R.length-1;i<R.length;j=i++){const a=R[i],b=R[j];if((a[1]>z)!==(b[1]>z)&&x<(b[0]-a[0])*(z-a[1])/((b[1]-a[1])||1e-9)+a[0]) c=!c;}return c;};
 TN.Buildings.prototype.addBuilding=function(G,b,J){
   let ring=b.ring;const n=ring.length;if(n<3) return;
   const map=this.scene.map,fs=b.id!=null?{source:'openmaptiles',sourceLayer:'building',id:b.id}:null;
   /* a building where one of our landmark models stands (the stadium's stands, for example): left out */
   if(TN.landmarkHide&&TN.landmarkHide.length){let cx=0,cz=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=n;cz/=n;
-    if(TN.landmarkHide.some(h=>Math.hypot(cx-h.x,cz-h.z)<h.r)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}}
+    /* (Nov 21: or, for a gas station canopy, any building the canopy's middle stands inside: the map's outline of a
+       canopy is often a little off from OpenStreetMap's, so its centre was missed and a brick block held the canopy up) */
+    if(TN.landmarkHide.some(h=>Math.hypot(cx-h.x,cz-h.z)<h.r||(h.inside&&Math.hypot(cx-h.x,cz-h.z)<40&&TN.inRing(h.x,h.z,ring)))){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}}
   /* a building standing in the river or a lake (like the house beside the Champlain Bridge): left out */
   if(this.inWater&&this.inWater(ring)){if(fs){try{map.setFeatureState(fs,{hide:true});if(J) J.ids.push(b.id);}catch(e){}}return;}
   /* a station roof over the REM tracks, mapped as a solid building: left out (the REM station is drawn instead) */
