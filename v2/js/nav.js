@@ -721,6 +721,7 @@ TN.Nav.prototype.draw=function(from){
   }
   if(this.mesh){S.three.scene.remove(this.mesh);this.mesh.geometry.dispose();}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setAttribute('rd',new THREE.Float32BufferAttribute(rd,1));g.setIndex(idx);
+  this.CL=CL;   /* (kept for the recording: the line's height near the car, see 'line height') */
   this.mesh=new THREE.Mesh(g,TN.settings&&TN.settings.rainbow?this.rainbowMat():this.mat);this.mesh.frustumCulled=false;this.mesh.renderOrder=4;S.three.scene.add(this.mesh);this.drawn=a0;
   /* (for the trip recording: places where the drawn line ends up under the road surface, which hides it; checked
      every 25 m along the drawn part, so a cut line can be traced to its cause) */
@@ -1421,6 +1422,16 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      following the car, and how much the city-turn blend moves things: to find why the car sits beside the line) */
   this.lnT=(this.lnT||0)+dt;if(this.lnT>=1){this.lnT=0;
     this.note('line',{car:this._lc!=null?+this._lc.toFixed(2):null,line:this.latD!=null?+(this.latD-lo).toFixed(2):null,lane:this.latS!=null?1:0,tw:+(this.turnW||0).toFixed(2),v:+(L.v||0).toFixed(1),dy:+(y-(base.y||0)).toFixed(2)});}
+  /* (Nov 20, for the recording: on bridges the car looked sunk under the blue line. Once a second, when the line at
+     the car is not the usual 0.22 m above the car, note by how much, with the heights behind it: the route's road (rt),
+     the road the car tracks on (trk), the car as shown (car, smoothed) and the highest road piece within 3 m (top)) */
+  this.lhT=(this.lhT||0)+dt;if(this.lhT>=1&&this.CL&&this.CL.length>1){this.lhT=0;
+    try{const C=this.CL;let k=0;while(k<C.length-2&&C[k+1][3]<this.ps) k++;const A=C[k],B=C[k+1],g2=B[3]-A[3]||1,tt=Math.max(0,Math.min(1,(this.ps-A[3])/g2));
+      if(this.ps>=A[3]-5&&this.ps<=B[3]+5){const ly=A[1]+(B[1]-A[1])*tt,cy=TN._ys!=null?TN._ys:y,gap=ly-cy;
+        if(Math.abs(gap-0.22)>0.1){let top=-1e9,nw=0;this.api.net.near(ox,oz,3,(w,kk)=>{if(w.tun) return;const r=TN.seg(w,kk,ox,oz);if(r.d>TN.width(w)/2) return;nw++;
+            const h=w.hs?w.hs[kk]+(w.hs[kk+1]-w.hs[kk])*r.u:(w.br?w.H:0);if(h>top) top=h;});
+          const ll=TN.fromLocal(ox,oz);
+          this.note('line height',{gap:+gap.toFixed(2),line:+ly.toFixed(2),car:+cy.toFixed(2),rt:+mi(3).toFixed(2),trk:base.y!=null?+base.y.toFixed(2):null,top:top>-1e8?+top.toFixed(2):null,roads:nw,v:+(L.v||0).toFixed(1),at:[+ll[1].toFixed(5),+ll[0].toFixed(5)]});}}}catch(e){}}
   this._lc=null;
   return Object.assign({},base,{x:ox,z:oz,hd:oh,y:y,onRoute:true});
 };
