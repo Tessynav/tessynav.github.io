@@ -6,7 +6,7 @@
    - rerouting when you leave the route, arrival detection, End route
    Services: Photon (photon.komoot.io) and OSRM (router.project-osrm.org) are free public servers for testing. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
-/* Mapbox (search, traffic-aware routes, live traffic). The key only works on tessynav.github.io. */
+/* Mapbox (search, traffic-aware routes, live traffic). The key only works on tessynav.github.io and app.mapkoon.com. */
 TN.MBX='pk.eyJ1IjoibXpud2F0dGFyIiwiYSI6ImNtdzNramNhMDAyaXIyeW9na3FpYnVtN2gifQ.Y9UmNDaEoXj0RRMTJLV-_g';
 TN.TRAFFIC_COL={low:'#3b82f6',moderate:'#f59e0b',heavy:'#ef4444',severe:'#991b1b',unknown:'#3b82f6'};
 
