@@ -1,4 +1,4 @@
-/* MapKoon v2 — fuel.js (v1.1, Nov 21 2026)
+/* MapKoon v2 — fuel.js (v1.2, Nov 21 2026)
    Gas stations as simple 3D canopies: landmarks to turn by ("right after the gas station"), not a gas finder
    (MapKoon drivers drive Teslas). No names, prices or logos: a white canopy on pillars, a thin coloured band, pump
    islands underneath, and the underside lit at night like real stations.
@@ -51,6 +51,14 @@ TN.Fuel.prototype.make=function(st,x,z,hd,h){
   g.userData.under=u;g.position.set(x,h,z);g.rotation.y=-hd;
   this.scene.three.scene.add(g);return g;
 };
+/* the map's own plain building boxes under a canopy: hidden (again every 5 s, for map tiles that arrive later) */
+TN.Fuel.prototype.hideMap=function(){
+  const map=this.scene.map,H=(TN.landmarkHide||[]).filter(h=>String(h.id).startsWith('fuel:'));if(!map||!H.length||!TN.srcFeat) return;
+  for(const f of TN.srcFeat(map,'building')){if(f.id==null) continue;const g=f.geometry;if(!g) continue;
+    const r=g.type==='Polygon'?g.coordinates[0]:g.type==='MultiPolygon'?g.coordinates[0][0]:null;if(!r||!r.length) continue;
+    let x=0,y=0;for(const q of r){x+=q[0];y+=q[1];}const c=TN.toLocal(x/r.length,y/r.length);
+    if(H.some(h=>Math.hypot(c[0]-h.x,c[1]-h.z)<h.r)) try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:f.id},{hide:true});}catch(e){}}
+};
 TN.Fuel.prototype.drop=function(key){const g=this.built.get(key);if(!g) return;this.scene.three.scene.remove(g);g.traverse(o=>{if(o.geometry) o.geometry.dispose();});this.built.delete(key);
   if(TN.landmarkHide) TN.landmarkHide=TN.landmarkHide.filter(h=>h.id!=='fuel:'+key);};
 TN.Fuel.prototype.clear=function(){for(const k of [...this.built.keys()]) this.drop(k);};
@@ -70,12 +78,18 @@ TN.Fuel.prototype.update=function(dt,cx,cz){
   near.sort((a,b)=>a[0]-b[0]);const keep=new Set(near.slice(0,10).map(n=>n[1]));
   for(const k of [...this.built.keys()]) if(!keep.has(k)) this.drop(k);
   const night=(this.scene.night||0)>0.5,M=this.mats();
+  const redo=new Set();let hideMap=false;
   for(const [d,i,q] of near.slice(0,10)){
     if(!this.built.has(i)){const s=this.list[i],rd=this.road(q[0],q[1]);
       const hd=s[4]!=null?s[4]*Math.PI/180:rd.hd;   /* (OSM's canopy direction, or along the road) */
       this.built.set(i,this.make(s,q[0],q[1],hd,rd.h));
       /* the map's plain block where OpenStreetMap draws the canopy: left out */
-      if(s[2]&&TN.landmarkHide) TN.landmarkHide.push({id:'fuel:'+i,x:q[0],z:q[1],r:Math.min(s[2],s[3])/2});}
+      if(s[2]&&TN.landmarkHide){TN.landmarkHide.push({id:'fuel:'+i,x:q[0],z:q[1],r:Math.min(s[2],s[3])/2});
+        /* (v1.2: the detailed buildings already drawn there are redrawn without it, and the map's plain box is hidden:
+           the canopy was standing on a brick block) */
+        if(TN.CELL) redo.add(Math.floor(s[1]/TN.CELL)+','+Math.floor(s[0]/TN.CELL));hideMap=true;}}
     const g=this.built.get(i),u=g&&g.userData.under,m=night?M.glow:M.day;if(u&&u.material!==m) u.material=m;
   }
+  const B=TN.buildings;if(B&&B.cells) for(const k of redo) if(B.cells.has(k)){try{if(B.job&&B.job.k===k) B.job=null;B.free(k);}catch(e){}}
+  if(hideMap||(this.built.size&&performance.now()-(this.hideT||0)>5000)){this.hideT=performance.now();try{this.hideMap();}catch(e){}}
 };

@@ -41,7 +41,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
     W.onerror=e=>{rwNote('crashed',{msg:String(e&&e.message||'').slice(0,200)});failAll();};
     net.mirror=true;net.remoteHeights=true;TN.RW=RW;}catch(e){TN.RW=null;}}   /* (round 2: the heights are worked out in the background too) */
   const trees=TN.Trees?new TN.Trees(scene,net):null;
-  const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
+  const buildings=TN.Buildings?new TN.Buildings(scene,net):null;TN.buildings=buildings;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
   const buses=TN.Buses?new TN.Buses(scene,net):null;TN.rec=rec;TN.buses=buses;const fuel=TN.Fuel?new TN.Fuel(scene,net):null;TN.fuel=fuel;   /* (gas station canopies, Settings → 3D details) */   /* (STM live buses, Settings → The city) */
   const landmarks=TN.Landmarks?new TN.Landmarks(scene):null;
