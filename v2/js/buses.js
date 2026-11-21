@@ -14,15 +14,44 @@ TN.Buses=function(scene,net){
   if(typeof location!=='undefined'){if(/[?&]bus=1/.test(location.search)) this.on=true;if(/[?&]bus=0/.test(location.search)) this.on=false;}
 };
 TN.Buses.prototype.build=function(){
+  /* (v3, Nov 21: a more realistic city bus: a 12 m low-floor bus, white with a blue skirt and a thin light-blue line,
+     a dark window band with white pillars, a big windscreen, mirrors, two doors on the right, a roof unit, a rear
+     engine grille and tail lights, wheels with hubs and a soft shadow. Still cheap: every part is shared by all buses
+     and the parts of one colour are merged into one piece, so a bus is about 10 draws. No STM logo) */
   if(this.geo) return;
-  const W=1.28,H=3.15,L=6.1;   /* a 12 m STM bus: 2.55 m wide; front at -z (heading 0 = north) */
-  const box=(x0,x1,y0,y1,z0,z1)=>{const g=new THREE.BoxGeometry(x1-x0,y1-y0,z1-z0);g.translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2);return g;};
-  this.geo={body:box(-W,W,0.35,H,-L,L),stripe:box(-W-0.02,W+0.02,0.55,1.05,-L+0.1,L-0.1),win:box(-W-0.03,W+0.03,1.55,2.55,-L+1.2,L-0.6),
-    front:box(-W+0.15,W-0.15,1.2,2.75,-L-0.03,-L),head:box(-W+0.2,W-0.2,0.7,0.95,-L-0.04,-L),tail:box(-W+0.15,W-0.15,0.75,1.05,L,L+0.04),
-    wheel:new THREE.CylinderGeometry(0.5,0.5,0.35,12)};
-  this.mats={body:new THREE.MeshLambertMaterial({color:0xf3f5f7}),stripe:new THREE.MeshLambertMaterial({color:0x0b5ed7}),
-    win:new THREE.MeshBasicMaterial({color:0x1d2935}),winLit:new THREE.MeshBasicMaterial({color:0xffe7a3}),
-    head:new THREE.MeshBasicMaterial({color:0xfff6d8}),tail:new THREE.MeshBasicMaterial({color:0xff3030}),wheel:new THREE.MeshLambertMaterial({color:0x222222})};
+  const W=1.275,L=6.1;   /* half width / half length (2.55 m × 12.2 m); front at -z, right side at +x */
+  const box=(x0,x1,y0,y1,z0,z1)=>{const g=new THREE.BoxGeometry(x1-x0,y1-y0,z1-z0);g.translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2);return g.toNonIndexed();};
+  const cyl=(r,h,x,y,z)=>{const g=new THREE.CylinderGeometry(r,r,h,14);g.rotateZ(Math.PI/2);g.translate(x,y,z);return g.toNonIndexed();};
+  const merge=(list)=>{let n=0;for(const g of list) n+=g.attributes.position.count;const P=new Float32Array(n*3),N=new Float32Array(n*3);let o=0;
+    for(const g of list){P.set(g.attributes.position.array,o*3);N.set(g.attributes.normal.array,o*3);o+=g.attributes.position.count;g.dispose();}
+    const m=new THREE.BufferGeometry();m.setAttribute('position',new THREE.BufferAttribute(P,3));m.setAttribute('normal',new THREE.BufferAttribute(N,3));return m;};
+  const white=[box(-W,W,0.95,2.98,-L,L),box(-W+0.1,W-0.1,2.98,3.08,-L+0.15,L-0.1)];
+  /* white pillars over the window band, both sides */
+  for(const sx of [-1,1]) for(const z of [-3.2,-1.0,1.2,3.4,5.2]) white.push(box(sx>0?W:-W-0.03,sx>0?W+0.03:-W,1.3,2.45,z-0.09,z+0.09));
+  const blue=[box(-W-0.01,W+0.01,0.32,0.95,-L-0.01,L+0.01)];
+  const light=[];for(const sx of [-1,1]) light.push(box(sx>0?W:-W-0.02,sx>0?W+0.02:-W,1.02,1.1,-L+0.4,L-0.3));
+  const side=[];for(const sx of [-1,1]) side.push(box(sx>0?W:-W-0.02,sx>0?W+0.02:-W,1.3,2.45,-L+2.0,L-0.4));
+  const glass=[box(-W+0.12,W-0.12,1.05,2.72,-L-0.03,-L),   /* windscreen */
+    box(-W+0.25,W-0.25,1.9,2.6,L,L+0.03),                  /* rear window */
+    box(W,W+0.03,0.42,2.5,-L+0.55,-L+1.75),                /* front door */
+    box(W,W+0.03,0.42,2.5,0.1,1.35)];                      /* middle door */
+  const dark=[box(-W-0.02,W+0.02,0.25,0.55,-L-0.08,-L+0.3),  /* front bumper */
+    box(-W-0.02,W+0.02,0.25,0.55,L-0.3,L+0.08),               /* rear bumper */
+    box(-W+0.3,W-0.3,0.65,1.45,L,L+0.04),                     /* engine grille */
+    box(-0.12,0.12,1.85,2.3,-L-0.05,-L+0.25)];               /* (mirror arm base) */
+  for(const sx of [-1,1]) dark.push(box(sx*(W+0.05)-0.04,sx*(W+0.05)+0.04,1.85,2.55,-L+0.2,-L+0.4),box(sx*(W+0.12)-0.1,sx*(W+0.12)+0.1,1.75,2.25,-L+0.25,-L+0.35));   /* mirrors */
+  const roof=[box(-0.8,0.8,3.08,3.42,-1.2,2.4)];             /* roof unit */
+  const head=[];for(const sx of [-1,1]) head.push(box(sx*0.95-0.22,sx*0.95+0.22,0.62,0.82,-L-0.05,-L));
+  const tail=[];for(const sx of [-1,1]) tail.push(box(sx*1.05-0.14,sx*1.05+0.14,0.7,1.5,L,L+0.05));
+  const tyre=[],hub=[];for(const z of [-3.55,2.9]) for(const sx of [-1,1]){tyre.push(cyl(0.5,0.32,sx*(W-0.16),0.5,z));hub.push(cyl(0.28,0.34,sx*(W-0.15),0.5,z));}
+  const sh=new THREE.PlaneGeometry(3.1,12.9);sh.rotateX(-Math.PI/2);sh.translate(0,0.03,0);
+  this.geo={white:merge(white),blue:merge(blue),light:merge(light),side:merge(side),glass:merge(glass),dark:merge(dark),roof:merge(roof),head:merge(head),tail:merge(tail),tyre:merge(tyre),hub:merge(hub),shadow:sh};
+  this.mats={white:new THREE.MeshLambertMaterial({color:0xf2f4f6}),blue:new THREE.MeshLambertMaterial({color:0x0a4fb5}),light:new THREE.MeshLambertMaterial({color:0x3fa9f5}),
+    win:new THREE.MeshLambertMaterial({color:0x17212b}),winLit:new THREE.MeshBasicMaterial({color:0xffe6a0}),glass:new THREE.MeshLambertMaterial({color:0x1d2834}),
+    dark:new THREE.MeshLambertMaterial({color:0x22262b}),roof:new THREE.MeshLambertMaterial({color:0xdfe3e7}),
+    head:new THREE.MeshBasicMaterial({color:0xfff6d8}),tail:new THREE.MeshBasicMaterial({color:0xff2b2b}),
+    tyre:new THREE.MeshLambertMaterial({color:0x151515}),hub:new THREE.MeshLambertMaterial({color:0xb8bec6}),
+    shadow:new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.28,depthWrite:false})};
 };
 /* the route number: lit amber signs above the windscreen and on the back (planes on the bus: sprites don't work in
    the map's 3D layer) */
@@ -30,16 +59,17 @@ TN.Buses.prototype.sign=function(txt){
   const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');
   x.fillStyle='#0d0f12';x.fillRect(0,0,256,64);x.fillStyle='#ffb31a';x.font='bold 50px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,128,35);
   const m=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)}),g=new THREE.Group(),pg=new THREE.PlaneGeometry(2.1,0.55);
-  const f=new THREE.Mesh(pg,m);f.position.set(0,2.95,-6.14);f.rotation.y=Math.PI;g.add(f);   /* front (faces -z) */
-  const b=new THREE.Mesh(pg,m);b.position.set(0,2.95,6.14);g.add(b);                          /* back (faces +z) */
-  for(const sx of [-1,1]){const sd=new THREE.Mesh(new THREE.PlaneGeometry(1.4,0.4),m);sd.position.set(sx*1.31,2.85,-4.6);sd.rotation.y=sx*Math.PI/2;g.add(sd);}
+  const f=new THREE.Mesh(pg,m);f.position.set(0,2.84,-6.14);f.rotation.y=Math.PI;g.add(f);   /* front (faces -z) */
+  const b=new THREE.Mesh(pg,m);b.position.set(0,2.84,6.14);g.add(b);                          /* back (faces +z) */
+  for(const sx of [-1,1]){const sd=new THREE.Mesh(new THREE.PlaneGeometry(1.4,0.4),m);sd.position.set(sx*1.31,2.72,-3.9);sd.rotation.y=sx*Math.PI/2;g.add(sd);}
   g.userData.mat=m;return g;
 };
 TN.Buses.prototype.make=function(route){
   this.build();const G=this.geo,M=this.mats,g=new THREE.Group();
   const add=(geo,m)=>{const o=new THREE.Mesh(geo,m);g.add(o);return o;};
-  add(G.body,M.body);add(G.stripe,M.stripe);const w=add(G.win,M.win);add(G.front,M.win);add(G.head,M.head);add(G.tail,M.tail);
-  for(const [x,z] of [[-1.1,-3.9],[1.1,-3.9],[-1.1,3.6],[1.1,3.6]]){const o=add(G.wheel,M.wheel);o.rotation.z=Math.PI/2;o.position.set(x,0.5,z);}
+  add(G.shadow,M.shadow).renderOrder=1;
+  add(G.white,M.white);add(G.blue,M.blue);add(G.light,M.light);const w=add(G.side,M.win);add(G.glass,M.glass);add(G.dark,M.dark);add(G.roof,M.roof);
+  add(G.head,M.head);add(G.tail,M.tail);add(G.tyre,M.tyre);add(G.hub,M.hub);
   g.add(this.sign(route||'?'));g.userData.win=w;
   this.scene.three.scene.add(g);return g;
 };
