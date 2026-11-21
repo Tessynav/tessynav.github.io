@@ -43,7 +43,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const trees=TN.Trees?new TN.Trees(scene,net):null;
   const buildings=TN.Buildings?new TN.Buildings(scene,net):null;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
-  const buses=TN.Buses?new TN.Buses(scene,net):null;TN.rec=rec;TN.buses=buses;   /* (STM live buses, Settings → The city) */
+  const buses=TN.Buses?new TN.Buses(scene,net):null;TN.rec=rec;TN.buses=buses;const fuel=TN.Fuel?new TN.Fuel(scene,net):null;TN.fuel=fuel;   /* (gas station canopies, Settings → 3D details) */   /* (STM live buses, Settings → The city) */
   const landmarks=TN.Landmarks?new TN.Landmarks(scene):null;
   const garage=TN.Garage?new TN.Garage({scene:scene,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;
   /* Can I park here? (City of Montréal parking signs, read when you stop) */
@@ -52,7 +52,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const ground=TN.Ground?new TN.Ground(scene,net,trees,season):null;   /* fallen leaves, snowy ground and car */
   const water=TN.Water?new TN.Water(scene):null;
   /* the settings menu (gear button) */
-  const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,buses:buses,night:()=>night()}):null;
+  const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,buses:buses,fuel:fuel,night:()=>night()}):null;
   if(settings){try{settings.build();}catch(e){}}
   /* navigation: search, route, directions */
   const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
@@ -364,15 +364,25 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   function startReplay(g,n){
     try{if(watchId!==null&&watchId>=0) navigator.geolocation.clearWatch(watchId);}catch(e){}
     watchId=-1;gpsLastAcc=5;   /* (the real GPS stays off; Recenter just recentres) */
+    const FILM_G=[
+      /* (Nov 21: Film chooses what stays on screen, for the videos; remembered on this device. The map credits always stay) */
+      ['ui','Buttons & search','#tn-search,#status,#tag,#rec,#trips,#ver,#btn,#zin,#zout,#panel,#tn-viewbtn,#tn-compass,#tn-gear,#tn-set,#tn-fbbtn,#tn-report,#tn-mute,#tn-upd,#tn-updpill,#tn-updbar,#tn-savemenu,#tn-park,#tn-chgcard,#tn-garage',false],
+      ['turn','Next turn (top card)','#tn-bar',true],
+      ['dest','Destination & arrival time','#tn-ov,#tn-end,#tn-stopbtn',false],
+      ['spd','Speed & speed limit','#speed,#tn-limit,#tn-roadname',false],
+      ['rocco','Rocco messages & alerts','#tn-rbub,#tn-rarr,#tn-alert,#tn-jam,#tn-faster,#tn-wcard',true],
+      ['mus','Music card','#tn-mus,#tn-mpan,#tn-mmsg',false],
+      ['pins','Map pins','.maplibregl-marker',false]];
     const R=TN.replay={g:g,i:0,t:g[0][0],k:1,play:true,dur:g[g.length-1][0],n:n,film:false};
     resetTrack();startFollow();
     const st=document.createElement('style');
     st.textContent='#tn-rp{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:18px;background:rgba(20,22,26,.92);color:#fff;font:600 14px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);width:min(760px,calc(100vw - 32px));box-sizing:border-box;transition:opacity .4s}'+
       '#tn-rp button{background:rgba(255,255,255,.12);border:0;color:#fff;border-radius:12px;height:40px;min-width:44px;padding:0 10px;font:600 14px system-ui;cursor:pointer;flex:none}#tn-rp button.on{background:#2f6fe4}#tn-rp .tm{font-variant-numeric:tabular-nums;flex:none;min-width:92px;text-align:center}'+
       '#tn-rp input{flex:1;min-width:60px;accent-color:#2f6fe4}#tn-rp .nm{position:absolute;left:14px;top:-22px;font-size:12px;opacity:.8;text-shadow:0 1px 3px #000}'+
-      'body.tn-film .hud,body.tn-film #panel,body.tn-film #tn-mus,body.tn-film #tn-mpan,body.tn-film #tn-mmsg,body.tn-film #tn-viewbtn,body.tn-film #tn-fbbtn,body.tn-film #tn-fb,body.tn-film #tn-fbn,body.tn-film #tn-alert,body.tn-film #tn-report,'+
-      'body.tn-film #tn-park,body.tn-film #tn-chgcard,body.tn-film #tn-gear,body.tn-film #tn-set,body.tn-film #tn-jam,body.tn-film #tn-faster,body.tn-film #tn-wcard,body.tn-film #tn-rbub,body.tn-film #tn-upd,body.tn-film #tn-updpill,body.tn-film #tn-updbar,'+
-      'body.tn-film #tn-savemenu,body.tn-film #tn-det,body.tn-film #tn-bar,body.tn-film #tn-hi,body.tn-film #tn-ring,body.tn-film .maplibregl-marker{visibility:hidden!important}body.tn-film #tn-rp.idle{opacity:0}';
+      FILM_G.map(g=>g[2].split(',').map(x=>'body.tn-film.tnh-'+g[0]+' '+x).join(',')+'{visibility:hidden!important}').join('')+
+      'body.tn-film #tn-det,body.tn-film #tn-fb,body.tn-film #tn-fbn,body.tn-film #tn-res{visibility:hidden!important}body.tn-film #tn-rp.idle{opacity:0}'+
+      '#tn-fpick{position:absolute;left:50%;bottom:62px;transform:translateX(-50%);display:none;flex-direction:column;gap:2px;padding:10px 12px;border-radius:14px;background:rgba(20,26,34,.94);color:#fff;font:500 14px system-ui;white-space:nowrap;box-shadow:0 6px 24px rgba(0,0,0,.4)}'+
+      '#tn-fpick.on{display:flex}#tn-fpick b{font-size:12px;opacity:.7;margin-bottom:4px}#tn-fpick label{display:flex;align-items:center;gap:8px;padding:5px 2px;cursor:pointer}#tn-fpick input{width:18px;height:18px;flex:none}';
     document.head.appendChild(st);
     const bar=document.createElement('div');bar.id='tn-rp';
     bar.innerHTML='<span class="nm"></span><button class="pp" aria-label="Play or pause"></button><span class="tm">0:00 / 0:00</span><input type="range" min="0" max="1000" value="0" aria-label="Timeline">'+
@@ -391,12 +401,21 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       startFollow();ui();};
     sl.oninput=()=>{dragging=true;tm.textContent=fmt(+sl.value/1000*(R.dur-g[0][0]))+' / '+fmt(R.dur-g[0][0]);};
     sl.onchange=()=>{dragging=false;seek(+sl.value/1000);};
-    let idleT=null;const wake=()=>{bar.classList.remove('idle');clearTimeout(idleT);if(R.film) idleT=setTimeout(()=>bar.classList.add('idle'),3000);};
-    bar.querySelector('.fm').onclick=e=>{R.film=!R.film;document.body.classList.toggle('tn-film',R.film);e.target.classList.toggle('on',R.film);wake();};
+    let idleT=null;const wake=()=>{bar.classList.remove('idle');clearTimeout(idleT);if(R.film) idleT=setTimeout(()=>{bar.classList.add('idle');const fp=document.getElementById('tn-fpick');if(fp) fp.classList.remove('on');},3000);};
+    /* Film: on, with a small list of what to keep on screen (tick = shown) */
+    let keep={};try{keep=JSON.parse(localStorage.getItem('tn2_filmkeep')||'{}')||{};}catch(e){}
+    const pick=document.createElement('div');pick.id='tn-fpick';
+    pick.innerHTML='<b>Show while filming</b>'+FILM_G.map(g=>'<label><input type="checkbox" data-g="'+g[0]+'">'+g[1]+'</label>').join('');
+    bar.appendChild(pick);
+    const applyKeep=()=>{for(const g of FILM_G){const on=keep[g[0]]!=null?keep[g[0]]:g[3];document.body.classList.toggle('tnh-'+g[0],!on);const cb=pick.querySelector('[data-g="'+g[0]+'"]');if(cb) cb.checked=on;}};
+    pick.querySelectorAll('input').forEach(cb=>cb.onchange=()=>{keep[cb.dataset.g]=cb.checked;try{localStorage.setItem('tn2_filmkeep',JSON.stringify(keep));}catch(e){}applyKeep();});
+    applyKeep();
+    bar.querySelector('.fm').onclick=e=>{if(R.film&&!pick.classList.contains('on')){pick.classList.add('on');wake();return;}   /* (list hidden after a pause: show it again first) */
+      R.film=!R.film;document.body.classList.toggle('tn-film',R.film);e.target.classList.toggle('on',R.film);pick.classList.toggle('on',R.film);wake();};
     document.addEventListener('pointerdown',wake,true);document.addEventListener('mousemove',wake,true);
     /* X: back to the live drive right away (no reload): the bar goes, the real GPS comes back */
     bar.querySelector('.x').onclick=()=>{
-      clearInterval(R.timer);clearTimeout(idleT);bar.remove();st.remove();document.body.classList.remove('tn-film');
+      clearInterval(R.timer);clearTimeout(idleT);bar.remove();st.remove();document.body.classList.remove('tn-film');FILM_G.forEach(g=>document.body.classList.remove('tnh-'+g[0]));
       document.removeEventListener('pointerdown',wake,true);document.removeEventListener('mousemove',wake,true);
       TN.replay=null;frameBody.rpCar=null;resetTrack();restartGps();
       $('speed').innerHTML='0 <small>km/h</small>';};
@@ -806,6 +825,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(landmarks){try{landmarks.update(ac.lng,ac.lat);}catch(e){}}
       if(rem){try{const tr0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);rem.update(dt,q[0],q[1]);TN.prof('rem',performance.now()-tr0);}catch(e){}}
       if(buses){try{const tb0=performance.now(),q=TN.toLocal(ac.lng,ac.lat);buses.update(dt,q[0],q[1]);TN.prof('buses',performance.now()-tb0);}catch(e){}}
+      if(fuel){try{const q=TN.toLocal(ac.lng,ac.lat);fuel.update(dt,q[0],q[1]);}catch(e){}}
       if(parking){try{parking.update(dt);}catch(e){}}
       if(water){try{water.update(dt,ahead.lng,ahead.lat);}catch(e){}}
       if(season){try{if(follow&&car&&car.x!=null) season.update(dt,car.x,car.y||0,car.z,lastFps);else{const q=TN.toLocal(ac.lng,ac.lat);season.update(dt,q[0],0,q[1],lastFps);}}catch(e){}}
@@ -842,6 +862,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(landmarks){try{landmarks.update(c.lng,c.lat);}catch(e){}}
       if(rem){try{const q=TN.toLocal(c.lng,c.lat);rem.update(dt,q[0],q[1]);}catch(e){}}
       if(buses){try{const q=TN.toLocal(c.lng,c.lat);buses.update(dt,q[0],q[1]);}catch(e){}}
+      if(fuel){try{const q=TN.toLocal(c.lng,c.lat);fuel.update(dt,q[0],q[1]);}catch(e){}}
       if(season){try{const q=TN.toLocal(c.lng,c.lat);season.update(dt,q[0],0,q[1],lastFps);}catch(e){}}
       if(water){try{water.update(dt,c.lng,c.lat);}catch(e){}}
     }

@@ -5,7 +5,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.ACCOUNT_URL='https://app.mapkoon.com/account.html';   /* (the MapKoon website's Account page; mapkoon.com once the domain is set up) */
-TN.SETDEF={habits:false,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,railTurns:true,buses:false,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={habits:false,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,glueRoute:false,glueTurns:true,railTurns:true,buses:false,fuel:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -53,6 +53,7 @@ TN.Settings.prototype.apply=function(k){
       for(const st of R.stations.values()) if(st.mesh) st.mesh.visible=!!s.rem;
       if(R.labels) for(const el of R.labels.values()) if(!s.rem) el.style.display='none';
       if(!s.rem){for(const t of R.trains) R.free(t);R.trains=[];}}
+    if(k==='fuel'&&m.fuel){m.fuel.on=s.fuel!==false;if(s.fuel===false) m.fuel.clear();}
     if(k==='buses'&&m.buses){const B=m.buses;B.on=!!s.buses;if(!s.buses) B.clear();else B.pollT=0;}
     if(k==='lights'){sc.lightsOff=!s.lights;sc.setNight(sc.night||0);}
     if(k==='cut'){sc.cutOn=!!s.cut;}
@@ -109,7 +110,7 @@ TN.Settings.prototype.build=function(){
        '<div class="r" style="display:block"><div>Night brightness</div><input type="range" min="0" max="100" step="1" data-k="nightLevel" value="'+Math.round(S.nightLevel*100)+'"><div class="lbls"><span>Softer</span><span>Darker</span></div></div>'+
        '<div class="h">MAP</div>'+tog('glass','See-through panels','The sky and buildings show behind the top bar and the buttons')+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('chargers','Superchargers on the map','Tap one for its stalls and to go there')+tog('fastdc','Other fast chargers','FLO, Circuit électrique, Electrify Canada… (adapter needed)')+tog('cut','See-through around the car','Bridges and buildings in front of the car fade')+tog('zoombtns','Zoom buttons','Pinching the map works too')},
     {id:'look',t:'3D details',sum:()=>{const k=['buildings','trees','shadows','leaves','weather','water','lights','rem'];return k.filter(on).length+' of '+k.length+' on'+(on('rainbow')?' \u00b7 rainbow road':'');},
-     html:()=>'<div class="h">THE CITY</div>'+tog('buildings','Detailed buildings')+tog('trees','Trees')+tog('rem','REM trains and labels')+tog('buses','STM live buses (beta)','Real buses near you, updated every 30 s. Bus data: STM (unofficial)')+tog('water','Animated water')+
+     html:()=>'<div class="h">THE CITY</div>'+tog('buildings','Detailed buildings')+tog('trees','Trees')+tog('rem','REM trains and labels')+tog('fuel','Gas stations','Simple 3D canopies, as landmarks')+tog('buses','STM live buses (beta)','Real buses near you, updated every 30 s. Bus data: STM (unofficial)')+tog('water','Animated water')+
        '<div class="h">LIGHT AND SEASONS</div>'+tog('shadows','Shadows','Follow the real sun; the car always has a soft shadow')+tog('lights','Street light glow','At night')+tog('weather','Real weather','Rain, snow, fog and clouds from the live weather \u00b7 Premium')+tog('leaves','Leaves and snow','Falling, on the ground and on the car (autumn leaves; snow when there is some)')+
        '<div class="h">FOR FUN</div>'+tog('rainbow','Rainbow road','The route line flows through the colours (hides traffic colours on it)')},
     {id:'app',t:'App',sum:()=>({rocco:'Rocco theme',tesla:'Tesla theme',futuristic:'Futuristic theme'})[S.theme||'rocco']+(TN.LANG==='fr'?' \u00b7 Français':' \u00b7 English')+' \u00b7 version, recording',
