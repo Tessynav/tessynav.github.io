@@ -32,8 +32,11 @@ TN.Layout=function(){
   /* the turn card */
   'body.tn-l1 #tn-bar{right:auto!important;width:min(460px,calc(100vw - 150px));box-sizing:border-box;border-radius:18px!important;background:'+P+'!important}'+
   'body.tn-l1 #tn-bar .etabox{display:none!important}'+
-  'body.tn-l1 #tn-bar .a{width:64px!important;height:64px;border-radius:14px;background:#2f8cff;align-items:center;flex:none}body.tn-l1 #tn-bar.jvon .a{background:none;width:116px!important;height:116px}'+
-  'body.tn-l1 #tn-bar .a svg{width:40px;height:40px}body.tn-l1 #tn-bar .a svg *{stroke:#fff}'+
+  'body.tn-l1 #tn-bar:not(.jvon) .a{width:64px!important;height:64px;border-radius:14px;background:#2f8cff;align-items:center;flex:none}'+
+  /* (Nov 22: the junction drawing keeps its own colours and full size; the white-arrow style was turning it into a small
+     black-and-white square) */
+  'body.tn-l1 #tn-bar.jvon .a{width:132px!important;height:132px;border-radius:14px;flex:none}body.tn-l1 #tn-bar.jvon .a svg{width:100%;height:100%}'+
+  'body.tn-l1 #tn-bar:not(.jvon) .a svg{width:40px;height:40px}body.tn-l1 #tn-bar:not(.jvon) .a svg *{stroke:#fff}'+
   'body.tn-l1 #tn-bar .dist{font-size:28px}body.tn-l1 #tn-bar .ins{font-size:16px;font-weight:600}'+
   'body.tn-l1.tn-routing #status{display:none!important}'+
   /* the right column */

@@ -470,6 +470,15 @@ TN.Scene.prototype.styleMap=function(){
         'fill-extrusion-base':['case',['boolean',['feature-state','hide'],false],0,['max',['coalesce',['get','render_min_height'],0],['coalesce',['feature-state','lift'],0]]],'fill-extrusion-opacity':1}});
   }
   for(const l of map.getStyle().layers) if(l.type==='fill-extrusion'&&l.id!=='tn-buildings') map.setLayoutProperty(l.id,'visibility','none');
+  /* (Nov 22) the far buildings (past the detailed ones, about 1 km) get rows of windows instead of plain walls: a small
+     wall-and-windows tile painted on them, lit windows at night. ?farwin=0 keeps them plain */
+  try{if(!(typeof location!=='undefined'&&/[?&]farwin=0/.test(location.search))&&!map.hasImage('tn-win-d')){
+    const mk=(night)=>{const c=document.createElement('canvas');c.width=c.height=32;const x=c.getContext('2d');
+      x.fillStyle=night?'#3b414d':'#cfc8ba';x.fillRect(0,0,32,32);
+      const win=[[4,5],[18,5],[4,20],[18,20]];win.forEach(([wx,wy],i)=>{x.fillStyle=night?((i===1||i===2)?'#f2c46b':'#262b34'):'#6b8096';x.fillRect(wx,wy,10,8);});
+      return x.getImageData(0,0,32,32);};
+    map.addImage('tn-win-d',mk(false));map.addImage('tn-win-n',mk(true));
+    map.setPaintProperty('tn-buildings','fill-extrusion-pattern','tn-win-d');this.farWin=true;}}catch(e){}
   map.addSource('tn-night',{type:'geojson',data:{type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}}});
   map.addLayer({id:'tn-night',type:'fill',source:'tn-night',paint:{'fill-color':'#0b1630','fill-opacity':0}},'tn-buildings');
   map.addLayer(this.layer());
@@ -586,6 +595,7 @@ TN.Scene.prototype.applyNight=function(nt){
     this.applyGround(nt);
     {const wet=(this.weather&&this.weather.rain)||0;for(const k of ['road','curb']) if(this.mats[k]){this.tintMat(k,this.mats[k]);if(wet>0) this.mats[k].color.multiplyScalar(1-0.22*Math.min(1,wet+0.3));}}
     this.map.setPaintProperty('tn-buildings','fill-extrusion-color',TN.farBuildingColor(nt));
+    if(this.farWin){const w=nt>0.5?'tn-win-n':'tn-win-d';if(this.farWinNow!==w){this.farWinNow=w;this.map.setPaintProperty('tn-buildings','fill-extrusion-pattern',w);}}
   }catch(e){}
   this.setNight(nt);
 };

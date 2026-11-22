@@ -1346,28 +1346,37 @@ TN.Nav.prototype.closeTrip=function(){this.ov.style.display='none';this.ov.class
 /* the junction from above: our roads around it in grey, the route in blue with an arrow, the approach pointing up;
    the exit number on a green sign for highway exits */
 TN.Nav.prototype.junctionSvg=function(nx){
+  /* (Nov 22: clearer and in colour: roads with dark edges, the route in blue with a white outline and a big arrow, your
+     car where you come from, the roundabout's exit number, the exit number on a green sign for highway exits) */
   const R=this.route,net=this.api.net;let ia=0;while(ia<R.cum.length-1&&R.cum[ia]<nx.at) ia++;
   const M=R.pts[ia];let ib=ia;while(ib>0&&R.cum[ia]-R.cum[ib]<35) ib--;
   const B=R.pts[ib];let h=Math.atan2(M[0]-B[0],-(M[1]-B[1]));if(ib===ia) h=0;
-  const fx=Math.sin(h),fz=-Math.cos(h),rx=Math.cos(h),rz=Math.sin(h),K=48/80;
-  const P=p=>{const dx=p[0]-M[0],dz=p[1]-M[1];return [50+(dx*rx+dz*rz)*K,60-(dx*fx+dz*fz)*K];};
-  const f1=v=>v.toFixed(1);let roads='';const seen=new Set();
-  const wid={motorway:9,trunk:8,primary:7,secondary:6,tertiary:6,motorway_link:5,trunk_link:5,primary_link:5};
-  if(net&&net.near) net.near(M[0],M[1],95,(w,k)=>{const key=w.id+':'+k;if(seen.has(key)||k>=w.pts.length-1) return;seen.add(key);
-    const a=P(w.pts[k]),b=P(w.pts[k+1]);roads+='<path d="M'+f1(a[0])+' '+f1(a[1])+'L'+f1(b[0])+' '+f1(b[1])+'" stroke="#5f656e" stroke-width="'+(wid[w.cls]||4.5)+'" stroke-linecap="round"/>';});
-  /* the route: 80 m before to 70 m after */
-  let path='',last=null,prev=null;
-  const k0=R.steps.indexOf(nx),nxt=k0>=0?R.steps[k0+1]:null,after=nxt?Math.max(20,Math.min(70,nxt.at-nx.at-10)):70;
-  for(let i=Math.max(0,ia-200);i<Math.min(R.pts.length,ia+200);i++){const d=R.cum[i]-R.cum[ia];if(d<-80||d>after) continue;
-    const q=P(R.pts[i]);path+=(path?'L':'M')+f1(q[0])+' '+f1(q[1]);prev=last;last=q;}
+  const round=/roundabout|rotary/.test(nx.type||'');
+  const fx=Math.sin(h),fz=-Math.cos(h),rx=Math.cos(h),rz=Math.sin(h),K=round?48/60:48/80;
+  const P=p=>{const dx=p[0]-M[0],dz=p[1]-M[1];return [50+(dx*rx+dz*rz)*K,58-(dx*fx+dz*fz)*K];};
+  const f1=v=>v.toFixed(1);let casing='',fill='';const seen=new Set();
+  const wid={motorway:9,trunk:8,primary:7,secondary:6.5,tertiary:6,motorway_link:5.5,trunk_link:5.5,primary_link:5.5,residential:4.5};
+  if(net&&net.near) net.near(M[0],M[1],round?75:95,(w,k)=>{const key=w.id+':'+k;if(seen.has(key)||k>=w.pts.length-1||w.tun) return;seen.add(key);
+    const a=P(w.pts[k]),b=P(w.pts[k+1]),wd=(wid[w.cls]||4)*(round?1.2:1),d='M'+f1(a[0])+' '+f1(a[1])+'L'+f1(b[0])+' '+f1(b[1]);
+    casing+='<path d="'+d+'" stroke="#141a22" stroke-width="'+(wd+2.4).toFixed(1)+'" stroke-linecap="round"/>';
+    fill+='<path d="'+d+'" stroke="'+(/motorway|trunk/.test(w.cls||'')?'#9aa3b0':'#7d8693')+'" stroke-width="'+wd.toFixed(1)+'" stroke-linecap="round"/>';});
+  /* the route: 80 m before (60 at roundabouts) to 70 m after */
+  let path='',last=null,prev=null,first=null;
+  const k0=R.steps.indexOf(nx),nxt=k0>=0?R.steps[k0+1]:null,after=nxt?Math.max(20,Math.min(70,nxt.at-nx.at-10)):70,before=round?60:80;
+  for(let i=Math.max(0,ia-200);i<Math.min(R.pts.length,ia+200);i++){const d=R.cum[i]-R.cum[ia];if(d<-before||d>after) continue;
+    const q=P(R.pts[i]);if(!first) first=q;path+=(path?'L':'M')+f1(q[0])+' '+f1(q[1]);prev=last;last=q;}
   if(!path) return '';
-  let arrow='';if(last&&prev){const ang=Math.atan2(last[1]-prev[1],last[0]-prev[0]),L=9;
-    const a1=[last[0]-L*Math.cos(ang-0.6),last[1]-L*Math.sin(ang-0.6)],a2=[last[0]-L*Math.cos(ang+0.6),last[1]-L*Math.sin(ang+0.6)];
-    arrow='<path d="M'+f1(a1[0])+' '+f1(a1[1])+'L'+f1(last[0])+' '+f1(last[1])+'L'+f1(a2[0])+' '+f1(a2[1])+'" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';}
+  let arrow='';if(last&&prev){const ang=Math.atan2(last[1]-prev[1],last[0]-prev[0]),L=12;
+    const t=[last[0]+Math.cos(ang)*6,last[1]+Math.sin(ang)*6],a1=[t[0]-L*Math.cos(ang-0.55),t[1]-L*Math.sin(ang-0.55)],a2=[t[0]-L*Math.cos(ang+0.55),t[1]-L*Math.sin(ang+0.55)];
+    arrow='<path d="M'+f1(a1[0])+' '+f1(a1[1])+'L'+f1(t[0])+' '+f1(t[1])+'L'+f1(a2[0])+' '+f1(a2[1])+'Z" fill="#ffffff" stroke="#1d5fd0" stroke-width="1.5" stroke-linejoin="round"/>';}
+  /* your car, where the route comes in */
+  const car=first?'<g transform="translate('+f1(first[0])+' '+f1(Math.min(94,first[1]))+')"><circle r="5.5" fill="#ffffff"/><path d="M0 -3.6L3 3L0 1.6L-3 3Z" fill="#1d5fd0"/></g>':'';
   const ex=(nx.exits||'').split(';')[0];
-  const sign=ex?'<rect x="4" y="80" width="'+(10+ex.length*7)+'" height="15" rx="3" fill="#0d7a3d"/><text x="9" y="91.5" fill="#fff" font-size="10" font-weight="700" font-family="system-ui,sans-serif">'+TN.esc(ex)+'</text>':'';
-  return '<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true"><rect width="100" height="100" fill="#1b2533"/>'+roads+
-    '<path d="'+path+'" stroke="#378ADD" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+arrow+sign+'</svg>';
+  const sign=ex?'<rect x="4" y="4" width="'+(12+ex.length*7)+'" height="16" rx="3" fill="#0d7a3d" stroke="#fff" stroke-width="1"/><text x="10" y="16" fill="#fff" font-size="10.5" font-weight="700" font-family="system-ui,sans-serif">'+TN.esc(ex)+'</text>':'';
+  const rx2=round&&nx.exit?'<circle cx="88" cy="12" r="9" fill="#e8913a" stroke="#fff" stroke-width="1.2"/><text x="88" y="16" text-anchor="middle" fill="#fff" font-size="11" font-weight="800" font-family="system-ui,sans-serif">'+TN.esc(String(nx.exit))+'</text>':'';
+  return '<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true"><rect width="100" height="100" fill="#2a3a2f"/>'+casing+fill+
+    '<path d="'+path+'" stroke="#ffffff" stroke-width="10.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<path d="'+path+'" stroke="#2f8cff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+arrow+car+sign+rx2+'</svg>';
 };
 TN.Nav.prototype.go=function(){
   this.clearAlts();
