@@ -128,7 +128,9 @@ TN.Music.prototype.ui=function(){
   /* (v8, Nov 21: the player covered "End route" on some screens; v9: moving it up put it over the car, so now it first
      gets narrower to end just before the button (song title shortened), and only moves up if it would get too small) */
   setInterval(()=>{try{
-    const E=this.el;if(!E||E.style.display==='none') return;E.style.bottom='';E.style.top='';E.style.maxWidth='';
+    const E=this.el;if(!E||E.style.display==='none') return;
+    if(document.body.classList.contains('tn-l1')&&innerWidth>=760) return;   /* (the Tesla layout places it in the bottom bar itself) */
+    E.style.bottom='';E.style.top='';E.style.maxWidth='';
     const r=E.getBoundingClientRect();if(!r.width) return;
     let right=Infinity,lift=0;
     for(const id of ['tn-end','tn-ov','tn-stopbtn','tn-report']){const o=document.getElementById(id);if(!o||o===E) continue;
