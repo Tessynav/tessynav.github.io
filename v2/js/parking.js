@@ -109,13 +109,17 @@ TN.Parking.prototype.show=function(v,signs){
   this.el.querySelector('.x').onclick=()=>{this.hide();this.dismissed=this.key;};
 };
 TN.Parking.prototype.hide=function(){if(this.el) this.el.style.display='none';this.shownAt=null;};
-/* called every frame: after 20 s stopped (or right away when asked), read the signs here once */
+/* called every frame: when parked (see below), or right away when asked, read the signs here once */
 TN.Parking.prototype.update=function(dt,force){
   if(!this.on||!this.loaded) return;
   const car=this.getCar(),v=this.getSpeed();if(!car||car.x==null) return;
   if(v>2.5){this.stillT=0;if(this.shownAt) this.hide();this.dismissed=null;return;}
   this.stillT+=dt;
-  if(this.shownAt||(!force&&this.stillT<20)) return;
+  /* (Nov 22: it came at every red light. Now on its own only when you're really parked: right after arriving at your
+     destination, or stopped 2 minutes with no route running. Never while navigating. The P button still shows it any time) */
+  const arrived=TN.arrivedAt&&Date.now()-TN.arrivedAt<4*60e3;
+  const wait=arrived?4:(TN.navActive?Infinity:120);
+  if(this.shownAt||(!force&&this.stillT<wait)) return;
   const key=Math.round(car.x/10)+','+Math.round(car.z/10);if(this.dismissed===key) return;
   const signs=this.near(car),vd=this.verdict(signs,new Date());if(!vd) return;
   /* (Premium: free drivers get a small hint instead of the rules) */

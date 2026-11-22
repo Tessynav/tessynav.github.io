@@ -171,7 +171,11 @@ TN.Buses.prototype.poll=async function(cx,cz){
 };
 TN.Buses.prototype.update=function(dt,cx,cz){
   if(!this.on||!this.scene.three||typeof THREE==='undefined'){if(this.buses.size) this.clear();if(this.stops&&this.stops.size) this.clearStops();return;}
-  this.pollT-=dt;if(this.pollT<=0){this.pollT=30;this.poll(cx,cz);}
+  /* (Nov 22: the moving buses are gone: STM's positions arrive 30-60 s late, so on the road they drove through
+     intersections and cars. The stops stay, with the next buses from STM's live predictions. ?bus=live brings the
+     moving buses back for testing) */
+  const live=typeof location!=='undefined'&&/[?&]bus=live/.test(location.search);
+  if(live){this.pollT-=dt;if(this.pollT<=0){this.pollT=30;this.poll(cx,cz);}}else if(this.buses.size){for(const b of this.buses.values()) this.free(b);this.buses.clear();}
   try{this.updateStops(dt,cx,cz);}catch(e){}
   const night=(this.scene.night||0)>0.5;
   for(const B of this.buses.values()){
@@ -233,7 +237,7 @@ TN.Buses.prototype.pollTimes=async function(cx,cz){
   if(!list.length) return;this.timesBusy=true;
   try{const r=await fetch((TN.TESLA_SERVER||'https://tessynav.mznwattar.workers.dev')+'/arrivals?stops='+list.map(e=>encodeURIComponent(e[1])).join(','));
     const j=r.ok?await r.json():null;
-    if(j&&j.stops){this.times=this.times||new Map();for(const [d,id,g] of list){const T=j.stops[id]||[];this.times.set(id,T);if(this.stops.get(id)===g) this.paintStop(g.userData.mat,T);}
+    if(j&&j.stops){this.credit(true);this.times=this.times||new Map();for(const [d,id,g] of list){const T=j.stops[id]||[];this.times.set(id,T);if(this.stops.get(id)===g) this.paintStop(g.userData.mat,T);}
       if(TN.fb&&!this.timesNoted){this.timesNoted=true;TN.fb.note('bus times',{stops:list.length,with:list.filter(e=>(j.stops[e[1]]||[]).length).length});}}}
   catch(e){}finally{this.timesBusy=false;}
 };

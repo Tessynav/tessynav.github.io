@@ -1399,6 +1399,7 @@ TN.Nav.prototype.routeDist=function(x,z){
   return Math.sqrt(m);
 };
 TN.Nav.prototype.end=function(why){
+  if(why==='arrived') TN.arrivedAt=Date.now();   /* (the parking rules show right after arriving) */
   TN.navActive=false;TN.routeNear=null;TN.blink=0;this.blk=null;try{this.wx=null;this.wxSaid={};this.wxChip(null);this.bar.classList.remove('slim');}catch(e){}try{this.clearAlts();}catch(e){}this.alts=null;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
@@ -1625,7 +1626,9 @@ TN.Nav.prototype.instr=function(s){
   let t,a=arrow;
   switch(s.type){
     case 'depart':t='Head '+(s.name?'on '+s.name:'out');break;
-    case 'arrive':t=s.stop?'Arrive at your stop'+(this.stops[s.stop-1]?' \u00b7 '+this.stops[s.stop-1].name:''):'Arrive at your destination';a='flag';break;
+    /* (Nov 22: which side of the street, when the route says: "Your destination is on the right") */
+    case 'arrive':{const side=/left/.test(m||'')?' on the left':/right/.test(m||'')?' on the right':'';
+      t=s.stop?'Your stop is'+(side||' ahead')+(this.stops[s.stop-1]?' \u00b7 '+this.stops[s.stop-1].name:''):(side?'Your destination is'+side:'Arrive at your destination');a='flag';break;}
     case 'turn':case 'end of road':t='Turn '+(m||'');break;
     case 'fork':t='Keep '+(side||'straight');break;
     case 'merge':t='Merge'+(side?' '+side:'');break;
