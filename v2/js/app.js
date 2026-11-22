@@ -711,7 +711,9 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
          blended in and out gradually (Settings: glue Off / In turns / Always) */
       const glueAll=!!(TN.settings&&TN.settings.glueRoute),glueTurns=!(TN.settings&&TN.settings.glueTurns===false);
       if(nav&&nav.active&&(glueAll||glueTurns)){try{const pc=nav.place(car,track.last,Date.now(),dt);
-          if(glueAll){if(pc) car=pc;frameBody.gw=0;}
+          /* (Nov 22, trip 16:00: in the tunnel the car's own position estimate drifted up to 9 m sideways and the car
+             swung across the lanes: in a tunnel, on a route, the car stays on the route's line, moving at its speed) */
+          if(glueAll||(pc&&track.last&&track.last.dr)){if(pc) car=pc;frameBody.gw=0;}
           else{const w=pc?nav.turnWeight():0;frameBody.gw=(frameBody.gw||0)+(w-(frameBody.gw||0))*Math.min(1,dt*2.5);const k=frameBody.gw;
             if(pc&&k>0.01){const dh=((pc.hd-car.hd+540)%360)-180;
               car=Object.assign({},car,{x:car.x+(pc.x-car.x)*k,z:car.z+(pc.z-car.z)*k,y:(car.y||0)+((pc.y||0)-(car.y||0))*k,hd:(car.hd+dh*k+360)%360});}}}catch(e){}}

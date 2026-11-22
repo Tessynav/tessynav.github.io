@@ -45,8 +45,8 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
     if(!this.goodT||!trust||speed==null){this.rough={t:t,acc:acc};return this.last;}
     /* (trusted almost like a good fix for the first seconds: on a loop ramp under an overpass it follows the curve
        well, and the old 15 m made the car lag outside the loop; a little less after that, for long tunnels) */
-    acc=lost<10000?4:lost<20000?8:12;
-  }else{this.goodT=t;this.rp=null;this.rpOk=0;}
+    acc=lost<10000?4:lost<20000?8:12;this.dr=true;
+  }else{this.goodT=t;this.rp=null;this.rpOk=0;this.dr=false;}
   this.rough=null;
   if(!this.kf||t-this.kfT>5000){
     this.kf={x:{p:x,v:0,P:[[25,0],[0,25]]},z:{p:z,v:0,P:[[25,0],[0,25]]}};
@@ -87,7 +87,7 @@ TN.Track.prototype.gps=function(t,lng,lat,acc,speed,heading){
   if(hPrev!=null&&this.hd!=null&&tPrev&&t>tPrev&&v>1.5){const r=(((this.hd-hPrev+540)%360)-180)/((t-tPrev)/1000);
     this.hdRate=(this.hdRate||0)+(Math.max(-60,Math.min(60,r))-(this.hdRate||0))*0.5;}
   else if(v<=1.5) this.hdRate=0;
-  this.last={t:t,x:fx,z:fz,v:sp!=null?sp:v,acc:acc||5,rx:x,rz:z,hd:this.rev?this.hd:(heading!=null&&!isNaN(heading))?heading:null,rev:!!this.rev};
+  this.last={t:t,dr:!!this.dr,x:fx,z:fz,v:sp!=null?sp:v,acc:acc||5,rx:x,rz:z,hd:this.rev?this.hd:(heading!=null&&!isNaN(heading))?heading:null,rev:!!this.rev};
   this.match();
   return this.last;
 };
@@ -480,7 +480,7 @@ TN.Track.prototype.frame=function(now,dt){
   /* city streets without a route: the car follows the Tesla's own GPS across the road (steady and precise, about 2 m),
      kept inside its side of the street. Where the map's line for a street bends differently from the real street (short
      pieces at junctions, Nuns' Island, Outremont), riding the line drifted the car 3-4 m off and back: a zigzag. */
-  if(!TN.navActive&&!/^(motorway|trunk)/.test(w.cls||'')&&(L.acc||9)<=6&&car.gl!=null){
+  if(!TN.navActive&&!/^(motorway|trunk)/.test(w.cls||'')&&(L.acc||9)<=6&&!L.dr&&car.gl!=null){
     const lo=w.ow?-Math.max(0,W/2-1.6):0.6,hi=Math.max(lo,W/2-1.6);   /* (1.6 m from the edge: the car's whole body stays inside the edge line; 1.0 m let half a wheel ride the curb) */target=Math.max(lo,Math.min(hi,car.gl));}
   /* highways: the car keeps its line from one road piece to the next instead of re-centring on each one. Where lanes
      are added or dropped, each piece's middle shifts by a lane or two, and re-centring swung the car left and right
@@ -489,7 +489,7 @@ TN.Track.prototype.frame=function(now,dt){
   if(!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&car.lat!=null){const edge=Math.max(0,W/2-1.8),drift=Math.sign(car.lat)*Math.min(Math.abs(car.lat),0.25*dt);/* (when the car has drifted more than 2.5 m from where the precise GPS says you are, it heads back to the GPS. The
      hold above only moved the car back toward the middle at a few millimetres a second, so after the on-ramp merge onto
      the Champlain Bridge it stayed 8 m out, beside the deck, for three minutes) */
-  const far=(L.acc||9)<=6&&car.gf!=null&&Math.abs(car.gf-car.lat)>2.5;target=Math.max(-edge,Math.min(edge,far?car.gf:car.lat-drift));}   /* (and drifts back to the middle very slowly, 25 cm a second) */
+  const far=(L.acc||9)<=6&&!L.dr&&car.gf!=null&&Math.abs(car.gf-car.lat)>2.5;target=Math.max(-edge,Math.min(edge,far?car.gf:car.lat-drift));}   /* (and drifts back to the middle very slowly, 25 cm a second) */
   /* optional (Settings -> Follow my lane on wide roads, off by default): on one-way roads with 3 lanes or more, the
      car takes the lane the GPS has clearly been in, whole lanes only, changing after 2 s near another lane's centre.
      Closer to your real lane on wide highways and bridges, but it moves sideways more than the steady middle. */
@@ -497,7 +497,7 @@ TN.Track.prototype.frame=function(now,dt){
     const n=Math.max(3,Math.round(W/3.5)),lw=W/n,cen=k=>-W/2+lw*(k+0.5);
     const cand=Math.max(0,Math.min(n-1,Math.round((car.gl+W/2)/lw-0.5)));
     if(car.laneK==null||car.laneK>=n||car.laneW!==w.id&&Math.abs((car.laneN||n)-n)>0){car.laneK=cand;car.laneT=0;}
-    else if(cand!==car.laneK&&Math.abs(car.gl-cen(cand))<lw*0.4&&(L.acc||5)<10){car.laneT=(car.laneT||0)+dt;if(car.laneT>2){car.laneK=cand;car.laneT=0;}}
+    else if(cand!==car.laneK&&Math.abs(car.gl-cen(cand))<lw*0.4&&(L.acc||5)<10&&!L.dr){car.laneT=(car.laneT||0)+dt;if(car.laneT>2){car.laneK=cand;car.laneT=0;}}
     else car.laneT=0;
     car.laneW=w.id;car.laneN=n;target=Math.max(-(W/2-1.0),Math.min(W/2-1.0,cen(car.laneK)));
   }else{car.laneK=null;}
@@ -507,7 +507,7 @@ TN.Track.prototype.frame=function(now,dt){
   /* (only without a route, and only at a real split: another highway branch alongside, going the same way. With a route,
      the car stays on the blue line, which already follows the right branch: on the Champlain Bridge, following the lane
      put the car beside the line) */
-  if(car.laneK==null&&!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&L.v>12&&(L.acc||9)<=6&&Math.abs(car.gl)>W/2*0.75&&this.besideBranch(w,L)){
+  if(car.laneK==null&&!TN.navActive&&w.ow&&/^(motorway|trunk)/.test(w.cls||'')&&L.v>12&&(L.acc||9)<=6&&!L.dr&&Math.abs(car.gl)>W/2*0.75&&this.besideBranch(w,L)){
     /* (no further out than the middle of the outer lane. It used to allow 3 m past the road's edge, and on highways with a
        parallel collector road the Tesla's GPS, often a couple of metres to the right, put the car on the edge line or the
        shoulder for minutes, the A-15 and A-10 near La Prairie and Brossard) */
@@ -516,7 +516,7 @@ TN.Track.prototype.frame=function(now,dt){
      100-150 m after the lanes really part (the Taschereau exit off the A-10). When a split is coming up within 180 m
      and the precise GPS is clearly over on the side of one of its branches, the car moves over with you (up to 8 m past
      the road's edge), so it's already beside the branch when the map splits, instead of riding the middle */
-  {const sp=car.laneK==null&&!TN.navActive&&(L.acc||9)<=6&&L.v>3?this.splitAhead(w,dir,car.s,180):null;
+  {const sp=car.laneK==null&&!TN.navActive&&(L.acc||9)<=6&&!L.dr&&L.v>3?this.splitAhead(w,dir,car.s,180):null;
    car.gf=car.gf==null?gl:car.gf+(gl-car.gf)*(1-Math.exp(-dt/0.5));
    if(sp&&sp.has(Math.sign(car.gf))&&Math.abs(car.gf)>Math.max(2,W/4)){const lim=W/2+8;target=Math.sign(car.gf)*Math.min(Math.abs(car.gf),lim);}}
   /* a ramp joining a wider highway just ahead (80 m): the car moves over with you as you merge, following the precise
