@@ -1,4 +1,4 @@
-/* MapKoon v2 — music.js (v8: never covers End route; v7: the song shows up faster; v6: the key comes from the phone, nothing to type in the car; v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
+/* MapKoon v2 — music.js (v9: never covers End route or the car; v7: the song shows up faster; v6: the key comes from the phone, nothing to type in the car; v5: "Use my own Spotify key": a 2-screen guide with a QR code to a help page; the key stays in this browser)
    A small music card beside the speed: the song playing on Spotify, with previous / play-pause / next. Tap the song
    to open the music panel: search, your playlists, recently played; tap a result and it plays on the car's Spotify
    (Spotify Connect). Login once with Spotify (PKCE, no secret anywhere). Spotify's free Web API: costs nothing,
@@ -125,14 +125,17 @@ TN.Music.prototype.ui=function(){
   pan.querySelector('.ky').onclick=()=>{this.close();this.choose();};
   pan.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{this.detail=null;this.setTab(b.dataset.t);this.list(b.dataset.t);});
   const m=document.createElement('div');m.id='tn-mmsg';document.body.appendChild(m);this.m=m;
-  /* (v8, Nov 21: the player covered "End route" on some screens. Every second it checks the buttons and panels at the
-     bottom of the screen; if it touches one, it moves up above it, and back down once it's clear) */
+  /* (v8, Nov 21: the player covered "End route" on some screens; v9: moving it up put it over the car, so now it first
+     gets narrower to end just before the button (song title shortened), and only moves up if it would get too small) */
   setInterval(()=>{try{
-    const E=this.el;if(!E||E.style.display==='none') return;E.style.bottom='';E.style.top='';
+    const E=this.el;if(!E||E.style.display==='none') return;E.style.bottom='';E.style.top='';E.style.maxWidth='';
     const r=E.getBoundingClientRect();if(!r.width) return;
-    let lift=0;for(const id of ['tn-end','tn-ov','tn-stopbtn','tn-report']){const o=document.getElementById(id);if(!o||o===E) continue;
+    let right=Infinity,lift=0;
+    for(const id of ['tn-end','tn-ov','tn-stopbtn','tn-report']){const o=document.getElementById(id);if(!o||o===E) continue;
       const cs=getComputedStyle(o);if(cs.display==='none'||cs.visibility==='hidden') continue;const q=o.getBoundingClientRect();
-      if(q.width&&q.left<r.right&&q.right>r.left&&q.top<r.bottom&&q.bottom>r.top&&q.top>innerHeight*0.45) lift=Math.max(lift,innerHeight-q.top+10);}
+      if(q.width&&q.left<r.right&&q.right>r.left&&q.top<r.bottom&&q.bottom>r.top&&q.top>innerHeight*0.45){
+        if(q.left>r.left+240) right=Math.min(right,q.left-12);else lift=Math.max(lift,innerHeight-q.top+10);}}
+    if(right<Infinity){const pad=r.width-E.clientWidth+20;E.style.maxWidth=Math.max(200,right-r.left-pad)+'px';}
     if(lift&&r.top>innerHeight*0.4){E.style.top='auto';E.style.bottom=lift+'px';}
   }catch(e){}},1000);
   this.render();

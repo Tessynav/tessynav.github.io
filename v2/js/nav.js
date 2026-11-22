@@ -1412,11 +1412,13 @@ TN.Nav.prototype.place=function(base,L,now,dt){
     this.latD=(far&&Math.abs(nx-lo)<0.05)?null:nx;}
   else this.latD=null;
   let y=base.y!=null?base.y:mi(3);
-  /* (Nov 21, trip 17:09: on climbs and descents the car sat about 0.2 m under (or over) the blue line: its height
-     was read about 2 m behind where it is drawn on the route, so it sank into the slope going up (bridges and ramps at
-     27:20, 31:15, 44:20). On the route's road it now takes the route's height at its own spot: within 0.6 m it is the
-     same road; higher by up to 4 m is a bridge deck it sits on, as before) */
-  {const ry=mi(3);if((Math.abs(ry-y)<0.6)||(ry-y>0.15&&ry-y<4)) y=ry;}
+  {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
+  /* (Nov 21, trips 17:09, 19:10 and 22:38: on climbs the blue line floated 0.15-0.2 m too high over the road under the
+     car, and on descents too low, so on bridges and ramps the car looked sunk under the line. The line's heights are
+     read a couple of metres off along the slope. The whole line is now shifted up or down by exactly that difference
+     at the car (smoothly), so near the car it lies on the road the car is on) */
+  if(this.mesh){const dd=base.y!=null?base.y-mi(3):0,want=Math.abs(dd)<0.6?dd:0;
+    this.lineDy=(this.lineDy||0)+(want-(this.lineDy||0))*Math.min(1,dt*3);this.mesh.position.y=this.lineDy;}
   /* (Nov 19, trip 15:03 at 16:33 and 17:09: in city turns the car is pulled onto this point (the turn blend), which sat
      on the route's centre, while the blue line is drawn where the car is across the road (latD): car in one lane, line
      in the next for 2-3 s. The point now uses the line's own place across the road, so the car is pulled onto the line) */
@@ -1448,7 +1450,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      the road the car tracks on (trk), the car as shown (car, smoothed) and the highest road piece within 3 m (top)) */
   this.lhT=(this.lhT||0)+dt;if(this.lhT>=1&&this.CL&&this.CL.length>1){this.lhT=0;
     try{const C=this.CL;let k=0;while(k<C.length-2&&C[k+1][3]<this.ps) k++;const A=C[k],B=C[k+1],g2=B[3]-A[3]||1,tt=Math.max(0,Math.min(1,(this.ps-A[3])/g2));
-      if(this.ps>=A[3]-5&&this.ps<=B[3]+5){const ly=A[1]+(B[1]-A[1])*tt,cy=TN._ys!=null?TN._ys:y,gap=ly-cy;
+      if(this.ps>=A[3]-5&&this.ps<=B[3]+5){const ly=A[1]+(B[1]-A[1])*tt,cy=TN._ys!=null?TN._ys:y,gap=ly+(this.lineDy||0)-cy;
         if(Math.abs(gap-0.22)>0.1){let top=-1e9,nw=0;this.api.net.near(ox,oz,3,(w,kk)=>{if(w.tun) return;const r=TN.seg(w,kk,ox,oz);if(r.d>TN.width(w)/2) return;nw++;
             const h=w.hs?w.hs[kk]+(w.hs[kk+1]-w.hs[kk])*r.u:(w.br?w.H:0);if(h>top) top=h;});
           const ll=TN.fromLocal(ox,oz);
