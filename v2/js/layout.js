@@ -46,6 +46,8 @@ TN.Layout=function(){
   'body.tn-l1 #tn-compass.tn-incol b{bottom:2px!important;font-size:10px!important;color:var(--tn-sub)!important;text-shadow:none!important}body.tn-l1 #tn-compass.tn-incol svg{width:34px;height:34px;margin-top:-8px}'+
   'body.tn-l1 #tn-report.tn-incol{font-size:0!important;color:var(--tn-joke)!important;justify-content:center!important}body.tn-l1 #tn-report.tn-incol svg,body.tn-l1 #tn-report.tn-incol img{width:30px;height:30px}'+
   'body.tn-l1 :is(#tn-updbar,#tn-updpill){bottom:100px!important}'+
+  'body.tn-l1t1 #tn-mus img,body.tn-l1t1 #tn-mus .art,body.tn-l1t1 #tn-mus .t{display:none!important}body.tn-l1t1 #tn-beta .d{display:none}'+
+  'body.tn-l1t2 #tn-mus .prev,body.tn-l1t2 #tn-mus [aria-label=Previous]{display:none!important}'+
   'body.tn-l1 .maplibregl-ctrl-bottom-right,body.tn-l1 .maplibregl-ctrl-bottom-left{bottom:88px!important}'+   /* (the map credits stay visible, above the bar) */
   '}'+
   'body.tn-film.tnh-ui :is(#tn-bbar,#tn-rcol,#tn-beta){visibility:hidden!important}';
@@ -64,6 +66,10 @@ TN.Layout.prototype.tick=function(){
   try{const e=document.querySelector('#tn-bar .eta'),d=document.querySelector('#tn-bar .dst');
     const h=(e?e.innerHTML:'')+(d&&d.textContent?'<div class="d">'+TN.esc(d.textContent)+'</div>':'');if(h!==this.lastEta){this.lastEta=h;this.beta.innerHTML=h;}}catch(e){}
   /* the right end of the bar: the arrival time sits just left of "Faster?" and "End", the music ends before it */
+  /* the speed limit right after the speed (76 km/h is wider than 0 km/h), the music after them */
+  if(wide){const k1=window.TN_UIK||1,sp=document.getElementById('speed'),lim=document.getElementById('tn-limit'),mus=document.getElementById('tn-mus');
+    let x=sp?sp.getBoundingClientRect().right/k1+10:112;if(lim){lim.style.setProperty('left',x+'px','important');if(getComputedStyle(lim).display!=='none') x=lim.getBoundingClientRect().right/k1;}
+    if(mus) mus.style.setProperty('left',(x+26)+'px','important');}
   /* "Faster?" just left of "End" */
   if(wide){const en=document.getElementById('tn-end'),al=document.getElementById('tn-alt'),k0=window.TN_UIK||1;
     if(en&&al){const r=en.getBoundingClientRect(),on=getComputedStyle(en).display!=='none'&&r.width;al.style.setProperty('right',(on?(innerWidth-r.left)/k0+10:16)+'px','important');}}
@@ -71,6 +77,11 @@ TN.Layout.prototype.tick=function(){
     const k=window.TN_UIK||1;this.beta.style.right=((innerWidth-minL)/k+18)+'px';
     const bl=this.beta.getBoundingClientRect(),mus=document.getElementById('tn-mus');
     if(mus) mus.style.setProperty('max-width',Math.max(160,((document.body.classList.contains('tn-routing')&&bl.width?bl.left:innerWidth-24)/k)-196-44)+'px','important');}
+  /* not enough room (the car's browser beside the Tesla's own screen): the album cover, then the "previous" button and the
+     destination name are left out, so the music never covers the arrival time */
+  if(wide){const mus=document.getElementById('tn-mus'),B=document.body;
+    const over=()=>{if(!mus||!B.classList.contains('tn-routing')) return false;const a=mus.getBoundingClientRect(),b=this.beta.getBoundingClientRect();return a.width&&b.width&&a.right>b.left-8;};
+    B.classList.remove('tn-l1t1','tn-l1t2');if(over()){B.classList.add('tn-l1t1');if(over()) B.classList.add('tn-l1t2');}}
   let y=84+6,n=0;
   for(const [id,lbl] of TN.Layout.COL){const b=document.getElementById(id);if(!b) continue;
     const cs=getComputedStyle(b),shown=cs.display!=='none'&&cs.visibility!=='hidden'&&!b.hidden;

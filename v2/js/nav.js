@@ -790,7 +790,10 @@ TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
     const m=nx.mod||'',round=/roundabout|rotary/.test(nx.type);let bend=0;try{bend=this.arBend(nx.at,round);}catch(e){bend=/left/.test(m)?-90:90;}
     /* (Nov 22, trip 08:32: a roundabout's straight exit showed right arrows: Mapbox said "slight right". The way to go
        now comes from the route's real shape: under 30° (45° at roundabouts) = straight ahead (a column of up arrows), else left or right) */
-    this.arUp=/uturn/.test(m)?false:Math.abs(bend)<(round?45:30);   /* (roundabout exits are about 0°, ±90°: wider margin) */this.arDir=/uturn/.test(m)?1:(bend<0?1:-1);
+    /* (trip 10:25: ramps and forks bend only a little at their start, so they showed "straight ahead" arrows shooting up
+       while the voice said "keep left": the route's shape decides only at roundabouts; elsewhere the turn's own side) */
+    if(round){this.arUp=Math.abs(bend)<45;this.arDir=bend<0?1:-1;}
+    else{this.arUp=false;this.arDir=/left|uturn/.test(m)?1:-1;}
     const mat=this.ar.material;
     if(this.arUp){if(mat.map!==this.arTexUp()){mat.map=this.arTexUp();mat.needsUpdate=true;}this.ar.geometry.dispose();this.ar.geometry=new THREE.PlaneGeometry(3.5,14);}
     else{if(mat.map!==this.arTex()){mat.map=this.arTex();mat.needsUpdate=true;}this.ar.geometry.dispose();this.ar.geometry=new THREE.PlaneGeometry(14,3.5);
@@ -1685,9 +1688,19 @@ TN.Nav.prototype.update=function(dt){
   /* where the car is along the route: from the real GPS position when there is one (the matched car can
      briefly sit on a wrong street), searching a little ahead of the last place */
   const G=this.api.gps?this.api.gps():null,px=G&&G.x!=null?G.x:c.x,pz=G&&G.x!=null?G.z:c.z;
-  let bi=this.idx,bd=1e18;
-  for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length,this.idx+400);i++){const d=(R.pts[i][0]-px)**2+(R.pts[i][1]-pz)**2;if(d<bd){bd=d;bi=i;}}
-  const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;this.lastOff=off;
+  /* (Nov 22, trip 10:25 at 8:10: in a cloverleaf the route passes again 40 m away, 430 m further on; measured to the
+     route's corner points only, the car on a long straight stretch looked closer to that later loop: "off the route by
+     35 m", a new route for nothing. Now: the distance to the route's line itself, and a jump far ahead must be much
+     closer to count) */
+  let bi=this.idx,bd=1e18,bu=0,bs=null;const s0=R.cum[this.idx]||0;
+  for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length-1,this.idx+400);i++){
+    const a0=R.pts[i],b0=R.pts[i+1],dx=b0[0]-a0[0],dz=b0[1]-a0[1],l2=dx*dx+dz*dz||1e-9;
+    const u=Math.max(0,Math.min(1,((px-a0[0])*dx+(pz-a0[1])*dz)/l2)),qx=a0[0]+dx*u,qz=a0[1]+dz*u;
+    let d=(qx-px)**2+(qz-pz)**2;const sc=R.cum[i]+u*Math.sqrt(l2),ahead=sc-s0-80;
+    const score=ahead>0?d+(ahead*0.5)**2:d;
+    if(bs===null||score<bs){bs=score;bd=d;bi=i;bu=u;}}
+  if(R.pts.length<2){bd=(R.pts[0][0]-px)**2+(R.pts[0][1]-pz)**2;}
+  const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi]+bu*((R.cum[bi+1]||R.cum[bi])-R.cum[bi]),left=R.L-s;this.lastOff=off;
   this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,glued:!!(TN.settings&&TN.settings.glueRoute),drawn:this.drawn});}
   const lnow=this.latS!=null?this.latS:this.latD,laneMoved=Math.abs((lnow==null?0:lnow)-(this.drawLat==null?0:this.drawLat))>(this.latS!=null?0.35:0.5);
   if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||(this.api.net.ver+':'+(this.api.net.hVer||0))!==this.drawVer||laneMoved){this.draw(Math.max(0,bi-4));this.drawLat=this.latS!=null?this.latS:this.latD;}
