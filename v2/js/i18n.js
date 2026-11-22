@@ -54,7 +54,7 @@ const D={
   /* settings */
   'Standard':'Standard','Navigation':'Navigation','no tolls':'sans péages','no highways':'sans autoroutes','no ferries':'sans traversiers','no unpaved':'sans routes non pavées',
   'Voice instructions':'Instructions vocales','Spoken turns, arrival and alerts':'Virages, arrivée et alertes à voix haute',
-  'Turn arrows on the road':'Flèches de virage sur la route','White arrows on the route line before your next turn':'Flèches blanches sur l’itinéraire avant le prochain virage',
+  'Turn arrows on the road':'Flèches de virage sur la route','Floating turn arrows':'Flèches de virage flottantes','Glowing arrows in the air at your next turn, seen through buildings, from 450 m before it':'Des flèches lumineuses dans les airs au prochain virage, visibles à travers les bâtiments, dès 450 m avant','White arrows on the route line before your next turn':'Flèches blanches sur l’itinéraire avant le prochain virage',
   'Bird’s-eye view at exits':'Vue d’en haut aux sorties','The camera rises before exits (instead of the drawing in the bar)':'La caméra monte avant les sorties (au lieu du dessin dans la barre)',
   'ROUTE PREFERENCES':'PRÉFÉRENCES D’ITINÉRAIRE','For your next route':'Pour votre prochain itinéraire','Avoid toll roads':'Éviter les péages','Avoid highways':'Éviter les autoroutes',
   'Avoid ferries':'Éviter les traversiers','Avoid unpaved roads':'Éviter les routes non pavées','GUIDANCE':'GUIDAGE',

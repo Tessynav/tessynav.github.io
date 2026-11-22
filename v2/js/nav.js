@@ -741,6 +741,47 @@ TN.Nav.prototype.draw=function(from){
     if(bad.length) this.note('line under road',{checked:chk,places:bad});}catch(e){}
   this.drawArrows(CL);
 };
+/* (Nov 22) the floating turn arrows, like Tesla's new screen: a row of glowing cyan chevrons standing in the air on
+   the far side of your next turn, facing you and pointing the way to go, gently flowing that way. From about 450 m
+   before the turn, seen through buildings (so a turn hidden behind a block shows early), larger when far so they stay
+   visible, fading away in the last 20-40 m where the arrows on the road take over.
+   Settings → Navigation → Floating turn arrows; ?ar=0 turns them off */
+TN.Nav.prototype.arTex=function(){
+  if(this.arT) return this.arT;
+  const c=document.createElement('canvas');c.width=640;c.height=160;const x=c.getContext('2d');
+  /* 5 chevrons pointing left, evenly spaced so the texture repeats seamlessly when it scrolls */
+  const n=5,sp=640/n;x.lineCap='round';x.lineJoin='round';
+  for(const [w,col,blur] of [[30,'rgba(40,200,255,0.55)',26],[16,'rgba(120,235,255,0.95)',10],[6,'#eaffff',0]]){
+    x.strokeStyle=col;x.lineWidth=w;x.shadowColor='rgba(40,210,255,0.9)';x.shadowBlur=blur;
+    for(let i=0;i<n;i++){const cx=i*sp+sp*0.5;x.beginPath();x.moveTo(cx+28,26);x.lineTo(cx-30,80);x.lineTo(cx+28,134);x.stroke();}}
+  const t=new THREE.CanvasTexture(c);t.wrapS=THREE.RepeatWrapping;this.arT=t;return t;
+};
+TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
+  const S=this.api.scene,R=this.route;if(!S||!S.three||typeof THREE==='undefined'||typeof document==='undefined') return;
+  const off=(TN.settings&&TN.settings.arTurn===false)||(typeof location!=='undefined'&&/[?&]ar=0/.test(location.search));
+  const real=nx&&nx.mod&&!/straight/.test(nx.mod)&&!['depart','arrive','new name','continue','notification'].includes(nx.type);
+  if(off||!real||dNext>450||dNext<18||!R||!R.pts||!R.cum){if(this.ar) this.ar.visible=false;return;}
+  if(!this.ar){
+    const mat=new THREE.MeshBasicMaterial({map:this.arTex(),transparent:true,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,side:THREE.DoubleSide});
+    this.ar=new THREE.Mesh(new THREE.PlaneGeometry(14,3.5),mat);this.ar.renderOrder=20;this.ar.frustumCulled=false;S.three.scene.add(this.ar);}
+  /* where the turn is: a few metres past its point, facing the way you arrive, pointing to the side you turn */
+  if(this.arAt!==nx.at){this.arAt=nx.at;let lo=0,hi=R.cum.length-1;while(hi-lo>1){const md=(lo+hi)>>1;if(R.cum[md]<=nx.at) lo=md;else hi=md;}
+    let b0=lo;while(b0>0&&R.cum[lo]-R.cum[b0]<12) b0--;
+    let fx=R.pts[lo][0]-R.pts[b0][0],fz=R.pts[lo][1]-R.pts[b0][1];const fl=Math.hypot(fx,fz)||1;fx/=fl;fz/=fl;
+    const h=R.sm&&R.sm[lo]?R.sm[lo][3]||0:0;
+    this.arPos=[R.pts[lo][0]+fx*6,h,R.pts[lo][1]+fz*6];this.arRot=Math.atan2(-fx,-fz);
+    const m=nx.mod||'';this.arDir=/left|uturn/.test(m)?1:-1;   /* the texture points left; mirrored for right */
+    this.ar.material.map.repeat.x=this.arDir;this.ar.material.map.offset.x=this.arDir>0?0:1;}
+  const sc=Math.max(1,Math.min(3.5,dNext/60));
+  this.ar.scale.set(sc,sc,1);this.ar.rotation.set(0,this.arRot,0);
+  this.ar.position.set(this.arPos[0],this.arPos[1]+1.4+1.75*sc,this.arPos[2]);
+  /* flowing toward the turn */
+  const now=performance.now(),dt=Math.min(0.1,((now-(this.arLast||now))/1000));this.arLast=now;
+  this.ar.material.map.offset.x+=dt*0.35;
+  const fadeIn=Math.min(1,(450-dNext)/60),fadeOut=Math.min(1,(dNext-18)/22);
+  this.ar.material.opacity=Math.max(0,Math.min(fadeIn,fadeOut));this.ar.visible=this.ar.material.opacity>0.02;
+  if(this.arNoted!==nx.at&&dNext<300){this.arNoted=nx.at;try{this.note('ar sign',{mod:nx.mod,type:nx.type,d:Math.round(dNext)});}catch(e){}}
+};
 /* turn arrows painted on the route line: three chevrons before your next turn, and a bent arrow at the turn whose stem
    follows the route's own curve through the intersection (so it bends the way you'll go) */
 TN.Nav.prototype.drawArrows=function(CL){
@@ -1330,6 +1371,7 @@ TN.Nav.prototype.end=function(why){
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   if(this.arrows){this.api.scene.three.scene.remove(this.arrows);this.arrows.geometry.dispose();this.arrows=null;}
+  if(this.ar) this.ar.visible=false;
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);
 };
 /* ---------- the car on the route (like Google Maps, Waze, Codriver) ----------
@@ -1668,6 +1710,7 @@ TN.Nav.prototype.update=function(dt){
      if(dNext<1200&&this.rkNote!==nx.at){this.rkNote=nx.at;this.note('next turn',{type:nx.type,mod:nx.mod,exit:nx.exits||'',dest:nx.dest||'',d:Math.round(dNext),theme:th||'rocco'});}
      if(on!==!!this.rkOn){this.rkOn=on;this.note('rocco',{on:on});}
      const bub=rk.querySelector('.bub');if(bub){const off=!on||Date.now()-(this.rkT||0)>5000;if(off!==bub.classList.contains('off')) bub.classList.toggle('off',off);}}}
+  try{this.arTurn(nx,dNext,s);}catch(e){}
   /* lane arrows for the next turn (where the directions include lanes), from 1 km before it */
   {const le=this.bar.querySelector('.lanes');let html='';
    if(nx.lanes&&nx.lanes.length&&dNext<1000){
