@@ -756,10 +756,27 @@ TN.Nav.prototype.arTex=function(){
     for(let i=0;i<n;i++){const cx=i*sp+sp*0.5;x.beginPath();x.moveTo(cx+28,26);x.lineTo(cx-30,80);x.lineTo(cx+28,134);x.stroke();}}
   const t=new THREE.CanvasTexture(c);t.wrapS=THREE.RepeatWrapping;this.arT=t;return t;
 };
+/* (straight on: a roundabout's 2nd exit, a slight bend) a column of chevrons pointing up/ahead */
+TN.Nav.prototype.arTexUp=function(){
+  if(this.arTU) return this.arTU;
+  const c=document.createElement('canvas');c.width=160;c.height=640;const x=c.getContext('2d');
+  const n=5,sp=640/n;x.lineCap='round';x.lineJoin='round';
+  for(const [w,col,blur] of [[30,'rgba(40,200,255,0.55)',26],[16,'rgba(120,235,255,0.95)',10],[6,'#eaffff',0]]){
+    x.strokeStyle=col;x.lineWidth=w;x.shadowColor='rgba(40,210,255,0.9)';x.shadowBlur=blur;
+    for(let i=0;i<n;i++){const cy=i*sp+sp*0.5;x.beginPath();x.moveTo(26,cy+28);x.lineTo(80,cy-30);x.lineTo(134,cy+28);x.stroke();}}
+  const t=new THREE.CanvasTexture(c);t.wrapT=THREE.RepeatWrapping;this.arTU=t;return t;
+};
+/* the real direction of a turn, from the route's own shape: the heading 25 m before it against the heading after it
+   (after a roundabout's exit: 60 m on). Positive = right. Mapbox calls a roundabout's straight exit "slight right" */
+TN.Nav.prototype.arBend=function(at,round){
+  const R=this.route,C=R.cum,P=R.pts,idx=d=>{let lo=0,hi=C.length-1;d=Math.max(0,Math.min(C[hi],d));while(hi-lo>1){const md=(lo+hi)>>1;if(C[md]<=d) lo=md;else hi=md;}return lo;};
+  const hd=(d0,d1)=>{const a=P[idx(d0)],b=P[Math.max(idx(d0)+1,idx(d1))]||a;return Math.atan2(b[0]-a[0],-(b[1]-a[1]))*180/Math.PI;};
+  const h0=hd(at-25,at),k=round?60:15,h1=hd(at+k,at+k+20);return ((h1-h0+540)%360)-180;
+};
 TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
   const S=this.api.scene,R=this.route;if(!S||!S.three||typeof THREE==='undefined'||typeof document==='undefined') return;
   const off=(TN.settings&&TN.settings.arTurn===false)||(typeof location!=='undefined'&&/[?&]ar=0/.test(location.search));
-  const real=nx&&nx.mod&&!/straight/.test(nx.mod)&&!['depart','arrive','new name','continue','notification'].includes(nx.type);
+  const real=nx&&nx.mod&&(!/straight/.test(nx.mod)||/roundabout|rotary/.test(nx.type))&&!['depart','arrive','new name','continue','notification'].includes(nx.type);
   if(off||!real||dNext>450||dNext<18||!R||!R.pts||!R.cum){if(this.ar) this.ar.visible=false;return;}
   if(!this.ar){
     const mat=new THREE.MeshBasicMaterial({map:this.arTex(),transparent:true,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,side:THREE.DoubleSide});
@@ -770,14 +787,21 @@ TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
     let fx=R.pts[lo][0]-R.pts[b0][0],fz=R.pts[lo][1]-R.pts[b0][1];const fl=Math.hypot(fx,fz)||1;fx/=fl;fz/=fl;
     const h=R.sm&&R.sm[lo]?R.sm[lo][3]||0:0;
     this.arPos=[R.pts[lo][0]+fx*6,h,R.pts[lo][1]+fz*6];this.arRot=Math.atan2(-fx,-fz);
-    const m=nx.mod||'';this.arDir=/left|uturn/.test(m)?1:-1;   /* the texture points left; mirrored for right */
-    this.ar.material.map.repeat.x=this.arDir;this.ar.material.map.offset.x=this.arDir>0?0:1;}
+    const m=nx.mod||'',round=/roundabout|rotary/.test(nx.type);let bend=0;try{bend=this.arBend(nx.at,round);}catch(e){bend=/left/.test(m)?-90:90;}
+    /* (Nov 22, trip 08:32: a roundabout's straight exit showed right arrows: Mapbox said "slight right". The way to go
+       now comes from the route's real shape: under 30° (45° at roundabouts) = straight ahead (a column of up arrows), else left or right) */
+    this.arUp=/uturn/.test(m)?false:Math.abs(bend)<(round?45:30);   /* (roundabout exits are about 0°, ±90°: wider margin) */this.arDir=/uturn/.test(m)?1:(bend<0?1:-1);
+    const mat=this.ar.material;
+    if(this.arUp){if(mat.map!==this.arTexUp()){mat.map=this.arTexUp();mat.needsUpdate=true;}this.ar.geometry.dispose();this.ar.geometry=new THREE.PlaneGeometry(3.5,14);}
+    else{if(mat.map!==this.arTex()){mat.map=this.arTex();mat.needsUpdate=true;}this.ar.geometry.dispose();this.ar.geometry=new THREE.PlaneGeometry(14,3.5);
+      mat.map.repeat.x=this.arDir;mat.map.offset.x=this.arDir>0?0:1;}
+    try{this.note('ar dir',{mod:m,type:nx.type,bend:Math.round(bend),show:this.arUp?'ahead':this.arDir>0?'left':'right'});}catch(e){}}
   const sc=Math.max(1,Math.min(3.5,dNext/60));
   this.ar.scale.set(sc,sc,1);this.ar.rotation.set(0,this.arRot,0);
-  this.ar.position.set(this.arPos[0],this.arPos[1]+1.4+1.75*sc,this.arPos[2]);
+  this.ar.position.set(this.arPos[0],this.arPos[1]+1.4+(this.arUp?7:1.75)*sc,this.arPos[2]);
   /* flowing toward the turn */
   const now=performance.now(),dt=Math.min(0.1,((now-(this.arLast||now))/1000));this.arLast=now;
-  this.ar.material.map.offset.x+=dt*0.35;
+  if(this.arUp) this.ar.material.map.offset.y-=dt*0.35;else this.ar.material.map.offset.x+=dt*0.35;
   const fadeIn=Math.min(1,(450-dNext)/60),fadeOut=Math.min(1,(dNext-18)/22);
   this.ar.material.opacity=Math.max(0,Math.min(fadeIn,fadeOut));this.ar.visible=this.ar.material.opacity>0.02;
   if(this.arNoted!==nx.at&&dNext<300){this.arNoted=nx.at;try{this.note('ar sign',{mod:nx.mod,type:nx.type,d:Math.round(dNext)});}catch(e){}}
