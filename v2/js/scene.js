@@ -453,6 +453,16 @@ TN.Scene.prototype.styleMap=function(){
       filter:['match',['get','class'],['residential','commercial','industrial','retail','garages','railway'],true,false],
       paint:{'fill-color':TN.seasonC(c),'fill-opacity':['interpolate',['linear'],['zoom'],12,0,13,1],'fill-antialias':false}},before);
     this.dayPaint.push(['tn-city','fill-color',TN.seasonC(c),TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);}}catch(e){}
+  /* (Nov 21, a test: real aerial photos on the ground instead of the painted grass and city ground, from Mapbox
+     satellite. Only with ?sat=1 in the address for now; roads, buildings, trees and the car stay MapKoon's own) */
+  try{if(typeof location!=='undefined'&&/[?&]sat=1/.test(location.search)&&TN.MBX&&!map.getLayer('tn-sat')){
+    map.addSource('tn-sat',{type:'raster',tileSize:256,maxzoom:19,tiles:['https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg80?access_token='+TN.MBX]});
+    const L=map.getStyle().layers,first=L.find(l=>l.type!=='background');
+    map.addLayer({id:'tn-sat',type:'raster',source:'tn-sat',paint:{'raster-opacity':1,'raster-saturation':-0.15,'raster-contrast':0.05}},first&&first.id);
+    /* the photos sit on top of the painted ground, under everything else */
+    const keep=new Set(['tn-sat','tn-night','tn-buildings','tn-traffic','tn-route','tn-faster']);
+    for(const l of map.getStyle().layers){if(keep.has(l.id)||l.type==='background') continue;if(l.type==='fill'||l.type==='line'&&/water|landuse|landcover|park/.test(l.id)) try{map.setLayoutProperty(l.id,'visibility','none');}catch(e){}}
+    this.sat=true;}}catch(e){}
   this.lastNt=null;if(this.wxNt!=null) this.applyGround(this.wxNt);
   if(!map.getLayer('tn-buildings')){
     map.addLayer({id:'tn-buildings',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,
