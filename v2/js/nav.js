@@ -76,6 +76,8 @@ TN.Nav.prototype.build=function(){
 
    '#tn-mute{right:16px;top:76px;width:50px;height:50px;padding:0;border:0;display:none;align-items:center;justify-content:center;cursor:pointer}body.tn-routing #tn-mute{display:flex}'+
    '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-joke)}body.tn-routing #tn-stopbtn{display:none}'+
+   '#tn-alt{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 18px;font:600 16px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-text)}body.tn-routing #tn-alt{display:block}'+
+   '@media (max-width:700px){#tn-alt{right:auto;left:16px;bottom:160px}}'+
    'body.tn-routing #trips{display:none!important}'+   /* (Record stays available while navigating, so a drive can be recorded after starting the route) */
    'body.tn-routing.tn-addstop #tn-search{display:flex}body.tn-routing.tn-addstop #tn-bar{display:none!important}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:var(--tn-sub)}'+
@@ -93,6 +95,8 @@ TN.Nav.prototype.build=function(){
   {const tt=this.bar.querySelector('.t');if(tt){tt.style.cursor='pointer';tt.onclick=ev=>{ev.stopPropagation();if(this.route) this.details();};}}
   this.endBtn=el('tn-end','','End route','button');
   this.stopBtn=el('tn-stopbtn','','+ Stop','button');this.stopBtn.onclick=()=>this.addStop();
+  /* (Nov 21: ask for another way yourself, any time on a route, e.g. stuck in a jam) */
+  this.altBtn=el('tn-alt','',TN.LANG==='fr'?'\u{1F504} Plus rapide ?':'\u{1F504} Faster way?','button');this.altBtn.onclick=ev=>{ev&&ev.stopPropagation&&ev.stopPropagation();this.altsNow();};
   this.muteBtn=el('tn-mute','','','button');
   const muteDraw=()=>{const on=!(TN.settings&&TN.settings.voice===false);this.muteBtn.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#e8f1fa"/>'+
     (on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="#ff8a80" stroke-width="2.2" stroke-linecap="round"/>')+'</svg>';};
@@ -1010,8 +1014,55 @@ TN.Nav.prototype.fasterCheck=async function(){
     if(save>=180&&off/Math.max(1,tot)>0.15) this.fasterOffer(rt,save);}
   catch(e){}finally{this.fasterBusy=false;}
 };
+TN.navPanelCss=function(){if(typeof document==='undefined'||document.getElementById('tn-panelcss')) return;
+  const st=document.createElement('style');st.id='tn-panelcss';st.textContent='#tn-jam,#tn-faster{position:absolute;left:16px;bottom:120px;z-index:7;max-width:min(430px,calc(100vw - 32px));background:rgb(var(--tn-panel-rgb,24 26 30) / .95);color:var(--tn-text,#fff);border-radius:16px;padding:12px 14px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.3);border-left:5px solid #d93025}#tn-faster{border-left-color:#1e9e4a}#tn-jam .bt,#tn-faster .bt{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}#tn-jam button,#tn-faster button{font:600 14px system-ui;padding:8px 16px;border-radius:10px;border:0;cursor:pointer}#tn-faster .bar{height:4px;border-radius:2px;background:#2f6fe4;margin-top:8px;transition:width linear}#tn-faster .alt{display:flex;align-items:center;gap:10px;margin-top:8px}#tn-faster .alt .w{flex:1;min-width:0}#tn-faster .alt .w small{opacity:.75}#tn-faster .sw{width:14px;height:14px;border-radius:50%;flex:none}';
+  document.head.appendChild(st);};
+/* ---- (Nov 21) "Faster way?": the other ways from here right now, with live traffic: each with its time and how
+   it compares to yours, on the map in colour; tap one to take it, or Stay. Rocco says the answer ---- */
+TN.ALTCOL=['#1e9e4a','#e08a1e'];
+TN.Nav.prototype.altsNow=async function(){
+  if(!this.active||!this.dest||this.altBusy||typeof document==='undefined') return;const fr=TN.LANG==='fr';
+  if(TN.isPro&&!TN.isPro()){try{TN.proHint('faster',fr?'\u26a1 Trajets alternatifs : Premium':'\u26a1 Other routes: Premium');}catch(e){}return;}
+  TN.navPanelCss();let el=document.getElementById('tn-faster');if(!el){el=document.createElement('div');el.id='tn-faster';el.className='notr';document.body.appendChild(el);}
+  clearTimeout(this.offerT);el.innerHTML='<b>'+(fr?'Je cherche d\u2019autres chemins\u2026':'Looking for other ways\u2026')+'</b>';el.style.display='block';
+  this.altBusy=true;
+  try{const G=this.api.gps&&this.api.gps();if(!G||G.x==null) throw new Error('no gps');const from=TN.fromLocal(G.x,G.z);
+    const keep=this.alts;this.alts=null;this.wantAlts=true;
+    const rt=await this.fetchRouteOnce(from,TN.routeTo(this.dest));const all=(this.alts||(rt?[rt]:[]));this.alts=keep;this.wantAlts=false;
+    if(!this.active) return;
+    const mine=this.remainS||0,R=this.route;
+    /* keep only ways that really go elsewhere (a good part more than 150 m from your route) */
+    const other=r=>{const C=r.geometry.coordinates;let off=0,tot=0;for(let i=0;i<C.length;i+=Math.max(1,Math.floor(C.length/40))){tot++;const q=TN.toLocal(C[i][0],C[i][1]);let bd=1e18;
+      for(let k=0;k<R.pts.length;k+=3){const d=(R.pts[k][0]-q[0])**2+(R.pts[k][1]-q[1])**2;if(d<bd) bd=d;}if(bd>150*150) off++;}return off/Math.max(1,tot);};
+    const list=all.filter(r=>r&&r.geometry&&other(r)>0.15).slice(0,2);
+    try{this.note('alts asked',{mineMin:Math.round(mine/60),alts:list.map(r=>Math.round((r.duration-mine)/60))});}catch(e){}
+    const mn=x=>Math.max(1,Math.round(x/60));
+    if(!list.length){el.innerHTML='<b>'+(fr?'Ton chemin est d\u00e9j\u00e0 le meilleur':'Your route is already the best')+'</b><div style="opacity:.85">'+(fr?'Aucun autre chemin vraiment diff\u00e9rent en ce moment.':'No really different way right now.')+'</div><div class="bt"><button class="st" style="background:#3a3f47;color:#fff">OK</button></div>';
+      el.querySelector('.st').onclick=ev=>{ev.stopPropagation();el.style.display='none';};this.offerT=setTimeout(()=>{el.style.display='none';},8000);
+      try{if(TN.voice&&TN.voice.say) TN.voice.say(fr?'Ton chemin est d\u00e9j\u00e0 le plus rapide.':'Your route is still the fastest.',false);}catch(e){}return;}
+    /* on the map */
+    try{const data={type:'FeatureCollection',features:list.map((r,i)=>({type:'Feature',properties:{c:TN.ALTCOL[i]},geometry:r.geometry}))};
+      if(map.getSource('tn-faster')) map.getSource('tn-faster').setData(data);
+      else{map.addSource('tn-faster',{type:'geojson',data:data});map.addLayer({id:'tn-faster',type:'line',source:'tn-faster',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','c'],'line-width':8,'line-opacity':0.85}},map.getLayer('tn-route-casing')?'tn-route-casing':undefined);}
+      if(map.getLayer('tn-faster')) map.setPaintProperty('tn-faster','line-color',['coalesce',['get','c'],'#9aa0a6']);}catch(e){}
+    const row=(r,i)=>{const d=r.duration-mine,via=(r.legs&&r.legs[0]&&r.legs[0].summary)||'',dt=Math.round(d/60);
+      const cmp=dt<=-1?'<span style="color:#34c759">'+(fr?dt+' min':'saves '+(-dt)+' min')+'</span>':dt>=1?'<span style="opacity:.8">+'+dt+' min</span>':(fr?'m\u00eame temps':'same time');
+      return '<div class="alt"><span class="sw" style="background:'+TN.ALTCOL[i]+'"></span><div class="w"><b>'+mn(r.duration)+' min</b> \u00b7 '+cmp+(via?'<br><small>'+(fr?'par ':'via ')+TN.esc(via)+'</small>':'')+'</div><button class="go" data-i="'+i+'" style="background:'+TN.ALTCOL[i]+';color:#fff">'+(fr?'Prendre':'Take')+'</button></div>';};
+    el.innerHTML='<b>'+(fr?'Ton chemin : ':'Your route: ')+mn(mine)+' min</b>'+list.map(row).join('')+'<div class="bt"><button class="st" style="background:#3a3f47;color:#fff">'+(fr?'Je reste':'Stay')+'</button></div>';
+    const close=(r)=>{clearTimeout(this.offerT);el.style.display='none';
+      try{if(map.getLayer('tn-faster')) map.removeLayer('tn-faster');if(map.getSource('tn-faster')) map.removeSource('tn-faster');}catch(e){}
+      try{this.note('alts choice',{take:r?Math.round((r.duration-mine)/60):null});}catch(e){}
+      if(r){try{this.setRoute(r);this.curRt=r;this.jam=null;this.jamSaid=null;this.jamEndS=null;this.fasterAt=Date.now();this.noteRoute(r);}catch(e){}}};
+    el.querySelectorAll('.go').forEach(b=>b.onclick=ev=>{ev.stopPropagation();close(list[+b.dataset.i]);});
+    el.querySelector('.st').onclick=ev=>{ev.stopPropagation();close(null);};
+    this.offerT=setTimeout(()=>close(null),30000);
+    const best=list.reduce((a,b)=>a.duration<b.duration?a:b),sv=Math.round((mine-best.duration)/60);
+    try{if(TN.voice&&TN.voice.say) TN.voice.say(sv>=1?(fr?('Il y a un autre chemin, '+sv+' minutes plus rapide. Regarde l\u2019\u00e9cran.'):('There\u2019s another way, '+sv+' minutes faster. Have a look.')):(fr?'Ton chemin reste le plus rapide, mais voici d\u2019autres options.':'Your route is still the fastest, but here are other options.'),false);}catch(e){}
+  }catch(e){el.innerHTML='<b>'+(fr?'Impossible de chercher maintenant':'Couldn\u2019t check right now')+'</b>';this.offerT=setTimeout(()=>{el.style.display='none';},5000);}
+  finally{this.altBusy=false;}
+};
 TN.Nav.prototype.fasterOffer=function(rt,save){
-  if(typeof document==='undefined') return;
+  if(typeof document==='undefined') return;TN.navPanelCss();
   /* (Premium: free drivers are only told a faster way exists) */
   if(TN.isPro&&!TN.isPro()){try{TN.proHint('faster',(TN.LANG==='fr'?'\u26a1 Trajet plus rapide : ':'\u26a1 Faster route: ')+Math.round(save/60)+' min'+(TN.LANG==='fr'?' de moins':' less'));this.note('faster offer',{premium:false,saveMin:Math.round(save/60)});}catch(e){}return;}const fr=TN.LANG==='fr',map=this.api.map;this.offer=rt;
   /* the faster way on the map, in grey */
