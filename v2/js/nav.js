@@ -1,4 +1,4 @@
-/* MapKoon v2 — nav.js  (navigation, part 1)
+/* MapKoon v2 — nav.js  (navigation, part 1) — v124, Nov 21: smooth direction in corners; car height on slopes
    - search: results as you type (Photon, nearest first), recent destinations when the box is empty
    - route: OSRM (fastest by car), overview with time / distance / arrival, then Go or Cancel
    - the route as a blue line laid on the 3D roads (bridges included), trimmed behind the car
@@ -1412,7 +1412,11 @@ TN.Nav.prototype.place=function(base,L,now,dt){
     this.latD=(far&&Math.abs(nx-lo)<0.05)?null:nx;}
   else this.latD=null;
   let y=base.y!=null?base.y:mi(3);
-  {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
+  /* (Nov 21, trip 17:09: on climbs and descents the car sat about 0.2 m under (or over) the blue line: its height
+     was read about 2 m behind where it is drawn on the route, so it sank into the slope going up (bridges and ramps at
+     27:20, 31:15, 44:20). On the route's road it now takes the route's height at its own spot: within 0.6 m it is the
+     same road; higher by up to 4 m is a bridge deck it sits on, as before) */
+  {const ry=mi(3);if((Math.abs(ry-y)<0.6)||(ry-y>0.15&&ry-y<4)) y=ry;}
   /* (Nov 19, trip 15:03 at 16:33 and 17:09: in city turns the car is pulled onto this point (the turn blend), which sat
      on the route's centre, while the blue line is drawn where the car is across the road (latD): car in one lane, line
      in the next for 2-3 s. The point now uses the line's own place across the road, so the car is pulled onto the line) */
@@ -1450,6 +1454,14 @@ TN.Nav.prototype.place=function(base,L,now,dt){
           const ll=TN.fromLocal(ox,oz);
           this.note('line height',{gap:+gap.toFixed(2),line:+ly.toFixed(2),car:+cy.toFixed(2),rt:+mi(3).toFixed(2),trk:base.y!=null?+base.y.toFixed(2):null,top:top>-1e8?+top.toFixed(2):null,roads:nw,v:+(L.v||0).toFixed(1),at:[+ll[1].toFixed(5),+ll[0].toFixed(5)]});}}}catch(e){}}
   this._lc=null;
+  /* (Nov 21, trip 19:10 at 1:35, the left turn onto the Champlain approach: through the corner the car's direction
+     came from the line's corner points, which zig-zag a little (282° → 261° → 272° → 278° within 4 s): the car
+     shook. Its direction now eases toward the line's (in about 0.4 s), so small zig-zags are smoothed out) */
+  {const d=((oh-(this.hdS==null?oh:this.hdS)+540)%360)-180;
+   const tn=Date.now(),gap=tn-(this.hdT||0);this.hdT=tn;   /* (a fresh start after the car was let go) */
+   if(this.hdS==null||gap>500||Math.abs(d)>100) this.hdS=oh;
+   else this.hdS=(this.hdS+d*Math.min(1,dt*2.5)+360)%360;
+   oh=this.hdS;}
   return Object.assign({},base,{x:ox,z:oz,hd:oh,y:y,onRoute:true});
 };
 /* the speed limit sign next to your speed (null hides it); red and pulsing when more than 3 km/h over */
@@ -1682,6 +1694,11 @@ TN.Nav.prototype.update=function(dt){
   const fresh=!G||G.t==null||Date.now()-G.t<3000;
   const away=fresh&&v>1.5&&(off>22||(off>12&&hoff>50));
   if(away) this.offT+=dt;else this.offT=Math.max(0,this.offT-dt*2);
+  /* (Nov 21, trip 17:09 at 42:00: off the route by 22 m on another roadway, then stopped in traffic: no new route for
+     about a minute, because a new one was only looked for while moving. Stopped and clearly off (over 20 m) for 6 s
+     also finds a new route) */
+  if(fresh&&v<=1.5&&off>20) this.offS=(this.offS||0)+dt;else this.offS=0;
+  if(this.offS>6){this.offS=0;this.offT=Math.max(this.offT,2.1);}
   const need=off>10&&hoff>50?1.5:2;
   if(this.offT>need&&!this.rerouting&&Date.now()-this.lastReroute>5000){this.reroute();}
 };
@@ -1887,3 +1904,4 @@ TN.Nav.prototype.roccoArriveShow=function(text,charging){
   document.body.appendChild(el);
   clearTimeout(this.rarrT);this.rarrT=setTimeout(()=>{try{el.remove();}catch(e){}},9400);
 };
+
