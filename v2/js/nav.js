@@ -777,6 +777,11 @@ TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
   const S=this.api.scene,R=this.route;if(!S||!S.three||typeof THREE==='undefined'||typeof document==='undefined') return;
   const off=(TN.settings&&TN.settings.arTurn===false)||(typeof location!=='undefined'&&/[?&]ar=0/.test(location.search));
   const real=nx&&nx.mod&&(!/straight/.test(nx.mod)||/roundabout|rotary/.test(nx.type))&&!['depart','arrive','new name','continue','notification'].includes(nx.type);
+  /* (Nov 23, trip 14:04: "the car moves away from the blue line in turns", but the pictures every 10 s never caught a
+     turn) while recording: 3 pictures through every turn (as it starts, then 2.6 and 5.2 s later) */
+  try{if(TN.rec&&TN.rec.rec&&real){const now=Date.now();
+    if(dNext<8&&this.shotTurn!==nx.at){this.shotTurn=nx.at;TN.rec.wantShot('turn '+(nx.mod||''));this.shotSeq=[now+2600,now+5200];}}
+    if(TN.rec&&this.shotSeq&&this.shotSeq.length&&Date.now()>this.shotSeq[0]){this.shotSeq.shift();TN.rec.wantShot('in turn');}}catch(e){}
   if(off||!real||dNext>450||dNext<18||!R||!R.pts||!R.cum){if(this.ar) this.ar.visible=false;return;}
   if(!this.ar){
     const mat=new THREE.MeshBasicMaterial({map:this.arTex(),transparent:true,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,side:THREE.DoubleSide});
