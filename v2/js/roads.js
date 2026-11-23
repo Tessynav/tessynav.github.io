@@ -1115,7 +1115,7 @@ TN.Net.prototype.onOther=function(way,x,z,h,tol){
 };
 TN.Net.prototype.buildCell=function(tx,ty){const g=this.buildCellJob(tx,ty);let r;do{r=g.next();}while(!r.done);return r.value;};
 TN.Net.prototype.buildCellJob=function*(tx,ty){
-  const L={lot:TN.geo(),curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo(),lamps:[]};
+  const L={lot:TN.geo(),curb:TN.geo(),road:TN.geo(),mark:TN.geo(),glow:TN.geo(),trk:TN.geo(),lamps:[]};
   const net=this;let nn=0,SG=null;
   /* pause point: the fast road lookup belongs to this job only, so it is switched off while paused */
   const pause=function*(){net._sg=null;yield;net._sg=SG;};
@@ -2020,6 +2020,11 @@ TN.Net.prototype.drawWay=function(L,w,runs){
     /* where two road surfaces overlap (joins, merges), the more important one is always drawn on top */
     const rk={motorway:5,trunk:4,primary:3,secondary:2,tertiary:1}[w.cls]||0;
     strip(L.road,a,b,j=>hwJ(j),j=>-hwJ(j),0.04+(w.ramp?rk*0.004-0.002:rk*0.004)+(Math.abs(w.id|0)%2)*0.001,TN.C.road);
+    /* (Nov 22) tire tracks for snowy days: two tracks down the middle of each lane, where the wheels go. Drawn only when
+       there is snow on the ground (hidden otherwise). Not in tunnels, not on the narrowest lanes. */
+    if(L.trk&&!w.tun&&W>=4.5){const nL=w.lanes||Math.max(1,Math.round(W/3.4)),dyT=0.05+(w.ramp?rk*0.004-0.002:rk*0.004)+(Math.abs(w.id|0)%2)*0.001;
+      for(let k=0;k<nL;k++){const c=j=>-hwJ(j)+(k+0.5)*WJ[j]/nL;
+        for(const sd of [-0.78,0.78]) strip(L.trk,a,b,j=>c(j)+sd+0.21,j=>c(j)+sd-0.21,dyT,[1,1,1]);}}
     if(w.ow){
       const n=w.lanes||Math.max(1,Math.round(W/3.4));
       /* drawing direction = driving direction for ow=1; ow=-1 roads are drawn the other way */

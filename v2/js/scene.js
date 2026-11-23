@@ -62,25 +62,33 @@ TN.Scene.prototype.mat=function(k){
       blending:THREE.AdditiveBlending,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-5,polygonOffsetUnits:-10});
     this.mats[k]=m;return m;
   }
+  if(k==='trk'){
+    /* (Nov 22) tire tracks in the snow: the dark, wet asphalt showing through where the wheels go. Hidden until there is
+       snow on the ground (ground.js shows them and sets how dark they are) */
+    const m=new THREE.MeshBasicMaterial({color:0x34373c,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide,
+      polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-6});
+    m.visible=false;TN.cutPatch(m,{high:true});this.mats[k]=m;return m;
+  }
   const off={curb:1,road:2,mark:4}[k];
   const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,
     polygonOffsetFactor:-off,polygonOffsetUnits:-off*2,depthWrite:k!=='mark'});
   if(k==='mark') this.beamPatch(m);   /* lane markings light up in the headlights */
   TN.cutPatch(m,{high:true});   /* a bridge or overpass right above the car is cut away so the car stays visible */
   if(k==='road') TN.texPatch(m,k);   /* slightly darker asphalt with soft patches; markings stay crisp */
-  if(TN.snowPatch&&(k==='road'||k==='curb')) TN.snowPatch(m,k==='road'?0.3:0.85);   /* (snow on the ground: sidewalks white, roads lighter) */
+  if(TN.snowPatch&&(k==='road'||k==='curb')) TN.snowPatch(m,k==='road'?0.55:0.85);   /* (roads whiter than before, so the tire tracks show) */
+  if(k==='road'||k==='mark') TN.wetPatch(m);   /* (rain: the road shines) */   /* (snow on the ground: sidewalks white, roads lighter) */
   this.tintMat(k,m);this.mats[k]=m;return m;
 };
 TN.Scene.prototype.cellMesh=function(tx,ty){return this.meshOf(this.net.buildCell(tx,ty));};
 TN.Scene.prototype.meshOf=function(L){
   const grp=new THREE.Group();let any=false;
-  for(const k of ['lot','curb','road','mark','glow']){
+  for(const k of ['lot','curb','road','trk','mark','glow']){
     const G=L[k];if(!G||!G.n) continue;any=true;
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
     g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
     g.setIndex(G.i);
-    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,mark:3,glow:4}[k];
+    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,trk:2,mark:3,glow:4}[k];
     if(k==='glow'){mesh.tnGlow=true;mesh.visible=(this.glowOp||0)>0.01;}
     grp.add(mesh);
   }
@@ -117,7 +125,7 @@ TN.Scene.prototype.update=function(lng,lat){
      if it doesn't come back (the background builder stopped), the area is built here as before */
   if(this.job&&this.job.wait){
     const J=this.job;
-    if(J.res){this.job=null;const L=J.res;this.fin={k:J.k,L:L,ver:J.ver,layers:['lot','curb','road','mark','glow'].filter(q=>L[q]&&L[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};}
+    if(J.res){this.job=null;const L=J.res;this.fin={k:J.k,L:L,ver:J.ver,layers:['lot','curb','road','trk','mark','glow'].filter(q=>L[q]&&L[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};}
     else if(J.fail||performance.now()-J.t>10000){if(!J.fail&&TN.RW){if(TN.RWfail) TN.RWfail();else{TN.RW.failed=true;net.mirror=false;}}this.job={k:J.k,g:net.buildCellJob(J.x,J.y)};}
     return;
   }
@@ -129,7 +137,7 @@ TN.Scene.prototype.update=function(lng,lat){
     if(r.done){
       /* turning the finished area into 3D shapes is done a slice per frame too (it was done all at once: a quarter
          of a second for a big area, a visible stutter) */
-      const J=this.job;this.job=null;this.fin={k:J.k,L:r.value,layers:['lot','curb','road','mark','glow'].filter(q=>r.value[q]&&r.value[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};
+      const J=this.job;this.job=null;this.fin={k:J.k,L:r.value,layers:['lot','curb','road','trk','mark','glow'].filter(q=>r.value[q]&&r.value[q].n),li:0,st:0,off:0,arr:null,grp:new THREE.Group()};
     }
     TN.prof('roads',performance.now()-t0);
     return;
@@ -150,7 +158,7 @@ TN.Scene.prototype.update=function(lng,lat){
       const g=new THREE.BufferGeometry();
       g.setAttribute('position',new THREE.BufferAttribute(F.typed[0],3));g.setAttribute('color',new THREE.BufferAttribute(F.typed[1],3));
       g.setIndex(new THREE.BufferAttribute(F.typed[2],1));
-      const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,mark:3,glow:4}[k];
+      const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,trk:2,mark:3,glow:4}[k];
       if(k==='glow'){mesh.tnGlow=true;mesh.visible=(this.glowOp||0)>0.01;}
       F.grp.add(mesh);F.li++;F.st=0;F.typed=null;
     }
@@ -330,6 +338,20 @@ TN.texPatch=function(mat,kind){
       '  {float tnD=distance(cameraPosition.xz,vCutW.xz),tnF=1.0-smoothstep(90.0,220.0,tnD);\n'+
       '   float tnL=texture2D(tnAsph,vCutW.xz/24.0).r/0.784;diffuseColor.rgb*=0.82*mix(1.0,tnL,tnF);}\n');};
   mat.customProgramCacheKey=()=>(pk?pk():'')+'|asph2';mat.needsUpdate=true;
+};
+/* (Nov 22) wet roads in the rain: the asphalt gets a little darker, with puddles here and there, and shines toward
+   the horizon (the sky by day, the warm street lights at night), like a real wet road. Fake but light: no reflections
+   are actually drawn, so it costs almost nothing. TN.WETU.wet goes from 0 (dry) to 1, set by weather.js. */
+TN.WETU={wet:{value:0},wetSky:{value:new THREE.Color(0.6,0.65,0.7)}};
+TN.wetPatch=function(mat){
+  const prev=mat.onBeforeCompile,pk=mat.customProgramCacheKey?mat.customProgramCacheKey.bind(mat):null;
+  mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);Object.assign(sh.uniforms,TN.WETU);
+    sh.fragmentShader='uniform float wet;uniform vec3 wetSky;\nfloat tnWH(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\n'+
+      'float tnWN(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(tnWH(i),tnWH(i+vec2(1.0,0.0)),f.x),mix(tnWH(i+vec2(0.0,1.0)),tnWH(i+vec2(1.0,1.0)),f.x),f.y);}\n'+
+      sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n  if(wet>0.01){vec3 vd=normalize(cutCam-vCutW);float gl=1.0-clamp(vd.y,0.0,1.0);'+
+      'float pud=smoothstep(0.58,0.78,tnWN(vCutW.xz*0.11)+0.25*tnWN(vCutW.xz*0.6));'+
+      'diffuseColor.rgb*=1.0-wet*0.12*pud;diffuseColor.rgb+=wet*wetSky*(gl*gl*gl*(0.12+0.4*pud));}');};
+  mat.customProgramCacheKey=()=>(pk?pk():'')+'|wet';
 };
 TN.cutPatch=function(mat,opts){
   opts=opts||{};const prev=mat.onBeforeCompile;

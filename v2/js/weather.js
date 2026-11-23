@@ -67,6 +67,10 @@ TN.Weather.prototype.update=function(dt,lat,lng,cx,cy,cz){
   const now=Date.now();
   if(now-this.last>600000||(!this.last&&lat)){this.last=now;if(lat) this.check(lat,lng);}
   const r=this.on?this.rain:0;
+  /* (Nov 22) wet roads: wet within a minute of rain starting, drying slowly (a few minutes) after it stops */
+  if(TN.WETU){const wt=this.on?Math.min(1,r*1.3):0,W=TN.WETU.wet;W.value+=(wt-W.value)*Math.min(1,dt*(wt>W.value?0.05:0.008));if(this.test) W.value=wt;
+    const nt=this.scene.night||0;TN.WETU.wetSky.value.setRGB(0.6+(0.5-0.6)*nt,0.65+(0.44-0.65)*nt,0.7+(0.36-0.7)*nt);}
+  try{this.splash(dt,cx,cy||0,cz);}catch(e){}
   if(r<=0){if(this.lines) this.lines.visible=false;return;}
   if(!this.lines) this.buildRain();
   this.lines.visible=true;
@@ -88,6 +92,35 @@ TN.Weather.prototype.update=function(dt,lat,lng,cx,cy,cz){
   this.lines.geometry.attributes.position.needsUpdate=true;
 };
 
+/* (Nov 22) spray from the wheels: on wet roads, water flies up behind the tyres (more and higher at speed); on snow,
+   a little white powder. Small droplets with gravity, at most 400, only while moving. */
+TN.Weather.prototype.splash=function(dt,cx,cy,cz){
+  const wet=TN.WETU?TN.WETU.wet.value:0,snow=TN.SNOWU?TN.SNOWU.snowAmt.value:0,v=this.carV||0;
+  const amt=Math.max(wet,snow*0.8),on=this.on&&amt>0.15&&!(TN.tunnel&&TN.tunnel.k>0.3);
+  if(!this.sp){if(!on||v<2) return;
+    const N=400,g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*3),3));
+    /* (small droplets of a fixed size on screen: thin lines were too fine to see from the driving camera) */
+    let dot=null;try{const cv=document.createElement('canvas');cv.width=cv.height=16;const gx=cv.getContext('2d'),gr=gx.createRadialGradient(8,8,0,8,8,8);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(0.6,'rgba(255,255,255,0.7)');gr.addColorStop(1,'rgba(255,255,255,0)');gx.fillStyle=gr;gx.fillRect(0,0,16,16);dot=new THREE.CanvasTexture(cv);}catch(e){}
+    this.spMat=new THREE.PointsMaterial({map:dot,color:0xe8eef4,size:Math.max(3,Math.round(3.5*(window.devicePixelRatio||1))),sizeAttenuation:false,transparent:true,opacity:0.7,depthWrite:false});
+    this.sp=new THREE.Points(g,this.spMat);this.sp.frustumCulled=false;this.sp.renderOrder=6;this.scene.three.scene.add(this.sp);
+    this.spP=[];for(let i=0;i<N;i++) this.spP.push({life:0,x:0,y:0,z:0,vx:0,vy:0,vz:0});this.spT=0;}
+  const P=this.spP,A=this.sp.geometry.attributes.position.array,hd=(this.carHd||0)*TN.R,fx=Math.sin(hd),fz=-Math.cos(hd),rx=Math.cos(hd),rz=Math.sin(hd);
+  const nt=this.scene.night||0,sn=snow*0.8>wet;
+  this.spMat.color.setRGB(0.92-0.5*nt,0.94-0.5*nt,0.96-0.45*nt);this.spMat.opacity=sn?0.85:0.7;
+  /* new spray: 4 wheels, more at speed */
+  if(on&&v>2){this.spT+=dt*Math.min(420,v*22*amt);
+    let i=0;while(this.spT>=1){this.spT-=1;while(i<P.length&&P[i].life>0) i++;if(i>=P.length) break;const p=P[i];
+      const back=Math.random()<0.7,side=Math.random()<0.5?-1:1,ax=back?-1.35:1.45,sx=side*0.8;
+      p.x=cx+fx*ax+rx*sx;p.z=cz+fz*ax+rz*sx;p.y=cy+0.15;
+      const up=(sn?1.2:1.8)+Math.random()*(1.5+v*0.1),out=side*(0.6+Math.random()*1.8),fw=v*(0.45+Math.random()*0.35);
+      p.vx=fx*fw+rx*out;p.vz=fz*fw+rz*out;p.vy=up;p.life=0.5+Math.random()*0.4;}}
+  let any=false;
+  for(let i=0;i<P.length;i++){const p=P[i],o3=i*3;
+    if(p.life<=0){A[o3]=0;A[o3+1]=-1e4;A[o3+2]=0;continue;}any=true;
+    p.life-=dt;p.vy-=9.8*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;if(p.y<cy+0.05){p.life=0;}
+    A[o3]=p.x;A[o3+1]=p.y;A[o3+2]=p.z;}
+  this.sp.visible=any;this.sp.geometry.attributes.position.needsUpdate=true;
+};
 /* ---------- drops on the screen (Nov 22) ----------
    When it really rains or snows where you are, a few drops land on the screen, as if on the windshield:
    - rain: clear drops that grow, then run down and fade; at speed they slide sideways off the edges

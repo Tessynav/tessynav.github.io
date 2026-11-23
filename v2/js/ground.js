@@ -1,4 +1,4 @@
-/* TessyNav v2 — ground.js
+/* TessyNav v2 — ground.js (v2, Nov 22: snow and leaves on the car sized from the car itself)
    What lies on the ground and on the car, by season:
    - autumn (mid-September to November): fallen leaves on the roads and sidewalks around the car, more under the
      trees; a few leaves on the car's roof, hood and trunk. One batch of small leaves kept around the car and moved
@@ -9,7 +9,7 @@
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 /* snowy colours for the road areas (roads a little lighter, sidewalks and lots white) */
-TN.SNOWU={snowAmt:{value:0},snowCol:{value:new THREE.Color(0.92,0.94,0.96)}};
+TN.SNOWU={snowAmt:{value:0},snowCol:{value:new THREE.Color(0.92,0.94,0.96)},carSnow:{value:0},carSnowCol:{value:new THREE.Color(0.95,0.96,0.97)}};
 TN.snowPatch=function(mat,K){
   const prev=mat.onBeforeCompile,pk=mat.customProgramCacheKey?mat.customProgramCacheKey.bind(mat):null;
   mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);Object.assign(sh.uniforms,TN.SNOWU);
@@ -64,6 +64,8 @@ TN.Ground.prototype.update=function(car,dt){
   const target=on?Math.max(0,Math.min(1,(w.snowDepth||0)/0.03)):0;
   this.snow+=(target-this.snow)*Math.min(1,dt*0.5);
   const nt=S.night||0;TN.SNOWU.snowAmt.value=this.snow;TN.SNOWU.snowCol.value.setRGB(0.92-0.62*nt,0.94-0.62*nt,0.96-0.58*nt);
+  /* (tire tracks show through the snow on the roads) */
+  {const tm=S.mats&&S.mats.trk;if(tm){tm.visible=this.snow>0.05;tm.opacity=0.85*Math.min(1,this.snow*1.2);tm.color.setRGB(0.2*(1-0.5*nt),0.21*(1-0.5*nt),0.23*(1-0.45*nt));}}
   if(Math.abs(this.snow-this.snowShown)>0.04||(this.snow===0&&this.snowShown!==0)){this.snowShown=this.snow;S.snowG=this.snow;S.lastNt=null;if(S.applyGround&&S.wxNt!=null) S.applyGround(S.wxNt);}
   /* fallen leaves (autumn, and not under snow) */
   const leaves=on&&this.isAutumn()&&this.snow<0.3;
@@ -80,23 +82,33 @@ TN.Ground.prototype.update=function(car,dt){
 };
 /* leaves or snow on the car: placed from the car model's own size */
 TN.Ground.prototype.decorateCar=function(leaves,snow,nt){
-  const c3=this.scene.car3d;if(!c3||!c3.children.length) return;
+  const c3=this.scene.car3d,body=this.scene.body3d;if(!c3||!body) return;   /* (waits for the real car model) */
   if(!this.carDeco){
-    const p=c3.position.clone(),r=c3.rotation.y;c3.position.set(0,0,0);c3.rotation.y=0;c3.updateMatrixWorld(true);
-    const B=new THREE.Box3().setFromObject(c3);c3.position.copy(p);c3.rotation.y=r;c3.updateMatrixWorld(true);
-    if(B.isEmpty()) return;
+    /* (Nov 22) measured from the car's own panels only: the headlamp sprites and the brake glow on the road behind made
+       the box several metres too long, so the snow on the car came out as huge grey ovals floating over it */
+    const p=c3.position.clone(),r=c3.rotation.y,bx=body.rotation.x,bz=body.rotation.z;
+    c3.position.set(0,0,0);c3.rotation.y=0;body.rotation.x=0;body.rotation.z=0;c3.updateMatrixWorld(true);
+    const B=new THREE.Box3();
+    body.children.forEach(o=>{if(o.isMesh&&!o.isSprite&&!(o.geometry&&o.geometry.type==='PlaneGeometry')) B.expandByObject(o);});
+    c3.position.copy(p);c3.rotation.y=r;body.rotation.x=bx;body.rotation.z=bz;c3.updateMatrixWorld(true);
+    if(B.isEmpty()||B.max.z-B.min.z>6||B.max.x-B.min.x>2.6) return;
     const top=B.max.y,L=B.max.z-B.min.z,Wd=B.max.x-B.min.x,front=B.min.z,back=B.max.z;   /* (the car's front is towards -z) */
-    const lg=new THREE.Group(),sg=new THREE.Group();
+    const lg=new THREE.Group();
     const leafGeo=new THREE.BufferGeometry();leafGeo.setAttribute('position',new THREE.Float32BufferAttribute([0,0,-0.12, 0.08,0,0, 0,0,0.11, -0.08,0,0],3));leafGeo.setIndex([0,1,2,0,2,3]);
     const spots=[[ -0.25,top+0.01,front+L*0.55,'#c9452a'],[0.3,top+0.01,front+L*0.62,'#e2a72c'],[0.15,top-0.36,front+L*0.12,'#d9762b'],[-0.35,top-0.42,back-L*0.06,'#a8562a'],[0.4,top-0.42,back-L*0.1,'#e2a72c']];
     for(const [x,y,z,col] of spots){const m=new THREE.Mesh(leafGeo,new THREE.MeshBasicMaterial({color:col,side:THREE.DoubleSide}));m.position.set(x*Wd/1.9,y,z);m.rotation.y=Math.random()*6;lg.add(m);}
-    const snowMat=new THREE.MeshBasicMaterial({color:0xf2f5f8});this.snowMat=snowMat;
-    const cap=(x,y,z,sx,sy,sz)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(1,14,8),snowMat);m.position.set(x,y,z);m.scale.set(sx,sy,sz);sg.add(m);};
-    cap(0,top-0.02,front+L*0.58,Wd*0.36,0.07,L*0.22);   /* roof */
-    cap(0,top-0.42,front+L*0.13,Wd*0.38,0.05,L*0.11);   /* hood */
-    cap(0,top-0.45,back-L*0.08,Wd*0.38,0.05,L*0.07);    /* trunk */
-    c3.add(lg);c3.add(sg);this.carDeco={leaves:lg,snow:sg};
+    /* (Nov 22) snow: no extra shapes any more. The car's own paint and glass turn white where they face the sky (roof,
+       hood, trunk, the tops of the mirrors), so the snow follows the car's real shape and leans with the body. */
+    const sg=new THREE.Group();
+    body.traverse(o=>{if(!o.isMesh||o.isSprite||(o.geometry&&o.geometry.type==='PlaneGeometry')) return;const m=o.material;if(!m||m.userData.snowP||(m.emissive&&m.emissive.getHex()>0)) return;
+      m.userData.snowP=true;const prev=m.onBeforeCompile,pk=m.customProgramCacheKey?m.customProgramCacheKey.bind(m):null;
+      m.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);sh.uniforms.carSnow=TN.SNOWU.carSnow;sh.uniforms.carSnowCol=TN.SNOWU.carSnowCol;
+        sh.vertexShader='varying vec3 vSnN;\n'+sh.vertexShader.replace('#include <beginnormal_vertex>','#include <beginnormal_vertex>\n  vSnN=normalize(mat3(modelMatrix)*objectNormal);');
+        sh.fragmentShader='uniform float carSnow;uniform vec3 carSnowCol;varying vec3 vSnN;\n'+sh.fragmentShader.replace('#include <color_fragment>',
+          '#include <color_fragment>\n  diffuseColor.rgb=mix(diffuseColor.rgb,carSnowCol,carSnow*smoothstep(0.45,0.8,vSnN.y));');};
+      m.customProgramCacheKey=()=>(pk?pk():'')+'|carsnow';m.needsUpdate=true;});
+    body.add(lg);body.add(sg);this.carDeco={leaves:lg,snow:sg};   /* (on the body: they lean and dip with it) */
   }
-  this.carDeco.leaves.visible=leaves;this.carDeco.snow.visible=snow;
-  if(this.snowMat) this.snowMat.color.setRGB(0.95-0.6*nt,0.96-0.6*nt,0.97-0.56*nt);
+  this.carDeco.leaves.visible=leaves;
+  TN.SNOWU.carSnow.value=snow?Math.min(1,(this.snow-0.3)/0.4+0.3):0;TN.SNOWU.carSnowCol.value.setRGB(0.95-0.6*nt,0.96-0.6*nt,0.97-0.56*nt);
 };
