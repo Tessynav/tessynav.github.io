@@ -74,7 +74,7 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:var(--tn-text);font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:var(--tn-text)}'+
    '#tn-end{right:100px;bottom:24px;display:none;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-danger)}'+   '@media (max-width:560px){#tn-end{right:auto;left:16px;bottom:104px}}'+   /* (phones: above the speed box) */
 
-   '#tn-mute{right:16px;top:76px;width:50px;height:50px;padding:0;border:0;display:none;align-items:center;justify-content:center;cursor:pointer}body.tn-routing #tn-mute{display:flex}'+
+   '#tn-mute{right:16px;top:76px;width:50px;height:50px;padding:0;border:0;display:none;align-items:center;justify-content:center;cursor:pointer;color:#e8f1fa;background:transparent}body.tn-routing #tn-mute{display:flex}'+
    '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-joke)}body.tn-routing #tn-stopbtn{display:none}'+
    '#tn-alt{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 18px;font:600 16px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-text)}body.tn-routing #tn-alt{display:block}'+
    '@media (max-width:700px){#tn-alt{right:auto;left:16px;bottom:160px}}'+
@@ -98,8 +98,10 @@ TN.Nav.prototype.build=function(){
   /* (Nov 21: ask for another way yourself, any time on a route, e.g. stuck in a jam) */
   this.altBtn=el('tn-alt','',TN.LANG==='fr'?'\u{1F504} Plus rapide ?':'\u{1F504} Faster way?','button');this.altBtn.onclick=ev=>{ev&&ev.stopPropagation&&ev.stopPropagation();this.altsNow();};
   this.muteBtn=el('tn-mute','','','button');
-  const muteDraw=()=>{const on=!(TN.settings&&TN.settings.voice===false);this.muteBtn.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#e8f1fa"/>'+
-    (on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="#ff8a80" stroke-width="2.2" stroke-linecap="round"/>')+'</svg>';};
+  const muteDraw=()=>{const on=!(TN.settings&&TN.settings.voice===false);this.muteBtn.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>'+
+    (on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="#e53935" stroke-width="2.4" stroke-linecap="round"/>')+'</svg>';
+    /* (Nov 23: on the light panel the white speaker was invisible, leaving only a red X: now drawn in the text colour, with a label) */
+    const tr=TN.tr||(x=>x);this.muteBtn.setAttribute('data-lbl',tr(on?'Voice':'Muted'));this.muteBtn.title=tr(on?'Voice':'Muted');};
   muteDraw();this.muteBtn.onclick=()=>{const on=!(TN.settings&&TN.settings.voice===false);TN.settings.voice=!on;try{const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');st.voice=!on;localStorage.setItem('tn2_settings',JSON.stringify(st));}catch(e){}
     if(on&&TN.voice) TN.voice.stop();else if(TN.voice) TN.voice.say('Voice on',true);muteDraw();};this.roadName=el('tn-roadname');
   this.limit=el('tn-limit','','<small>MAX</small><b></b>');
@@ -795,9 +797,10 @@ TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
   const off=(TN.settings&&TN.settings.arTurn===false)||(typeof location!=='undefined'&&/[?&]ar=0/.test(location.search));
   const real=nx&&nx.mod&&(!/straight/.test(nx.mod)||/roundabout|rotary/.test(nx.type))&&!['depart','arrive','new name','continue','notification'].includes(nx.type);
   /* (Nov 23, trip 14:04: "the car moves away from the blue line in turns", but the pictures every 10 s never caught a
-     turn) while recording: 3 pictures through every turn (as it starts, then 2.6 and 5.2 s later) */
+     turn) while recording: 3 pictures through every turn (25 m before it, then 2.6 and 5.2 s later; the next turn
+     switches 8 m before each turn, so a trigger under 8 m never fired) */
   try{if(TN.rec&&TN.rec.rec&&real){const now=Date.now();
-    if(dNext<8&&this.shotTurn!==nx.at){this.shotTurn=nx.at;TN.rec.wantShot('turn '+(nx.mod||''));this.shotSeq=[now+2600,now+5200];}}
+    if(dNext<25&&this.shotTurn!==nx.at){this.shotTurn=nx.at;TN.rec.wantShot('turn '+(nx.mod||''));this.shotSeq=[now+2600,now+5200];}}
     if(TN.rec&&this.shotSeq&&this.shotSeq.length&&Date.now()>this.shotSeq[0]){this.shotSeq.shift();TN.rec.wantShot('in turn');}}catch(e){}
   if(off||!real||dNext>450||dNext<18||!R||!R.pts||!R.cum){if(this.ar) this.ar.visible=false;return;}
   if(!this.ar){

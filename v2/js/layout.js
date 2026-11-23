@@ -46,6 +46,7 @@ TN.Layout=function(){
   'body.tn-l1 .tn-incol[data-lbl]{padding-bottom:12px!important;box-sizing:border-box}'+
   'body.tn-l1 .tn-incol[data-lbl]::after{content:attr(data-lbl);position:absolute;left:0;right:0;bottom:3px;text-align:center;font:600 10px system-ui,sans-serif;color:var(--tn-sub);text-shadow:none;letter-spacing:0}'+
   'body.tn-l1 #tn-fbbtn.tn-incol{font-size:10px!important;gap:0!important}'+
+  'body.tn-l1 #tn-mute.tn-incol{color:var(--tn-text)!important}'+
   'body.tn-l1 #tn-compass.tn-incol b{bottom:2px!important;font-size:10px!important;color:var(--tn-sub)!important;text-shadow:none!important}body.tn-l1 #tn-compass.tn-incol svg{width:34px;height:34px;margin-top:-8px}'+
   'body.tn-l1 #tn-report.tn-incol{font-size:0!important;color:var(--tn-joke)!important;justify-content:center!important}body.tn-l1 #tn-report.tn-incol svg,body.tn-l1 #tn-report.tn-incol img{width:30px;height:30px}'+
   'body.tn-l1 :is(#tn-updbar,#tn-updpill){bottom:100px!important}'+

@@ -782,7 +782,9 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
            turns around it (the camera is locked to the car's smooth on-screen direction, with only a very light
            smoothing against tiny jitters) */
         if(camHd===null) camHd=car.hd;
-        const rate=12;
+        /* (Nov 23) Settings -> Map and view -> Smooth map turning: the map follows the car's turn gently (about a
+           second behind) instead of turning with it */
+        const rate=TN.settings&&TN.settings.smoothTurn?2.2:12;
         camHd=(camHd+TN.angDiff2(car.hd,camHd)*Math.min(1,dt*rate)+360)%360;
         /* Codriver-style view: higher and further back (camera about 40 m up), so the car is always well above
            any bridge deck and the road ahead is visible. A little more zoomed out at speed. */
