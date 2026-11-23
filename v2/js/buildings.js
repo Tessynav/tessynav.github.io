@@ -16,14 +16,20 @@ TN.Buildings=function(scene,net){
 };
 TN.Buildings.prototype.material=function(){
   if(this.mat) return this.mat;
+  /* (Nov 23) sun-lit walls: the side facing the sun brighter, the far side a little darker, following the real sun
+     (set by shadows.js every 30 s; softer when cloudy, off at night). Settings -> 3D world -> Sun-lit walls */
+  if(!TN.SUNU) TN.SUNU={sunDir:{value:new THREE.Vector3(0,1,0)},sunK:{value:0}};
   this.mat=new THREE.ShaderMaterial({
-    uniforms:Object.assign({night:{value:this.night},clean:{value:0}},TN.CUTU||{}),
+    uniforms:Object.assign({night:{value:this.night},clean:{value:0}},TN.CUTU||{},TN.SUNU),
     vertexColors:true,side:THREE.DoubleSide,
     vertexShader:[
       'attribute vec3 wuv;',
+      'uniform vec3 sunDir;uniform float sunK;',
       'varying vec3 vCol;varying vec3 vUv;varying float vShade;varying vec3 vCutW;',
       'void main(){vCol=color;vUv=wuv;vCutW=(modelMatrix*vec4(position,1.0)).xyz;',
       '  vec3 n=normalize(normal);vShade=0.80+0.20*abs(n.x)+0.10*max(n.y,0.0);',
+      /* sun-lit walls: up to 22% brighter facing the sun, at most 16% darker facing away */
+      '  float ds=dot(normalize(mat3(modelMatrix)*normal),sunDir);vShade*=1.0+sunK*(ds>0.0?0.22*ds:-0.16*min(1.0,0.4-ds));',
       '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'].join('\n'),
     fragmentShader:[
       (TN.CUTGLSL||'varying vec3 vCutW;float tnCutK(){return 0.0;}'),

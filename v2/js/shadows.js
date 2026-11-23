@@ -96,13 +96,20 @@ TN.Shadows.prototype.buildCar=function(){
 /* every frame: the car's shadows follow it; every 30 s: the sun and weather are checked again */
 TN.Shadows.prototype.update=function(lng,lat,car){
   const now=Date.now();this.on=!(TN.settings&&TN.settings.shadows===false);
-  if(now-this.sunT>30000||this.lastOn!==this.on){this.sunT=now;this.lastOn=this.on;
+  const sw=!(TN.settings&&TN.settings.sunWalls===false);
+  if(now-this.sunT>30000||this.lastOn!==this.on||this.lastSW!==sw){this.sunT=now;this.lastOn=this.on;this.lastSW=sw;
     const sp=TN.sunPos(new Date(now),lat,lng),w=this.scene.weather||{},night=this.scene.night||0;
     const up=Math.max(0,Math.min(1,(sp.el-3)/9));
     this.strength=this.on?up*(1-night)*(1-0.85*(w.cloud||0))*((w.rain||0)>0.2?0.25:1)*((w.fog||0)>0.3?0.35:1):0;
     this.lenK=Math.min(4,1/Math.tan(Math.max(6,sp.el)*Math.PI/180));
     const a=(sp.az+180)*Math.PI/180;this.dir=[Math.sin(a),-Math.cos(a)];   /* (local x is east, z is south) */
     this.u.sun.value.set(this.dir[0]*this.lenK,this.dir[1]*this.lenK);this.u.str.value=this.strength;
+    /* (Nov 23) sun-lit walls: the same sun for the detailed buildings, and for the map's own far buildings */
+    try{const S=TN.settings||{},sk=S.sunWalls===false?0:up*(1-night)*(1-0.7*(w.cloud||0))*((w.rain||0)>0.2?0.3:1)*((w.fog||0)>0.3?0.4:1);
+      const az=sp.az*Math.PI/180,el=Math.max(0,sp.el)*Math.PI/180;
+      if(TN.SUNU){TN.SUNU.sunDir.value.set(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el)).normalize();TN.SUNU.sunK.value=sk;}
+      const map=this.scene.map;if(map&&map.setLight){const sun=sk>0.05,pos=sun?[1.4,sp.az,Math.max(15,Math.min(80,90-sp.el))]:[1.15,210,30];
+        const key=pos.map(v=>Math.round(v)).join(',');if(key!==this.lightKey){this.lightKey=key;map.setLight({anchor:sun?'map':'viewport',position:pos,intensity:sun?0.45+0.2*sk:0.5});}}}catch(e){}
     if(this.meshes) for(const m of this.meshes) m.visible=this.strength>0.08;
     this.sun=sp;}
   if(!car||car.x==null) return;
