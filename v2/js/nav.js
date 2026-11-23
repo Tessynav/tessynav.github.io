@@ -601,6 +601,14 @@ TN.Nav.prototype.plan=async function(reroute){
     if(!reroute){this.ov.innerHTML='<div>Could not find a route</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};}
   }
 };
+/* keeps only the points that shape the line (Douglas-Peucker, tolerance in metres); the first and last stay */
+TN.simplifyPts=function(P,tol){
+  if(P.length<3) return P.slice();const keep=new Uint8Array(P.length);keep[0]=keep[P.length-1]=1;const st=[[0,P.length-1]];
+  while(st.length){const [a,b]=st.pop();const A=P[a],B=P[b],dx=B[0]-A[0],dz=B[1]-A[1],L=Math.hypot(dx,dz)||1e-9;let md=-1,mi=-1;
+    for(let i=a+1;i<b;i++){const d=Math.abs((P[i][0]-A[0])*dz-(P[i][1]-A[1])*dx)/L;if(d>md){md=d;mi=i;}}
+    if(md>tol){keep[mi]=1;st.push([a,mi],[mi,b]);}}
+  return P.filter((p,i)=>keep[i]);
+};
 TN.Nav.prototype.setRoute=function(rt){
   try{if(TN.prefetchRoute&&rt&&rt.geometry) TN.prefetchRoute(rt.geometry.coordinates);}catch(e){}   /* (the map data along the route, saved in advance) */
   /* a new route starts from scratch: where the car is along it, its lane, the release timers (a leftover position
@@ -610,7 +618,10 @@ TN.Nav.prototype.setRoute=function(rt){
   const C=rt.geometry.coordinates,pts=[];
   /* each corner of the route becomes a real arc, about as wide as a car drives (up to 12 m radius, tighter
      where the streets between corners are short) */
-  const raw=C.map(c=>TN.toLocal(c[0],c[1])),rnd=[raw[0]];
+  /* (Nov 23, trip 14:57: right turns still showed a square corner: the route has extra points a few metres before and
+     after each corner, so the arc could only be a metre or two wide. Points that add no shape (less than 0.3 m off the
+     straight line) are dropped first, so each corner gets its full arc) */
+  const raw=TN.simplifyPts(C.map(c=>TN.toLocal(c[0],c[1])),0.3),rnd=[raw[0]];
   for(let i=1;i<raw.length-1;i++){const A=rnd[rnd.length-1],B=raw[i],D=raw[i+1];
     const ax=B[0]-A[0],az=B[1]-A[1],bx=D[0]-B[0],bz=D[1]-B[1],la=Math.hypot(ax,az),lb=Math.hypot(bx,bz);
     if(la<0.5||lb<0.5){continue;}
@@ -681,9 +692,12 @@ TN.Nav.prototype.fitRange=function(i0,i1){
       const h1=Math.atan2(b[0]-a[0],-(b[1]-a[1])),h2=Math.atan2(c2[0]-b[0],-(c2[1]-b[1]));let dh=Math.abs(h2-h1)*180/Math.PI;if(dh>180) dh=360-dh;turnHere=dh>20;}
     /* (through a turn the shift fades to half of the previous one instead of dropping to zero: the sudden 0 then back to
        6-10 m made the line weave right after turns, like at the Ville-Marie tunnel exit) */
-    if(best&&turnHere){const pp=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1]:null;best.dx=pp?pp.dx*0.5:0;best.dz=pp?pp.dz*0.5:0;}
+    /* (Nov 23, trip 14:57: in the Île-des-Soeurs roundabout, one long turn, the line let go of the road and slid up to
+       2.5 m toward its edge, the car with it: on a one-way ring the line stays on our road through the turn) */
+    const ring=best&&best.ow&&prevW!=null&&best.w===prevW&&Math.hypot(best.dx,best.dz)<best.hw+1;
+    if(best&&turnHere&&!ring){const pp=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1]:null;best.dx=pp?pp.dx*0.5:0;best.dz=pp?pp.dz*0.5:0;}
     const pf=i>0&&R.fit[i-1]&&!turnHere&&R.cum[i]-R.cum[i-1]<25?R.fit[i-1]:null;
-    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,w:best.w,miss:false}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:pf?pf.lane:0,dx:pf?pf.dx:0,dz:pf?pf.dz:0,miss:true,ver:net.ver};
+    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,w:best.w,miss:false,rg:!!(ring&&turnHere)}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:pf?pf.lane:0,dx:pf?pf.dx:0,dz:pf?pf.dz:0,miss:true,ver:net.ver};
   }
   /* smoothed values for drawing and placing the car (lane and shift change gradually, over about 40 m) */
   R.sm=R.sm||{};const sm=R.sm;
@@ -694,8 +708,11 @@ TN.Nav.prototype.fitRange=function(i0,i1){
      points just before and after the batch are recomputed too. Averaged over 120 m.) */
   const SW=120;let a0=i0,a1=i1;while(a0>0&&R.cum[i0]-R.cum[a0-1]<SW) a0--;while(a1<R.pts.length-1&&R.cum[a1+1]-R.cum[i1]<SW) a1++;
   for(let i=a0;i<=a1;i++){if(!R.fit[i]) continue;let ln=0,nl=0,dx=0,dz=0,wt=0;
-    for(let k=i;k>=0&&R.cum[i]-R.cum[k]<SW;k--){const f=R.fit[k];if(!f) break;const d=R.cum[i]-R.cum[k],q=1-d/SW;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
-    for(let k=i+1;k<R.pts.length&&R.cum[k]-R.cum[i]<SW;k++){const f=R.fit[k];if(!f) break;const d=R.cum[k]-R.cum[i],q=1-d/SW;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+    /* (in a roundabout the shift points a different way at every point of the ring, so a 120 m average cancels it out:
+       averaged over 12 m there) */
+    const W=R.fit[i].rg?12:SW;
+    for(let k=i;k>=0&&R.cum[i]-R.cum[k]<W;k--){const f=R.fit[k];if(!f) break;const d=R.cum[i]-R.cum[k],q=1-d/W;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+    for(let k=i+1;k<R.pts.length&&R.cum[k]-R.cum[i]<W;k++){const f=R.fit[k];if(!f) break;const d=R.cum[k]-R.cum[i],q=1-d/W;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
     sm[i]=[ln/Math.max(1,nl),dx/(wt||1),dz/(wt||1),R.fit[i].h];}
 };
 TN.Nav.prototype.heights=function(){};
