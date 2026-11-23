@@ -374,10 +374,12 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     }catch(err){panel('Couldn’t load this trip: '+String(err.message||err).replace(/[<>&]/g,''),[['Back',showTrips],['Close',hide]]);return;}
     const g=(trip.g||[]).filter(r=>r&&r[1]!=null&&r[2]!=null);
     if(g.length<10){panel('This trip has no GPS to replay.',[['Close',hide]]);return;}
-    hide();startReplay(g,n);
+    hide();startReplay(g,n,trip.start);
   }
   function resetTrack(){const f=new TN.Track(net);for(const k of Object.keys(track)) delete track[k];Object.assign(track,f);}
-  function startReplay(g,n){
+  function startReplay(g,n,t0){
+    /* (the sky, sun and shadows are worked out again right away, for the replayed moment) */
+    const sky=()=>{try{scene.sunT=0;if(TN.shadows) TN.shadows.sunT=0;night();}catch(e){}};
     try{if(watchId!==null&&watchId>=0) navigator.geolocation.clearWatch(watchId);}catch(e){}
     watchId=-1;gpsLastAcc=5;   /* (the real GPS stays off; Recenter just recentres) */
     const FILM_G=[
@@ -389,7 +391,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       ['rocco','Rocco messages & alerts','#tn-rbub,#tn-rarr,#tn-alert,#tn-jam,#tn-faster,#tn-wcard',true],
       ['mus','Music card','#tn-mus,#tn-mpan,#tn-mmsg',false],
       ['pins','Map pins','.maplibregl-marker',false]];
-    const R=TN.replay={g:g,i:0,t:g[0][0],k:1,play:true,dur:g[g.length-1][0],n:n,film:false};
+    const R=TN.replay={g:g,i:0,t:g[0][0],k:1,play:true,dur:g[g.length-1][0],n:n,film:false,t0:typeof t0==='number'?t0:0};
+    sky();
     resetTrack();startFollow();
     const st=document.createElement('style');
     st.textContent='#tn-rp{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:18px;background:rgba(20,22,26,.92);color:#fff;font:600 14px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);width:min(760px,calc(100vw - 32px));box-sizing:border-box;transition:opacity .4s}'+
@@ -398,11 +401,15 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       FILM_G.map(g=>g[2].split(',').map(x=>'body.tn-film.tnh-'+g[0]+' '+x).join(',')+'{visibility:hidden!important}').join('')+
       'body.tn-film #tn-det,body.tn-film #tn-fb,body.tn-film #tn-fbn,body.tn-film #tn-res{visibility:hidden!important}body.tn-film #tn-rp.idle{opacity:0}'+
       '#tn-fpick{position:absolute;left:50%;bottom:62px;transform:translateX(-50%);display:none;flex-direction:column;gap:2px;padding:10px 12px;border-radius:14px;background:rgba(20,26,34,.94);color:#fff;font:500 14px system-ui;white-space:nowrap;box-shadow:0 6px 24px rgba(0,0,0,.4)}'+
+      '#tn-clip{position:absolute;right:14px;bottom:62px;display:none;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:rgba(20,26,34,.96);color:#fff;font:500 15px system-ui;box-shadow:0 6px 24px rgba(0,0,0,.4);min-width:280px}'+
+      '#tn-clip.on{display:flex}#tn-clip b{font-size:12px;opacity:.7}#tn-clip .row{display:flex;align-items:center;gap:8px}#tn-clip .row span{width:44px}'+
+      '#tn-clip input{flex:1;width:90px;font:600 18px system-ui;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;text-align:center;font-variant-numeric:tabular-nums}'+
+      '#tn-clip .go{background:#d33!important;height:46px;font-size:16px}#tn-clip .er{color:#ff9a9a;font-size:13px;min-height:1em}'+
       '#tn-fpick.on{display:flex}#tn-fpick b{font-size:12px;opacity:.7;margin-bottom:4px}#tn-fpick label{display:flex;align-items:center;gap:8px;padding:5px 2px;cursor:pointer}#tn-fpick input{width:18px;height:18px;flex:none}';
     document.head.appendChild(st);
     const bar=document.createElement('div');bar.id='tn-rp';
     bar.innerHTML='<span class="nm"></span><button class="pp" aria-label="Play or pause"></button><span class="tm">0:00 / 0:00</span><input type="range" min="0" max="1000" value="0" aria-label="Timeline">'+
-      '<button data-k="1" class="on">1×</button><button data-k="2">2×</button><button data-k="4">4×</button><button class="fm">Film</button><button class="x" aria-label="End replay">✕</button>';
+      '<button data-k="1" class="on">1×</button><button data-k="2">2×</button><button data-k="4">4×</button><button class="cl">Clip</button><button class="fm">Film</button><button class="x" aria-label="End replay">✕</button>';
     document.body.appendChild(bar);
     bar.querySelector('.nm').textContent='Replay · '+n;
     const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
@@ -414,7 +421,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     /* jumping on the timeline: the car starts fresh from there, like opening the app at that spot */
     const seek=f=>{R.t=g[0][0]+f*(R.dur-g[0][0]);let i=0;while(i<g.length&&g[i][0]<R.t) i++;R.i=i;resetTrack();frameBody.rpCar=null;
       if(!R.play){R.play=true;setTimeout(()=>{R.play=false;ui();},1200);}   /* (paused: play 1 s so the car appears at the new spot, then hold) */
-      startFollow();ui();};
+      startFollow();ui();sky();};
     sl.oninput=()=>{dragging=true;tm.textContent=fmt(+sl.value/1000*(R.dur-g[0][0]))+' / '+fmt(R.dur-g[0][0]);};
     sl.onchange=()=>{dragging=false;seek(+sl.value/1000);};
     let idleT=null;const wake=()=>{bar.classList.remove('idle');clearTimeout(idleT);if(R.film) idleT=setTimeout(()=>{bar.classList.add('idle');const fp=document.getElementById('tn-fpick');if(fp) fp.classList.remove('on');},3000);};
@@ -429,11 +436,38 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     bar.querySelector('.fm').onclick=e=>{if(R.film&&!pick.classList.contains('on')){pick.classList.add('on');wake();return;}   /* (list hidden after a pause: show it again first) */
       R.film=!R.film;document.body.classList.toggle('tn-film',R.film);e.target.classList.toggle('on',R.film);pick.classList.toggle('on',R.film);wake();};
     document.addEventListener('pointerdown',wake,true);document.addEventListener('mousemove',wake,true);
+    /* Clip (Nov 23): choose where a video starts and ends, then one button films it. The replay jumps to the start,
+       Film turns on, the bar hides, it waits 3 s (time to start the screen recording), plays, and stops at the end.
+       The start and end are remembered for each trip on this device. */
+    const clip=document.createElement('div');clip.id='tn-clip';
+    clip.innerHTML='<b>Clip to film</b><div class="row"><span>Start</span><input class="cs" inputmode="numeric" placeholder="13:00"><button class="cn" data-w="cs">Now</button></div>'+
+      '<div class="row"><span>End</span><input class="ce" inputmode="numeric" placeholder="14:00"><button class="cn" data-w="ce">Now</button></div>'+
+      '<div class="er"></div><button class="go">Film clip</button>';
+    bar.appendChild(clip);
+    const ck='tn2_clip_'+n,cs=clip.querySelector('.cs'),ce=clip.querySelector('.ce'),cer=clip.querySelector('.er');
+    try{const sv=JSON.parse(localStorage.getItem(ck)||'null');if(sv){cs.value=sv[0]||'';ce.value=sv[1]||'';}}catch(e){}
+    const toMs=v=>{v=String(v||'').trim().replace(/[.,h ]/g,':');if(!v) return null;const p=v.split(':').map(Number);if(p.some(isNaN)) return null;
+      return (p.length===1?p[0]*60:p.length===2?p[0]*60+p[1]:p[0]*3600+p[1]*60+p[2])*1000;};
+    clip.querySelectorAll('.cn').forEach(b=>b.onclick=()=>{clip.querySelector('.'+b.dataset.w).value=fmt(R.t-g[0][0]);});
+    bar.querySelector('.cl').onclick=e=>{pick.classList.remove('on');clip.classList.toggle('on');cer.textContent='';e.stopPropagation();};
+    clip.querySelector('.go').onclick=()=>{
+      const a=toMs(cs.value),b=toMs(ce.value),total=R.dur-g[0][0];
+      if(a==null||b==null){cer.textContent='Type a start and an end, like 13:00 and 14:00.';return;}
+      if(b<=a){cer.textContent='The end has to come after the start.';return;}
+      if(a>=total){cer.textContent='This trip is only '+fmt(total)+' long.';return;}
+      try{localStorage.setItem(ck,JSON.stringify([cs.value,ce.value]));}catch(e){}
+      clip.classList.remove('on');clearTimeout(R.clipT);
+      R.film=true;document.body.classList.add('tn-film');bar.querySelector('.fm').classList.add('on');pick.classList.remove('on');
+      R.clipEnd=g[0][0]+Math.min(b,total);
+      R.play=false;seek(Math.max(0,a-1000)/total);          /* (a second early: the car settles in, then holds) */
+      bar.classList.add('idle');
+      R.clipT=setTimeout(()=>{R.play=true;ui();bar.classList.add('idle');},3000+1300);   /* 3 s to start recording */
+    };
     /* X: back to the live drive right away (no reload): the bar goes, the real GPS comes back */
     bar.querySelector('.x').onclick=()=>{
       clearInterval(R.timer);clearTimeout(idleT);bar.remove();st.remove();document.body.classList.remove('tn-film');FILM_G.forEach(g=>document.body.classList.remove('tnh-'+g[0]));
       document.removeEventListener('pointerdown',wake,true);document.removeEventListener('mousemove',wake,true);
-      TN.replay=null;frameBody.rpCar=null;resetTrack();restartGps();
+      TN.replay=null;frameBody.rpCar=null;resetTrack();restartGps();sky();
       $('speed').innerHTML='0 <small>km/h</small>';};
     /* the clock: recorded GPS fixes are given to the app at the moment they came in that day (times the speed) */
     let last=performance.now(),uiT=0;
@@ -441,7 +475,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(R.play&&!dragging){R.t+=dt*R.k;
         while(R.i<g.length&&g[R.i][0]<=R.t){const r=g[R.i++];
           onPos({coords:{latitude:r[1],longitude:r[2],accuracy:r[3]==null?5:r[3],speed:r[4],heading:r[5]}});}
-        if(R.i>=g.length){R.play=false;R.t=R.dur;}}
+        if(R.i>=g.length){R.play=false;R.t=R.dur;}
+        if(R.clipEnd&&R.t>=R.clipEnd){R.play=false;R.clipEnd=null;}}
       if(now-uiT>250){uiT=now;ui();}
     },33);
     ui();
@@ -620,7 +655,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   /* ---------- night ---------- */
   let lastNt=0;
   function night(){
-    const c=map.getCenter(),alt=TN.sunAlt(new Date(),c.lat,c.lng);
+    const c=map.getCenter(),alt=TN.sunAlt(TN.clock(),c.lat,c.lng);
     let nt=Math.min(1,Math.max(0,(6-alt)/12));
     const mm=typeof location!=='undefined'&&location.search.match(/[?&]night=([0-9.]+)/);
     if(mm){nt=Math.min(1,Math.max(0,parseFloat(mm[1])));scene.extraDark=0;}
@@ -629,6 +664,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     if(ready){scene.applyNight(nt);if(trees) trees.setNight(nt);if(buildings) buildings.setNight(nt);if(rem) rem.setNight(nt);if(season) season.setNight(nt);if(water) water.setNight(nt);}
   }
   setInterval(night,60000);
+  setInterval(()=>{if(TN.replay&&TN.replay.t0) night();},15000);
 
   /* ---------- main loop ---------- */
   try{window.TN_PROGRESS&&window.TN_PROGRESS(75,'Preparing the map…');}catch(e){}

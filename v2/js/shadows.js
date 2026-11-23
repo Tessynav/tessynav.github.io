@@ -98,7 +98,7 @@ TN.Shadows.prototype.update=function(lng,lat,car){
   const now=Date.now();this.on=!(TN.settings&&TN.settings.shadows===false);
   const sw=!(TN.settings&&TN.settings.sunWalls===false);
   if(now-this.sunT>30000||this.lastOn!==this.on||this.lastSW!==sw){this.sunT=now;this.lastOn=this.on;this.lastSW=sw;
-    const sp=TN.sunPos(new Date(now),lat,lng),w=this.scene.weather||{},night=this.scene.night||0;
+    const sp=TN.sunPos(TN.clock?TN.clock():new Date(now),lat,lng),w=this.scene.weather||{},night=this.scene.night||0;
     const up=Math.max(0,Math.min(1,(sp.el-3)/9));
     this.strength=this.on?up*(1-night)*(1-0.85*(w.cloud||0))*((w.rain||0)>0.2?0.25:1)*((w.fog||0)>0.3?0.35:1):0;
     this.lenK=Math.min(4,1/Math.tan(Math.max(6,sp.el)*Math.PI/180));

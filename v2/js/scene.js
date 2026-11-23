@@ -662,6 +662,9 @@ TN.mix=function(a,b,t){
   const pa=[1,3,5].map(i=>parseInt(a.substr(i,2),16)),pb=[1,3,5].map(i=>parseInt(b.substr(i,2),16));
   return '#'+pa.map((v,i)=>Math.round(v+(pb[i]-v)*t).toString(16).padStart(2,'0')).join('');
 };
+/* the time the sky is drawn for: now, or during a trip replay the moment of the drive being replayed (Nov 23: a 4:15 pm
+   sunset drive replayed at night showed a dark sky, which didn't match the real video beside it) */
+TN.clock=function(){const R=TN.replay;return R&&R.t0?new Date(R.t0+R.t):new Date();};
 /* sun height (degrees) for night mode */
 TN.sunAlt=function(date,lat,lng){
   const d=(date.getTime()/86400000)-10957.5,g=(357.529+0.98560028*d)*TN.R,q=280.459+0.98564736*d;
@@ -793,7 +796,7 @@ TN.Scene.prototype.addSky=function(){
 /* the sun's place now (once a minute) */
 TN.Scene.prototype.sunNow=function(){
   const now=Date.now();if(this.sunI&&now-this.sunT<60000) return this.sunI;
-  try{const c=this.map.getCenter();this.sunT=now;this.sunI=TN.sunPos?TN.sunPos(new Date(),c.lat,c.lng):{el:TN.sunAlt(new Date(),c.lat,c.lng),az:180};}catch(e){}
+  try{const c=this.map.getCenter();this.sunT=now;const d=TN.clock();this.sunI=TN.sunPos?TN.sunPos(d,c.lat,c.lng):{el:TN.sunAlt(d,c.lat,c.lng),az:180};}catch(e){}
   return this.sunI;
 };
 TN.Scene.prototype.updateSky=function(cam){
