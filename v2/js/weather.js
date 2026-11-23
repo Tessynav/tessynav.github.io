@@ -133,6 +133,8 @@ TN.ScreenDrops.prototype.step=function(dt){
       if(d.r>9||d.age>1.5){d.vy=Math.min(120,d.vy+dt*60);d.y+=d.vy*dt;}
       d.x+=d.side*v*dt*2.2;
     }
+    /* (a drop running down into the middle of the road fades away quickly: the middle always stays clear) */
+    {const ex=(d.x-W*0.5)/(W*0.36),ey=(d.y-H*0.58)/(H*0.42);if(ex*ex+ey*ey<1&&d.age<d.life-0.4) d.age=d.life-0.4;}
     const f=Math.min(1,d.age/0.15)*Math.max(0,1-Math.max(0,d.age-(d.life-0.8))/0.8);
     if(d.snow){
       const g=x.createRadialGradient(d.x,d.y,0,d.x,d.y,d.r);
