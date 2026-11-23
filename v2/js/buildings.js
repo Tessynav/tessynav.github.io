@@ -291,7 +291,7 @@ TN.Buildings.prototype.free=function(k){
   const e=this.cells.get(k);if(!e) return;
   if(e.mesh){this.scene.three.scene.remove(e.mesh);e.mesh.geometry.dispose();
     for(const ch of e.mesh.children){if(ch.geometry) ch.geometry.dispose();if(TN.shadows) TN.shadows.forget(ch);}}
-  if(e.ids){const map=this.scene.map;for(const id of e.ids){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}}}
+  if(e.ids){const map=this.scene.map;for(const id of e.ids){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}if(this.plainHid) this.plainHid.delete(id);}}
   this.cells.delete(k);
 };
 /* ---------- our own building tiles (Overture: OpenStreetMap plus the buildings it's missing) ---------- */
@@ -362,9 +362,29 @@ TN.lodApply=function(cells,lng,lat,far,getObj){
     const vis=Math.hypot(dx,dz)<far;if(o.visible!==vis) o.visible=vis;if(vis) shown++;else hidden++;}
   return [shown,hidden];
 };
+/* (Nov 22, trip 20:42: "half of the building has lights and windows") the map's plain copy of a building stayed on under
+   our detailed one when the detailed areas came from the background builder; where the plain one is taller, its top
+   showed above ours, with the far-building window pattern. Now, wherever a detailed area is on screen, the plain
+   copies inside it are hidden; when that area is hidden again (far away) or dropped, they come back, so the distance
+   is never empty. Worked through a few at a time (at most 2 ms a frame), the map's list read again every 6 seconds. */
+TN.Buildings.prototype.syncPlain=function(){
+  const map=this.scene.map,now=performance.now();if(!map||this.noIdMode) return;
+  if(!this.plainHid) this.plainHid=new Map();
+  if(!this.pl||(this.pl.i>=this.pl.f.length&&now-this.pl.t>6000)){
+    let f=[];try{if(map.getLayer('tn-buildings')&&map.getLayoutProperty('tn-buildings','visibility')!=='none') f=map.querySourceFeatures('openmaptiles',{sourceLayer:'building'});}catch(e){f=[];}
+    this.pl={f:f,i:0,t:now,seen:new Set()};}
+  const P=this.pl,C=TN.CELL,t0=performance.now();
+  while(P.i<P.f.length&&performance.now()-t0<2){const f=P.f[P.i++],id=f.id;if(id==null||P.seen.has(id)) continue;P.seen.add(id);
+    let q=null;try{const g=f.geometry;q=g.type==='Polygon'?g.coordinates[0][0]:g.type==='MultiPolygon'?g.coordinates[0][0][0]:null;}catch(e){}
+    if(!q) continue;
+    const key=Math.floor(q[0]/C)+','+Math.floor(q[1]/C),e=this.cells.get(key),want=!!(e&&e.mesh&&e.mesh.visible),cur=this.plainHid.get(id);
+    if(want&&cur!==key){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:true});}catch(x){}this.plainHid.set(id,key);(e.ids||(e.ids=[])).push(id);}
+    else if(!want&&cur){try{map.setFeatureState({source:'openmaptiles',sourceLayer:'building',id:id},{hide:false});}catch(x){}this.plainHid.delete(id);}}
+};
 TN.Buildings.prototype.update=function(lng,lat,fps){
   try{this.setClean();}catch(e){}
   try{TN.lodTick(fps);if(performance.now()-(this.lodT||0)>500){this.lodT=performance.now();TN.lodApply(this.cells,lng,lat,TN.lodFar,e=>e&&e.mesh);}}catch(e){}
+  try{this.syncPlain();}catch(e){}
   if(!this.on||!this.scene.three) return;
   if(fps){
     if(fps<45) this.slowT++;else this.slowT=Math.max(0,this.slowT-1);
