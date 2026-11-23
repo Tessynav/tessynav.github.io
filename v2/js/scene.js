@@ -219,6 +219,8 @@ TN.Scene.prototype.loadCar=async function(){
       const T={5126:Float32Array,5125:Uint32Array,5123:Uint16Array,5121:Uint8Array}[a.componentType];
       const o=(bv.byteOffset||0)+(a.byteOffset||0);return new T(bin.slice(o,o+a.count*n*T.BYTES_PER_ELEMENT));};
     const body=new THREE.Group();
+    /* (the wheels are kept apart from the body, so the body can lean and dip on its springs while the wheels stay on the road) */
+    const wheelsG=new THREE.Group();this.body3d=body;
     for(const ni of j.scenes[j.scene||0].nodes){
       const nd=j.nodes[ni];if(nd.mesh==null) continue;
       const M=new THREE.Matrix4();
@@ -234,11 +236,11 @@ TN.Scene.prototype.loadCar=async function(){
         /* the inside faces of each panel are drawn by a twin, nudged well behind (see carBack) */
         const back=new THREE.Mesh(g,this.carBack(mat,md.name||''));back.frustumCulled=false;mesh.add(back);
         const wk=(nd.name||'').match(/^(Wheel[FR][LR])_/);
-        if(wk){let w=this.wheels.find(x=>x.name===wk[1]);if(!w){w=new THREE.Group();w.name=wk[1];w.position.setFromMatrixPosition(M);body.add(w);this.wheels.push(w);}w.add(mesh);}
+        if(wk){let w=this.wheels.find(x=>x.name===wk[1]);if(!w){w=new THREE.Group();w.name=wk[1];w.position.setFromMatrixPosition(M);wheelsG.add(w);this.wheels.push(w);}w.add(mesh);}
         else{mesh.applyMatrix4(M);body.add(mesh);}
       }
     }
-    root.remove(tmp);root.add(body);
+    root.remove(tmp);root.add(body);root.add(wheelsG);
     this.addBrakeGlow(body);
     this.addSilhouette(body);
   }catch(e){console.warn('car model',e.message);}
@@ -401,9 +403,37 @@ TN.Scene.prototype.blinkTick=function(now){
   const on=sd&&((now-this.blinkT0)%660)<330;
   for(const k of [-1,1]){const o=on&&k===sd?1:0;for(const m of this.blinkMats[k]){const v=o*(m.userData.k||1);if(m.opacity!==v) m.opacity=v;}}
 };
-TN.Scene.prototype.placeCar=function(x,z,y,hd){
+TN.Scene.prototype.placeCar=function(x,z,y,hd,v,dt){
   if(!this.car3d) return;
   this.car3d.position.set(x,y,z);this.car3d.rotation.y=-hd*TN.R;
+  if(v!=null&&dt>0) try{this.carPhysics(hd,v,dt);}catch(e){}
+};
+/* (Nov 22) the car moves like a real car on its springs, from your real speed and turning:
+   - braking: the nose dips; speeding up: the nose lifts a little
+   - in a turn: the body leans to the outside
+   - the front wheels steer with the turn
+   A soft spring with a little bounce, so it settles like real suspension. Small angles (at most 2 to 3 degrees).
+   Settings -> 3D world -> Car moves on its springs (on by default). */
+TN.Scene.prototype.carPhysics=function(hd,v,dt){
+  const P=this.phys||(this.phys={vs:v,hd:hd,a:0,yaw:0,px:0,pv:0,rx:0,rv:0,st:0});
+  dt=Math.min(0.05,dt);
+  const on=!(TN.settings&&TN.settings.carMotion===false);
+  /* speed and turning, smoothed (the speed from the car comes about once a second, in steps) */
+  const vs0=P.vs;P.vs+=(v-P.vs)*Math.min(1,dt*2.5);
+  const aNow=(P.vs-vs0)/dt;P.a+=(aNow-P.a)*Math.min(1,dt*4);
+  const dh=((hd-P.hd+540)%360)-180;P.hd=hd;
+  const yawNow=Math.abs(dh)>20?0:dh*TN.R/dt;P.yaw+=(yawNow-P.yaw)*Math.min(1,dt*5);
+  const lat=P.vs*P.yaw;   /* sideways pull in m/s2 (positive: turning right) */
+  /* what the springs aim for: about 1.2 degrees of dip for a firm stop, 1.6 degrees of lean in a quick turn */
+  const tx=on?Math.max(-2.2,Math.min(1.6,P.a*0.3))*TN.R:0,tz=on?Math.max(-2.6,Math.min(2.6,lat*0.32))*TN.R:0;
+  const K=55,C=8;   /* spring stiffness and damping: settles in about half a second with one small bounce */
+  P.pv+=(K*(tx-P.px)-C*P.pv)*dt;P.px+=P.pv*dt;
+  P.rv+=(K*(tz-P.rx)-C*P.rv)*dt;P.rx+=P.rv*dt;
+  if(this.body3d){this.body3d.rotation.x=P.px;this.body3d.rotation.z=P.rx;}
+  /* front wheels: the steering angle a real car needs for this turn (wheelbase 2.9 m), at most 30 degrees */
+  let st=0;if(on&&P.vs>0.8) st=Math.atan(2.875*P.yaw/P.vs);
+  st=Math.max(-0.52,Math.min(0.52,st));P.st+=(st-P.st)*Math.min(1,dt*6);
+  for(const w of this.wheels) if(/^WheelF/.test(w.name)) w.rotation.y=-P.st;
 };
 /* ---------- map style ---------- */
 TN.Scene.prototype.styleMap=function(){

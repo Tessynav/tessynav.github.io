@@ -76,6 +76,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   if(incidents){try{incidents.build();}catch(e){}}
   /* real weather (sky, rain, snow, fog, wet roads) */
   const weather=TN.Weather?new TN.Weather(scene,season):null;
+  if(TN.ScreenDrops&&!TN.screenDrops){try{TN.screenDrops=new TN.ScreenDrops();}catch(e){}}   /* (drops on the screen when it rains or snows) */
   if(weather&&TN.settings&&TN.settings.weather===false) weather.setOn(false);
   if(settings) settings.m.weather=weather;
   /* long-press anywhere on the map: drop a pin there (then Go) */
@@ -752,7 +753,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       {const yT=car.y||0;if(TN._ys==null||Math.abs(yT-TN._ys)>30) TN._ys=yT;else{const st=5*Math.min(0.1,dt||0.016);TN._ys+=Math.max(-st,Math.min(st,yT-TN._ys));}}
       /* (the drawn car follows the tracking directly again: the extra sideways smoothing of builds 116 and 117 caused the
          stepping and the zigzag on screen, while the tracking itself, in the recordings, was smooth) */
-      scene.placeCar(car.x,car.z,TN._ys,dispHd);
+      scene.placeCar(car.x,car.z,TN._ys,dispHd,track.last?track.last.v:0,dt);
       if(ground){try{ground.update({x:car.x,z:car.z,hd:dispHd},dt);}catch(e){}}
       if(TN.shadows){try{const sl=TN.fromLocal(car.x,car.z);TN.shadows.update(sl[0],sl[1],{x:car.x,z:car.z,y:car.y,hd:dispHd,br:car.br});}catch(e){}}
       try{scene.updateBeam(car);}catch(e){}
@@ -767,7 +768,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}
       {const cc=track.car,lv=track.last;TN.carOffRoad=!!(cc&&cc.x!=null&&!cc.snapped&&(!lv||(lv.v||0)<2.5));}   /* (not on a road, and slow: the x-ray bubble) */   /* (tunnel mode: the tunnel you're in, and the view dims) */
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
-      if(weather){try{const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
+      if(weather){try{weather.carV=track.last?track.last.v:0;weather.carHd=dispHd;const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);
       /* the car leaving the screen while the map isn't following it (at the start of a trip, or after looking around):
          driving off the edge brings the view back to the car right away, instead of after the usual wait */
