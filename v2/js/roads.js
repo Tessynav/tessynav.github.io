@@ -51,7 +51,8 @@ TN.Net.prototype.makeWay=function(r,isBridge){
   const w={id:r[0],cls:r[1],ow:r[2]||0,w:r[3]||7,lanes:r[7]||0,name:r[4]||'',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],
     br:false,tun:false,layer:0,H:0,hs:null};
   if(isBridge){w.layer=r[9]||0;w.ramp=!!r[10];if(r[12]==='t') w.tun=true;else w.br=true;w.lim=r[13]||0;}
-  else{w.ramp=!!r[9];w.pa=!!r[10];w.lim=r[11]||0;}   /* lim: posted speed limit in km/h (0 = not recorded; tiles v6+) */
+  else{w.ramp=!!r[9];w.pa=!!r[10];w.lim=r[11]||0;}
+  w.tl=(isBridge?r[14]:r[12])||'';   /* lane arrows (tiles v11+): see TN.Net.prototype.laneArrows */   /* lim: posted speed limit in km/h (0 = not recorded; tiles v6+) */
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of pts){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
   const pad=w.w/2+3;w.bb=[x0-pad,x1+pad,z0-pad,z1+pad];
   return w;
@@ -1917,6 +1918,59 @@ TN.Net.prototype.drawJC=function(L,w,P,N,hw,H){
     for(let i=0;i<4;i++){const p=pts[i],q=pts[(i+1)%4];flat(X(p,lo),X(q,lo),X(q,hi),X(p,hi),col);
       TN.quad(G,X(p,hi),X(q,hi),[c[0],hi+1.8,c[2]],[c[0],hi+1.8,c[2]],dark);}}
 };
+/* (Nov 23) the arrows painted in each lane before a junction (left, straight, right, and the combined ones), from
+   OpenStreetMap's lane directions (turn:lanes). Two sets per approach, about 15 m and 45 m before the end of the road
+   (one set on short pieces), in the middle of each lane. Straight-only lanes get no arrow, as on most real streets
+   when every lane goes straight. White paint, part of the lane markings, so it shines in the headlights and the rain.
+   Each arrow: a stem, then one branch per direction with a pointed head. */
+TN.LANE_TURN={L:-90,l:-40,T:0,r:40,R:90,U:-180};
+TN.Net.prototype.laneArrows=function(L,w,a,b,P,N,H,hwJ){
+  const G=L.mark,col=TN.C.white,net=this;
+  const sets=[];   /* [lane codes, direction +1 along the drawing / -1 against, offset of each lane (left of the drawing = +)] */
+  const W=hwJ;
+  if(w.ow){const ls=w.tl.split('|'),n=ls.length,dir=w.ow===-1?-1:1;
+    /* lanes listed from the driver's left: for ow=1 that is the + side, for ow=-1 the - side */
+    sets.push([ls,dir,(j,k)=>dir*(W(j)-(k+0.5)*2*W(j)/n)]);}
+  else{const [f,bk]=w.tl.split('^');
+    if(f){const ls=f.split('|'),n=ls.length;sets.push([ls,1,(j,k)=>-(k+0.5)*W(j)/n]);}
+    if(bk){const ls=bk.split('|'),n=ls.length;sets.push([ls,-1,(j,k)=>(k+0.5)*W(j)/n]);}}
+  for(const [ls,dir,off] of sets){
+    if(!ls.some(c=>c&&c!=='T')) continue;   /* (every lane straight ahead: nothing painted) */
+    const lw=2*Math.min(...P.map((_,j)=>W(j)))/Math.max(ls.length,1)*(w.ow?1:0.5);if(lw<2.4) continue;   /* (lanes too narrow) */
+    const sc=Math.min(1,lw/3.3);
+    for(const back of (w.L>75?[15,45]:w.L>26?[15]:[])){
+      const sAt=dir>0?w.L-back:back;
+      let i=0;while(i<P.length-2&&w.cum[i+1]<sAt) i++;
+      if(i<a||i>=b) continue;   /* (drawn by the cell that has this part of the road) */
+      const seg=w.cum[i+1]-w.cum[i];if(seg<0.5) continue;const t=(sAt-w.cum[i])/seg;
+      const px=P[i][0]+(P[i+1][0]-P[i][0])*t,pz=P[i][1]+(P[i+1][1]-P[i][1])*t,py=H(i)+(H(i+1)-H(i))*t+0.07;
+      const nx=N[i][0]+(N[i+1][0]-N[i][0])*t,nz=N[i][1]+(N[i+1][1]-N[i][1])*t,nl=Math.hypot(nx,nz)||1;
+      let dx=(P[i+1][0]-P[i][0])/seg*dir,dz=(P[i+1][1]-P[i][1])/seg*dir;
+      const rx=-nx/nl*dir,rz=-nz/nl*dir;   /* (the driver's right) */
+      {const sx=P[i+1][0]-P[i][0],sz=P[i+1][1]-P[i][1];if(net.onCrossing(w,px,pz,py-0.07,sx/seg,sz/seg)) continue;}
+      for(let k=0;k<ls.length;k++){const code=ls[k];if(!code) continue;
+        const o=off(i,k),cx=px+nx/nl*o,cz=pz+nz/nl*o;
+        if(net.onOther(w,cx,cz,py-0.07)) continue;
+        /* a point of the arrow: u metres ahead, v metres to the right */
+        const at=(u,v)=>[cx+dx*u*sc+rx*v*sc,py,cz+dz*u*sc+rz*v*sc];
+        const bar=(u0,v0,u1,v1,hw)=>{const l=Math.hypot(u1-u0,v1-v0)||1,pu=-(v1-v0)/l*hw,pv=(u1-u0)/l*hw;
+          TN.quad(G,at(u0+pu,v0+pv),at(u1+pu,v1+pv),at(u1-pu,v1-pv),at(u0-pu,v0-pv),col);};
+        const head=(u,v,cu,cv,len,hw)=>{const bu=u,bv=v,tu=u+cu*len,tv=v+cv*len,pu=-cv*hw,pv=cu*hw;
+          TN.quad(G,at(bu+pu,bv+pv),at(tu,tv),at(tu,tv),at(bu-pu,bv-pv),col);};
+        const turns=[...new Set(code.split(''))].map(c=>TN.LANE_TURN[c]).filter(x=>x!=null);if(!turns.length) continue;
+        const hasT=turns.includes(0);
+        /* stem: 3 m long; a straight branch carries on to a head 1.5 m long */
+        bar(-2.6,0,hasT?0.9:0.2,0,0.15);
+        if(hasT) head(0.9,0,1,0,1.5,0.5);
+        for(const ang of turns){if(ang===0) continue;
+          const A=ang*Math.PI/180,cu=Math.cos(A),cv=Math.sin(A);
+          if(Math.abs(ang)===180){bar(0.2,0,0.2,-0.9,0.15);bar(0.2,-0.9,-1.2,-0.9,0.15);head(-1.2,-0.9,-1,0,1.1,0.45);continue;}
+          const len=Math.abs(ang)>=80?0.8:1.0,eu=-0.1+cu*len,ev=cv*len;
+          bar(-0.1,0,eu,ev,0.15);head(eu,ev,cu,cv,1.2,0.48);}
+      }
+    }
+  }
+};
 TN.Net.prototype.drawWay=function(L,w,runs){
   const net=this,P=w.pts,N=TN.normals(P),W=TN.width(w),hw=W/2;
   const H=j=>w.hs?w.hs[j]:(w.br?w.H:0);
@@ -2040,6 +2094,7 @@ TN.Net.prototype.drawWay=function(L,w,runs){
       const nh=w.lanes>=4?Math.floor(w.lanes/2):0;
       for(let k=1;k<nh;k++){line(L.mark,a,b,j=>k*hwJ(j)/nh,3,6,TN.C.white,0.13);line(L.mark,a,b,j=>-k*hwJ(j)/nh,3,6,TN.C.white,0.13);}
     }
+    if(w.tl&&!w.tun) try{this.laneArrows(L,w,a,b,P,N,H,hwJ);}catch(e){}
     const raised=w.hs?w.hs.some((h,j)=>j>=a&&j<=b&&h>0.3):(w.br&&w.H>0);
     if(raised){
       /* low ramps: solid embankment wall to the ground; higher up: a 1.2 m deck with open space below (so roads
