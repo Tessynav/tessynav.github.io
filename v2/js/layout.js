@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v15 Nov 24: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v16 Nov 24: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -32,6 +32,7 @@ TN.Layout=function(){
   'body.tn-l1:not(.tn-routing):not(.tn-intro) #tn-quick{display:flex}#tn-quick>div{display:flex;align-items:center;gap:9px;height:52px;padding:0 16px 0 12px;border-radius:14px;background:rgba(127,140,160,.13);cursor:pointer;white-space:nowrap}'+
   '#tn-quick>div:active{transform:scale(.96)}#tn-quick b{display:block;font-size:15px;line-height:1.15}#tn-quick small{display:block;font-size:13px;font-weight:600;color:#16a34a}#tn-quick small.o{color:#ea8a0c}#tn-quick small.r{color:#dc2626}#tn-quick small.n{color:var(--tn-joke);font-weight:400}'+
   '#tn-quick .wx{cursor:pointer;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{display:flex}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}#tn-quick.c4 b{display:none}#tn-quick.c4 small{font-size:15px}#tn-quick.c4 .unset b{display:block}#tn-quick .unset{padding:0 12px 0 10px}#tn-quick .unset svg{opacity:.75}'+
+  '#tn-beta .tw{display:flex;align-items:center;gap:10px}#tn-beta .wxi{display:flex;align-items:center;gap:4px;font-size:17px;font-weight:600;padding:2px 8px 2px 4px;border-radius:10px;background:rgba(127,140,160,.13);cursor:pointer}#tn-beta .wxi.w{box-shadow:inset 0 0 0 2px #f59e0b}'+
   '#tn-wxr{position:absolute;bottom:18px;height:52px;z-index:5;display:none;align-items:center;gap:6px;padding:0 12px 0 10px;border-radius:14px;background:rgba(127,140,160,.13);font:600 20px system-ui,sans-serif;color:var(--tn-text);cursor:pointer;white-space:nowrap}'+
   'body.tn-l1.tn-routing:not(.tn-intro) #tn-wxr.ok{display:flex}#tn-wxr.w{box-shadow:inset 0 0 0 2px #f59e0b}'+
   '#tn-wxa{position:absolute;left:50%;top:150px;transform:translate(-50%,-8px);z-index:40;display:flex;align-items:center;gap:12px;max-width:min(560px,calc(100vw - 140px));padding:12px 18px 12px 12px;border-radius:18px;background:'+P+';color:var(--tn-text);box-shadow:0 8px 28px rgba(0,0,0,.28);font:15px system-ui,sans-serif;line-height:1.3;opacity:0;transition:opacity .35s,transform .35s;pointer-events:none}'+
@@ -77,7 +78,7 @@ TN.Layout=function(){
   document.head.appendChild(st);
   const mk=(id)=>{let e=document.getElementById(id);if(!e){e=document.createElement('div');e.id=id;document.body.appendChild(e);}return e;};
   this.bbar=mk('tn-bbar');this.rcol=mk('tn-rcol');this.beta=mk('tn-beta');this.quick=mk('tn-quick');this.quick.onclick=ev=>this.quickTap(ev);this.wxr=mk('tn-wxr');this.wxr.onclick=ev=>{ev.stopPropagation();this.wxCard();};
-  this.beta.onclick=()=>{const d=document.querySelector('#tn-bar .dst');if(d) d.click();};   /* (the destination: opens the route overview, as before) */
+  this.beta.onclick=ev=>{if(ev&&ev.target.closest&&ev.target.closest('.wxi')){ev.stopPropagation();this.wxCard();return;}const d=document.querySelector('#tn-bar .dst');if(d) d.click();};   /* (the destination: opens the route overview, as before) */
   this.tick();setInterval(()=>this.tick(),700);
 };
 /* the right column: the map buttons that are showing right now, one under the other */
@@ -87,7 +88,11 @@ TN.Layout.prototype.tick=function(){
   const wide=innerWidth>=760;
   /* the arrival time, copied from the turn banner (which keeps doing the work) */
   try{const e=document.querySelector('#tn-bar .eta'),d=document.querySelector('#tn-bar .dst');
-    const h=(e?e.innerHTML:'')+(d&&d.textContent?'<div class="d">'+TN.esc(d.textContent)+'</div>':'');if(h!==this.lastEta){this.lastEta=h;this.beta.innerHTML=h;}}catch(e){}
+    let eh=e?e.innerHTML:'';
+    /* (Nov 24) the weather sits next to the arrival time (it overlapped the music as a separate button) */
+    {const w=TN.wx;if(w&&w.temp!=null&&eh.indexOf('</b>')>0){const i=eh.indexOf('</b>')+4,hr=new Date().getHours(),nt=hr<7||hr>=17;
+      eh='<div class="tw">'+eh.slice(0,i)+'<span class="wxi'+(this.wxWarn?' w':'')+'">'+TN.Layout.wxIcon(w.code!=null?w.code:0,nt,26)+Math.round(w.temp)+'\u00b0</span></div>'+eh.slice(i);}}
+    const h=eh+(d&&d.textContent?'<div class="d">'+TN.esc(d.textContent)+'</div>':'');if(h!==this.lastEta){this.lastEta=h;this.beta.innerHTML=h;}}catch(e){}
   /* the right end of the bar: the arrival time sits just left of "Faster?" and "End", the music ends before it */
   /* the speed limit right after the speed (76 km/h is wider than 0 km/h), the music after them */
   if(wide){const k1=window.TN_UIK||1,sp=document.getElementById('speed'),lim=document.getElementById('tn-limit'),mus=document.getElementById('tn-mus');
@@ -100,7 +105,6 @@ TN.Layout.prototype.tick=function(){
     const k=window.TN_UIK||1;this.beta.style.right=((innerWidth-minL)/k+18)+'px';
     /* (Nov 24) while navigating: the weather (icon + temperature) just left of the arrival time; the music ends before it */
     let bl=this.beta.getBoundingClientRect();
-    if(document.body.classList.contains('tn-routing')&&bl.width){try{this.wxRoute(bl,k);const r=this.wxr.getBoundingClientRect();if(r.width) bl=r;}catch(e){}}
     const mus=document.getElementById('tn-mus');
     if(mus) mus.style.setProperty('max-width',Math.max(160,((document.body.classList.contains('tn-routing')&&bl.width?bl.left:Math.min(innerWidth-24,(196+44+460)*k))/k)-196-44)+'px','important');}
   /* not enough room (the car's browser beside the Tesla's own screen): the album cover, then the "previous" button and the
@@ -270,7 +274,7 @@ TN.Layout.prototype.wxAlert=function(text,head,code){
   let a=document.getElementById('tn-wxa');if(!a){a=document.createElement('div');a.id='tn-wxa';document.body.appendChild(a);a.onclick=()=>a.classList.remove('on');}
   a.innerHTML=(TN.roccoSVG?TN.roccoSVG(46):'')+'<div>'+(head?'<b>'+TN.esc(head)+'</b>':'')+'<span>'+TN.esc(text)+'</span></div>'+(code!=null?TN.Layout.wxIcon(code,false,40):'');
   a.classList.add('on');clearTimeout(this.wxaT);this.wxaT=setTimeout(()=>a.classList.remove('on'),9000);
-  if(this.wxr) this.wxr.classList.add('w');setTimeout(()=>{if(this.wxr) this.wxr.classList.remove('w');},60000);
+  this.wxWarn=true;clearTimeout(this.wxWT);this.wxWT=setTimeout(()=>{this.wxWarn=false;},60000);
   try{if(TN.voice&&TN.voice.say&&!(TN.settings&&TN.settings.voice===false)) TN.voice.say(text);}catch(e){}
 };
 /* the weather button while navigating (left of the arrival time) */
