@@ -1,4 +1,4 @@
-/* MapKoon v2 — nav.js  (navigation, part 1)
+/* MapKoon v2 — nav.js  (navigation, part 1) — v124, Nov 21: smooth direction in corners; car height on slopes
    - search: results as you type (Photon, nearest first), recent destinations when the box is empty
    - route: OSRM (fastest by car), overview with time / distance / arrival, then Go or Cancel
    - the route as a blue line laid on the 3D roads (bridges included), trimmed behind the car
@@ -74,8 +74,10 @@ TN.Nav.prototype.build=function(){
    '#tn-bar .exit{display:inline-block;background:#0b6b3a;color:#fff;border:2px solid #fff;border-radius:6px;padding:1px 8px;margin-right:10px;font:700 15px system-ui,sans-serif;letter-spacing:.04em;vertical-align:1px}#tn-bar .eta{text-align:right;color:var(--tn-text);font-size:14px}#tn-bar .eta b{font-size:20px;display:block;color:var(--tn-text)}'+
    '#tn-end{right:100px;bottom:24px;display:none;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-danger)}'+   '@media (max-width:560px){#tn-end{right:auto;left:16px;bottom:104px}}'+   /* (phones: above the speed box) */
 
-   '#tn-mute{right:16px;top:76px;width:50px;height:50px;padding:0;border:0;display:none;align-items:center;justify-content:center;cursor:pointer}body.tn-routing #tn-mute{display:flex}'+
+   '#tn-mute{right:16px;top:76px;width:50px;height:50px;padding:0;border:0;display:none;align-items:center;justify-content:center;cursor:pointer;color:#e8f1fa;background:transparent}body.tn-routing #tn-mute{display:flex}'+
    '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-joke)}body.tn-routing #tn-stopbtn{display:none}'+
+   '#tn-alt{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 18px;font:600 16px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-text)}body.tn-routing #tn-alt{display:block}'+
+   '@media (max-width:700px){#tn-alt{right:auto;left:16px;bottom:160px}}'+
    'body.tn-routing #trips{display:none!important}'+   /* (Record stays available while navigating, so a drive can be recorded after starting the route) */
    'body.tn-routing.tn-addstop #tn-search{display:flex}body.tn-routing.tn-addstop #tn-bar{display:none!important}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:var(--tn-sub)}'+
@@ -93,9 +95,13 @@ TN.Nav.prototype.build=function(){
   {const tt=this.bar.querySelector('.t');if(tt){tt.style.cursor='pointer';tt.onclick=ev=>{ev.stopPropagation();if(this.route) this.details();};}}
   this.endBtn=el('tn-end','','End route','button');
   this.stopBtn=el('tn-stopbtn','','+ Stop','button');this.stopBtn.onclick=()=>this.addStop();
+  /* (Nov 21: ask for another way yourself, any time on a route, e.g. stuck in a jam) */
+  this.altBtn=el('tn-alt','',TN.LANG==='fr'?'\u{1F504} Plus rapide ?':'\u{1F504} Faster way?','button');this.altBtn.onclick=ev=>{ev&&ev.stopPropagation&&ev.stopPropagation();this.altsNow();};
   this.muteBtn=el('tn-mute','','','button');
-  const muteDraw=()=>{const on=!(TN.settings&&TN.settings.voice===false);this.muteBtn.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#e8f1fa"/>'+
-    (on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="#ff8a80" stroke-width="2.2" stroke-linecap="round"/>')+'</svg>';};
+  const muteDraw=()=>{const on=!(TN.settings&&TN.settings.voice===false);this.muteBtn.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>'+
+    (on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="#e53935" stroke-width="2.4" stroke-linecap="round"/>')+'</svg>';
+    /* (Nov 23: on the light panel the white speaker was invisible, leaving only a red X: now drawn in the text colour, with a label) */
+    const tr=TN.tr||(x=>x);this.muteBtn.setAttribute('data-lbl',tr(on?'Voice':'Muted'));this.muteBtn.title=tr(on?'Voice':'Muted');};
   muteDraw();this.muteBtn.onclick=()=>{const on=!(TN.settings&&TN.settings.voice===false);TN.settings.voice=!on;try{const st=JSON.parse(localStorage.getItem('tn2_settings')||'{}');st.voice=!on;localStorage.setItem('tn2_settings',JSON.stringify(st));}catch(e){}
     if(on&&TN.voice) TN.voice.stop();else if(TN.voice) TN.voice.say('Voice on',true);muteDraw();};this.roadName=el('tn-roadname');
   this.limit=el('tn-limit','','<small>MAX</small><b></b>');
@@ -597,6 +603,14 @@ TN.Nav.prototype.plan=async function(reroute){
     if(!reroute){this.ov.innerHTML='<div>Could not find a route</div><button class="cancel">Close</button>';this.ov.querySelector('.cancel').onclick=()=>{this.ov.style.display='none';};}
   }
 };
+/* keeps only the points that shape the line (Douglas-Peucker, tolerance in metres); the first and last stay */
+TN.simplifyPts=function(P,tol){
+  if(P.length<3) return P.slice();const keep=new Uint8Array(P.length);keep[0]=keep[P.length-1]=1;const st=[[0,P.length-1]];
+  while(st.length){const [a,b]=st.pop();const A=P[a],B=P[b],dx=B[0]-A[0],dz=B[1]-A[1],L=Math.hypot(dx,dz)||1e-9;let md=-1,mi=-1;
+    for(let i=a+1;i<b;i++){const d=Math.abs((P[i][0]-A[0])*dz-(P[i][1]-A[1])*dx)/L;if(d>md){md=d;mi=i;}}
+    if(md>tol){keep[mi]=1;st.push([a,mi],[mi,b]);}}
+  return P.filter((p,i)=>keep[i]);
+};
 TN.Nav.prototype.setRoute=function(rt){
   try{if(TN.prefetchRoute&&rt&&rt.geometry) TN.prefetchRoute(rt.geometry.coordinates);}catch(e){}   /* (the map data along the route, saved in advance) */
   /* a new route starts from scratch: where the car is along it, its lane, the release timers (a leftover position
@@ -606,7 +620,10 @@ TN.Nav.prototype.setRoute=function(rt){
   const C=rt.geometry.coordinates,pts=[];
   /* each corner of the route becomes a real arc, about as wide as a car drives (up to 12 m radius, tighter
      where the streets between corners are short) */
-  const raw=C.map(c=>TN.toLocal(c[0],c[1])),rnd=[raw[0]];
+  /* (Nov 23, trip 14:57: right turns still showed a square corner: the route has extra points a few metres before and
+     after each corner, so the arc could only be a metre or two wide. Points that add no shape (less than 0.3 m off the
+     straight line) are dropped first, so each corner gets its full arc) */
+  const raw=TN.simplifyPts(C.map(c=>TN.toLocal(c[0],c[1])),0.3),rnd=[raw[0]];
   for(let i=1;i<raw.length-1;i++){const A=rnd[rnd.length-1],B=raw[i],D=raw[i+1];
     const ax=B[0]-A[0],az=B[1]-A[1],bx=D[0]-B[0],bz=D[1]-B[1],la=Math.hypot(ax,az),lb=Math.hypot(bx,bz);
     if(la<0.5||lb<0.5){continue;}
@@ -677,9 +694,12 @@ TN.Nav.prototype.fitRange=function(i0,i1){
       const h1=Math.atan2(b[0]-a[0],-(b[1]-a[1])),h2=Math.atan2(c2[0]-b[0],-(c2[1]-b[1]));let dh=Math.abs(h2-h1)*180/Math.PI;if(dh>180) dh=360-dh;turnHere=dh>20;}
     /* (through a turn the shift fades to half of the previous one instead of dropping to zero: the sudden 0 then back to
        6-10 m made the line weave right after turns, like at the Ville-Marie tunnel exit) */
-    if(best&&turnHere){const pp=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1]:null;best.dx=pp?pp.dx*0.5:0;best.dz=pp?pp.dz*0.5:0;}
+    /* (Nov 23, trip 14:57: in the Île-des-Soeurs roundabout, one long turn, the line let go of the road and slid up to
+       2.5 m toward its edge, the car with it: on a one-way ring the line stays on our road through the turn) */
+    const ring=best&&best.ow&&prevW!=null&&best.w===prevW&&Math.hypot(best.dx,best.dz)<best.hw+1;
+    if(best&&turnHere&&!ring){const pp=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1]:null;best.dx=pp?pp.dx*0.5:0;best.dz=pp?pp.dz*0.5:0;}
     const pf=i>0&&R.fit[i-1]&&!turnHere&&R.cum[i]-R.cum[i-1]<25?R.fit[i-1]:null;
-    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,w:best.w,miss:false}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:pf?pf.lane:0,dx:pf?pf.dx:0,dz:pf?pf.dz:0,miss:true,ver:net.ver};
+    R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,w:best.w,miss:false,rg:!!(ring&&turnHere)}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:pf?pf.lane:0,dx:pf?pf.dx:0,dz:pf?pf.dz:0,miss:true,ver:net.ver};
   }
   /* smoothed values for drawing and placing the car (lane and shift change gradually, over about 40 m) */
   R.sm=R.sm||{};const sm=R.sm;
@@ -690,8 +710,11 @@ TN.Nav.prototype.fitRange=function(i0,i1){
      points just before and after the batch are recomputed too. Averaged over 120 m.) */
   const SW=120;let a0=i0,a1=i1;while(a0>0&&R.cum[i0]-R.cum[a0-1]<SW) a0--;while(a1<R.pts.length-1&&R.cum[a1+1]-R.cum[i1]<SW) a1++;
   for(let i=a0;i<=a1;i++){if(!R.fit[i]) continue;let ln=0,nl=0,dx=0,dz=0,wt=0;
-    for(let k=i;k>=0&&R.cum[i]-R.cum[k]<SW;k--){const f=R.fit[k];if(!f) break;const d=R.cum[i]-R.cum[k],q=1-d/SW;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
-    for(let k=i+1;k<R.pts.length&&R.cum[k]-R.cum[i]<SW;k++){const f=R.fit[k];if(!f) break;const d=R.cum[k]-R.cum[i],q=1-d/SW;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+    /* (in a roundabout the shift points a different way at every point of the ring, so a 120 m average cancels it out:
+       averaged over 12 m there) */
+    const W=R.fit[i].rg?12:SW;
+    for(let k=i;k>=0&&R.cum[i]-R.cum[k]<W;k--){const f=R.fit[k];if(!f) break;const d=R.cum[i]-R.cum[k],q=1-d/W;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
+    for(let k=i+1;k<R.pts.length&&R.cum[k]-R.cum[i]<W;k++){const f=R.fit[k];if(!f) break;const d=R.cum[k]-R.cum[i],q=1-d/W;dx+=f.dx*q;dz+=f.dz*q;wt+=q;if(d<40){ln+=f.lane;nl++;}}
     sm[i]=[ln/Math.max(1,nl),dx/(wt||1),dz/(wt||1),R.fit[i].h];}
 };
 TN.Nav.prototype.heights=function(){};
@@ -700,7 +723,7 @@ TN.Nav.prototype.draw=function(from){
   const S=this.api.scene;if(!S.three) return;
   /* (lifted 0.22 m above the road with only a light "on top" setting: a strong one made it draw over the car's
      lower body on bridges, so the car looked sunk) */
-  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});}
+  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});if(TN.CUTU) TN.liftPatch(this.mat,0.9);}
   const pos=[],idx=[],col=[],rd=[],hw=1.3,CL=[];let n=0;const tc=new THREE.Color();
   const a0=Math.max(0,from|0);
   let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
@@ -737,6 +760,83 @@ TN.Nav.prototype.draw=function(from){
     if(bad.length) this.note('line under road',{checked:chk,places:bad});}catch(e){}
   this.drawArrows(CL);
 };
+/* (Nov 22) the floating turn arrows, like Tesla's new screen: a row of glowing cyan chevrons standing in the air on
+   the far side of your next turn, facing you and pointing the way to go, gently flowing that way. From about 450 m
+   before the turn, seen through buildings (so a turn hidden behind a block shows early), larger when far so they stay
+   visible, fading away in the last 20-40 m where the arrows on the road take over.
+   Settings → Navigation → Floating turn arrows; ?ar=0 turns them off */
+TN.Nav.prototype.arTex=function(){
+  if(this.arT) return this.arT;
+  const c=document.createElement('canvas');c.width=640;c.height=160;const x=c.getContext('2d');
+  /* 5 chevrons pointing left, evenly spaced so the texture repeats seamlessly when it scrolls */
+  const n=5,sp=640/n;x.lineCap='round';x.lineJoin='round';
+  for(const [w,col,blur] of [[30,'rgba(40,200,255,0.55)',26],[16,'rgba(120,235,255,0.95)',10],[6,'#eaffff',0]]){
+    x.strokeStyle=col;x.lineWidth=w;x.shadowColor='rgba(40,210,255,0.9)';x.shadowBlur=blur;
+    for(let i=0;i<n;i++){const cx=i*sp+sp*0.5;x.beginPath();x.moveTo(cx+28,26);x.lineTo(cx-30,80);x.lineTo(cx+28,134);x.stroke();}}
+  const t=new THREE.CanvasTexture(c);t.wrapS=THREE.RepeatWrapping;this.arT=t;return t;
+};
+/* (straight on: a roundabout's 2nd exit, a slight bend) a column of chevrons pointing up/ahead */
+TN.Nav.prototype.arTexUp=function(){
+  if(this.arTU) return this.arTU;
+  const c=document.createElement('canvas');c.width=160;c.height=640;const x=c.getContext('2d');
+  const n=5,sp=640/n;x.lineCap='round';x.lineJoin='round';
+  for(const [w,col,blur] of [[30,'rgba(40,200,255,0.55)',26],[16,'rgba(120,235,255,0.95)',10],[6,'#eaffff',0]]){
+    x.strokeStyle=col;x.lineWidth=w;x.shadowColor='rgba(40,210,255,0.9)';x.shadowBlur=blur;
+    for(let i=0;i<n;i++){const cy=i*sp+sp*0.5;x.beginPath();x.moveTo(26,cy+28);x.lineTo(80,cy-30);x.lineTo(134,cy+28);x.stroke();}}
+  const t=new THREE.CanvasTexture(c);t.wrapT=THREE.RepeatWrapping;this.arTU=t;return t;
+};
+/* the real direction of a turn, from the route's own shape: the heading 25 m before it against the heading after it
+   (after a roundabout's exit: 60 m on). Positive = right. Mapbox calls a roundabout's straight exit "slight right" */
+TN.Nav.prototype.arBend=function(at,round){
+  const R=this.route,C=R.cum,P=R.pts,idx=d=>{let lo=0,hi=C.length-1;d=Math.max(0,Math.min(C[hi],d));while(hi-lo>1){const md=(lo+hi)>>1;if(C[md]<=d) lo=md;else hi=md;}return lo;};
+  const hd=(d0,d1)=>{const a=P[idx(d0)],b=P[Math.max(idx(d0)+1,idx(d1))]||a;return Math.atan2(b[0]-a[0],-(b[1]-a[1]))*180/Math.PI;};
+  const h0=hd(at-25,at),k=round?60:15,h1=hd(at+k,at+k+20);return ((h1-h0+540)%360)-180;
+};
+TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
+  const S=this.api.scene,R=this.route;if(!S||!S.three||typeof THREE==='undefined'||typeof document==='undefined') return;
+  const off=(TN.settings&&TN.settings.arTurn===false)||(typeof location!=='undefined'&&/[?&]ar=0/.test(location.search));
+  const real=nx&&nx.mod&&(!/straight/.test(nx.mod)||/roundabout|rotary/.test(nx.type))&&!['depart','arrive','new name','continue','notification'].includes(nx.type);
+  /* (Nov 23, trip 14:04: "the car moves away from the blue line in turns", but the pictures every 10 s never caught a
+     turn) while recording: 3 pictures through every turn (25 m before it, then 2.6 and 5.2 s later; the next turn
+     switches 8 m before each turn, so a trigger under 8 m never fired) */
+  try{if(TN.rec&&TN.rec.rec&&real){const now=Date.now();
+    if(dNext<25&&this.shotTurn!==nx.at){this.shotTurn=nx.at;TN.rec.wantShot('turn '+(nx.mod||''));this.shotSeq=[now+2600,now+5200];}}
+    if(TN.rec&&this.shotSeq&&this.shotSeq.length&&Date.now()>this.shotSeq[0]){this.shotSeq.shift();TN.rec.wantShot('in turn');}}catch(e){}
+  if(off||!real||dNext>450||dNext<18||!R||!R.pts||!R.cum){if(this.ar) this.ar.visible=false;return;}
+  if(!this.ar){
+    const mat=new THREE.MeshBasicMaterial({map:this.arTex(),transparent:true,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,side:THREE.DoubleSide});
+    this.ar=new THREE.Mesh(new THREE.PlaneGeometry(14,3.5),mat);this.ar.renderOrder=20;this.ar.frustumCulled=false;S.three.scene.add(this.ar);}
+  /* where the turn is: a few metres past its point, facing the way you arrive, pointing to the side you turn */
+  if(this.arAt!==nx.at){this.arAt=nx.at;let lo=0,hi=R.cum.length-1;while(hi-lo>1){const md=(lo+hi)>>1;if(R.cum[md]<=nx.at) lo=md;else hi=md;}
+    let b0=lo;while(b0>0&&R.cum[lo]-R.cum[b0]<12) b0--;
+    let fx=R.pts[lo][0]-R.pts[b0][0],fz=R.pts[lo][1]-R.pts[b0][1];const fl=Math.hypot(fx,fz)||1;fx/=fl;fz/=fl;
+    const h=R.sm&&R.sm[lo]?R.sm[lo][3]||0:0;
+    this.arPos=[R.pts[lo][0]+fx*6,h,R.pts[lo][1]+fz*6];this.arRot=Math.atan2(-fx,-fz);
+    const m=nx.mod||'',round=/roundabout|rotary/.test(nx.type);let bend=0;try{bend=this.arBend(nx.at,round);}catch(e){bend=/left/.test(m)?-90:90;}
+    /* (Nov 22, trip 08:32: a roundabout's straight exit showed right arrows: Mapbox said "slight right". The way to go
+       now comes from the route's real shape: under 30° (45° at roundabouts) = straight ahead (a column of up arrows), else left or right) */
+    /* (trip 10:25: ramps and forks bend only a little at their start, so they showed "straight ahead" arrows shooting up
+       while the voice said "keep left": the route's shape decides only at roundabouts; elsewhere the turn's own side) */
+    if(round){this.arUp=Math.abs(bend)<45;this.arDir=bend<0?1:-1;}
+    else{this.arUp=false;this.arDir=/left|uturn/.test(m)?1:-1;}
+    const mat=this.ar.material;
+    if(this.arUp){if(mat.map!==this.arTexUp()){mat.map=this.arTexUp();mat.needsUpdate=true;}this.ar.geometry.dispose();this.ar.geometry=new THREE.PlaneGeometry(3.5,14);}
+    else{if(mat.map!==this.arTex()){mat.map=this.arTex();mat.needsUpdate=true;}this.ar.geometry.dispose();this.ar.geometry=new THREE.PlaneGeometry(14,3.5);
+      mat.map.repeat.x=this.arDir;mat.map.offset.x=this.arDir>0?0:1;}
+    try{this.note('ar dir',{mod:m,type:nx.type,bend:Math.round(bend),show:this.arUp?'ahead':this.arDir>0?'left':'right'});}catch(e){}}
+  /* (Nov 23, trip 21:21: the "straight ahead" column at a roundabout 300 m away was 14 m x 3.5 = up to 49 m tall,
+     floating up in the sky above the buildings: the column grows at most 1.4 times and shows from 250 m) */
+  const sc=this.arUp?Math.max(1,Math.min(1.4,dNext/80)):Math.max(1,Math.min(3.5,dNext/60));
+  if(this.arUp&&dNext>250){this.ar.visible=false;return;}
+  this.ar.scale.set(sc,sc,1);this.ar.rotation.set(0,this.arRot,0);
+  this.ar.position.set(this.arPos[0],this.arPos[1]+1.4+(this.arUp?7:1.75)*sc,this.arPos[2]);
+  /* flowing toward the turn */
+  const now=performance.now(),dt=Math.min(0.1,((now-(this.arLast||now))/1000));this.arLast=now;
+  if(this.arUp) this.ar.material.map.offset.y-=dt*0.35;else this.ar.material.map.offset.x+=dt*0.35;
+  const fadeIn=Math.min(1,((this.arUp?250:450)-dNext)/60),fadeOut=Math.min(1,(dNext-18)/22);
+  this.ar.material.opacity=Math.max(0,Math.min(fadeIn,fadeOut));this.ar.visible=this.ar.material.opacity>0.02;
+  if(this.arNoted!==nx.at&&dNext<300){this.arNoted=nx.at;try{this.note('ar sign',{mod:nx.mod,type:nx.type,d:Math.round(dNext)});}catch(e){}}
+};
 /* turn arrows painted on the route line: three chevrons before your next turn, and a bent arrow at the turn whose stem
    follows the route's own curve through the intersection (so it bends the way you'll go) */
 TN.Nav.prototype.drawArrows=function(CL){
@@ -771,12 +871,26 @@ TN.Nav.prototype.drawArrows=function(CL){
       tri([E.x-E.uz*hw2,E.y,E.z+E.ux*hw2],[E.x+E.uz*hw2,E.y,E.z-E.ux*hw2],[E.x+E.ux*hl,E.y,E.z+E.uz*hl]);}
   }
   if(!n) return;
-  if(!this.arrowMat) this.arrowMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.95,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4});
+  if(!this.arrowMat) this.arrowMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.95,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4});if(this.arrowMat&&TN.CUTU&&!this.arrowMat.userData.lift){this.arrowMat.userData.lift=1;TN.liftPatch(this.arrowMat,0.95);}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);
   this.arrows=new THREE.Mesh(g,this.arrowMat);this.arrows.frustumCulled=false;this.arrows.renderOrder=5;S.three.scene.add(this.arrows);
 };
 /* the rainbow road material: the colour comes from the distance along the route, shifted a little every frame (the
    graphics card does the colours; the app only moves one number) */
+/* (Nov 23, trip 21:21 on Highway 10 and the Champlain Bridge: the blue line vanished ahead of the car or showed in pieces:
+   on raised roads our road surface is sometimes a few tens of cm higher than the line, and covered it) the line's points are
+   moved toward the camera along their own line of sight, far enough to clear the road by about 1 m in height (further
+   when seen at a shallow angle): on screen nothing moves, only its depth, so the road surface can no longer cover it;
+   a real overpass, 5 m and more above, still does. (Nov 24, trip 07:00: lifted under the car, the line was drawn over the
+   car itself: no lift within 5 m of the car, full from 12 m) */
+TN.liftPatch=function(mat,m){
+  const prev=mat.onBeforeCompile;
+  if(!TN.LIFTCAR) TN.LIFTCAR={value:new THREE.Vector3(0,-1e6,0)};
+  mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);sh.uniforms.liftCam=TN.CUTU.cutCam;sh.uniforms.liftM={value:m};sh.uniforms.liftCar=TN.LIFTCAR;
+    sh.vertexShader='uniform vec3 liftCam;uniform float liftM;uniform vec3 liftCar;\n'+sh.vertexShader.replace('#include <project_vertex>',
+      '{vec3 wp=(modelMatrix*vec4(transformed,1.0)).xyz;vec3 tc=liftCam-wp;float l=length(tc);vec3 u=tc/max(l,0.001);float dm=min(min(liftM/max(u.y,0.06),10.0),l*0.5)*smoothstep(5.0,12.0,length(wp.xz-liftCar.xz));transformed+=u*dm;}\n#include <project_vertex>');};
+  mat.customProgramCacheKey=()=>'lift'+m;
+};
 TN.Nav.prototype.rainbowMat=function(){
   if(this.rmat) return this.rmat;
   this.rmat=new THREE.ShaderMaterial({uniforms:{shift:{value:0},op:{value:0.85}},transparent:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2,
@@ -1010,8 +1124,55 @@ TN.Nav.prototype.fasterCheck=async function(){
     if(save>=180&&off/Math.max(1,tot)>0.15) this.fasterOffer(rt,save);}
   catch(e){}finally{this.fasterBusy=false;}
 };
+TN.navPanelCss=function(){if(typeof document==='undefined'||document.getElementById('tn-panelcss')) return;
+  const st=document.createElement('style');st.id='tn-panelcss';st.textContent='#tn-jam,#tn-faster{position:absolute;left:16px;bottom:120px;z-index:7;max-width:min(430px,calc(100vw - 32px));background:rgb(var(--tn-panel-rgb,24 26 30) / .95);color:var(--tn-text,#fff);border-radius:16px;padding:12px 14px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.3);border-left:5px solid #d93025}#tn-faster{border-left-color:#1e9e4a}#tn-jam .bt,#tn-faster .bt{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}#tn-jam button,#tn-faster button{font:600 14px system-ui;padding:8px 16px;border-radius:10px;border:0;cursor:pointer}#tn-faster .bar{height:4px;border-radius:2px;background:#2f6fe4;margin-top:8px;transition:width linear}#tn-faster .alt{display:flex;align-items:center;gap:10px;margin-top:8px}#tn-faster .alt .w{flex:1;min-width:0}#tn-faster .alt .w small{opacity:.75}#tn-faster .sw{width:14px;height:14px;border-radius:50%;flex:none}';
+  document.head.appendChild(st);};
+/* ---- (Nov 21) "Faster way?": the other ways from here right now, with live traffic: each with its time and how
+   it compares to yours, on the map in colour; tap one to take it, or Stay. Rocco says the answer ---- */
+TN.ALTCOL=['#1e9e4a','#e08a1e'];
+TN.Nav.prototype.altsNow=async function(){
+  if(!this.active||!this.dest||this.altBusy||typeof document==='undefined') return;const fr=TN.LANG==='fr';
+  if(TN.isPro&&!TN.isPro()){try{TN.proHint('faster',fr?'\u26a1 Trajets alternatifs : Premium':'\u26a1 Other routes: Premium');}catch(e){}return;}
+  TN.navPanelCss();let el=document.getElementById('tn-faster');if(!el){el=document.createElement('div');el.id='tn-faster';el.className='notr';document.body.appendChild(el);}
+  clearTimeout(this.offerT);el.innerHTML='<b>'+(fr?'Je cherche d\u2019autres chemins\u2026':'Looking for other ways\u2026')+'</b>';el.style.display='block';
+  this.altBusy=true;
+  try{const G=this.api.gps&&this.api.gps();if(!G||G.x==null) throw new Error('no gps');const from=TN.fromLocal(G.x,G.z);
+    const keep=this.alts;this.alts=null;this.wantAlts=true;
+    const rt=await this.fetchRouteOnce(from,TN.routeTo(this.dest));const all=(this.alts||(rt?[rt]:[]));this.alts=keep;this.wantAlts=false;
+    if(!this.active) return;
+    const mine=this.remainS||0,R=this.route;
+    /* keep only ways that really go elsewhere (a good part more than 150 m from your route) */
+    const other=r=>{const C=r.geometry.coordinates;let off=0,tot=0;for(let i=0;i<C.length;i+=Math.max(1,Math.floor(C.length/40))){tot++;const q=TN.toLocal(C[i][0],C[i][1]);let bd=1e18;
+      for(let k=0;k<R.pts.length;k+=3){const d=(R.pts[k][0]-q[0])**2+(R.pts[k][1]-q[1])**2;if(d<bd) bd=d;}if(bd>150*150) off++;}return off/Math.max(1,tot);};
+    const list=all.filter(r=>r&&r.geometry&&other(r)>0.15).slice(0,2);
+    try{this.note('alts asked',{mineMin:Math.round(mine/60),alts:list.map(r=>Math.round((r.duration-mine)/60))});}catch(e){}
+    const mn=x=>Math.max(1,Math.round(x/60));
+    if(!list.length){el.innerHTML='<b>'+(fr?'Ton chemin est d\u00e9j\u00e0 le meilleur':'Your route is already the best')+'</b><div style="opacity:.85">'+(fr?'Aucun autre chemin vraiment diff\u00e9rent en ce moment.':'No really different way right now.')+'</div><div class="bt"><button class="st" style="background:#3a3f47;color:#fff">OK</button></div>';
+      el.querySelector('.st').onclick=ev=>{ev.stopPropagation();el.style.display='none';};this.offerT=setTimeout(()=>{el.style.display='none';},8000);
+      try{if(TN.voice&&TN.voice.say) TN.voice.say(fr?'Ton chemin est d\u00e9j\u00e0 le plus rapide.':'Your route is still the fastest.',false);}catch(e){}return;}
+    /* on the map */
+    try{const data={type:'FeatureCollection',features:list.map((r,i)=>({type:'Feature',properties:{c:TN.ALTCOL[i]},geometry:r.geometry}))};
+      if(map.getSource('tn-faster')) map.getSource('tn-faster').setData(data);
+      else{map.addSource('tn-faster',{type:'geojson',data:data});map.addLayer({id:'tn-faster',type:'line',source:'tn-faster',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','c'],'line-width':8,'line-opacity':0.85}},map.getLayer('tn-route-casing')?'tn-route-casing':undefined);}
+      if(map.getLayer('tn-faster')) map.setPaintProperty('tn-faster','line-color',['coalesce',['get','c'],'#9aa0a6']);}catch(e){}
+    const row=(r,i)=>{const d=r.duration-mine,via=(r.legs&&r.legs[0]&&r.legs[0].summary)||'',dt=Math.round(d/60);
+      const cmp=dt<=-1?'<span style="color:#34c759">'+(fr?dt+' min':'saves '+(-dt)+' min')+'</span>':dt>=1?'<span style="opacity:.8">+'+dt+' min</span>':(fr?'m\u00eame temps':'same time');
+      return '<div class="alt"><span class="sw" style="background:'+TN.ALTCOL[i]+'"></span><div class="w"><b>'+mn(r.duration)+' min</b> \u00b7 '+cmp+(via?'<br><small>'+(fr?'par ':'via ')+TN.esc(via)+'</small>':'')+'</div><button class="go" data-i="'+i+'" style="background:'+TN.ALTCOL[i]+';color:#fff">'+(fr?'Prendre':'Take')+'</button></div>';};
+    el.innerHTML='<b>'+(fr?'Ton chemin : ':'Your route: ')+mn(mine)+' min</b>'+list.map(row).join('')+'<div class="bt"><button class="st" style="background:#3a3f47;color:#fff">'+(fr?'Je reste':'Stay')+'</button></div>';
+    const close=(r)=>{clearTimeout(this.offerT);el.style.display='none';
+      try{if(map.getLayer('tn-faster')) map.removeLayer('tn-faster');if(map.getSource('tn-faster')) map.removeSource('tn-faster');}catch(e){}
+      try{this.note('alts choice',{take:r?Math.round((r.duration-mine)/60):null});}catch(e){}
+      if(r){try{this.setRoute(r);this.curRt=r;this.jam=null;this.jamSaid=null;this.jamEndS=null;this.fasterAt=Date.now();this.noteRoute(r);}catch(e){}}};
+    el.querySelectorAll('.go').forEach(b=>b.onclick=ev=>{ev.stopPropagation();close(list[+b.dataset.i]);});
+    el.querySelector('.st').onclick=ev=>{ev.stopPropagation();close(null);};
+    this.offerT=setTimeout(()=>close(null),30000);
+    const best=list.reduce((a,b)=>a.duration<b.duration?a:b),sv=Math.round((mine-best.duration)/60);
+    try{if(TN.voice&&TN.voice.say) TN.voice.say(sv>=1?(fr?('Il y a un autre chemin, '+sv+' minutes plus rapide. Regarde l\u2019\u00e9cran.'):('There\u2019s another way, '+sv+' minutes faster. Have a look.')):(fr?'Ton chemin reste le plus rapide, mais voici d\u2019autres options.':'Your route is still the fastest, but here are other options.'),false);}catch(e){}
+  }catch(e){el.innerHTML='<b>'+(fr?'Impossible de chercher maintenant':'Couldn\u2019t check right now')+'</b>';this.offerT=setTimeout(()=>{el.style.display='none';},5000);}
+  finally{this.altBusy=false;}
+};
 TN.Nav.prototype.fasterOffer=function(rt,save){
-  if(typeof document==='undefined') return;
+  if(typeof document==='undefined') return;TN.navPanelCss();
   /* (Premium: free drivers are only told a faster way exists) */
   if(TN.isPro&&!TN.isPro()){try{TN.proHint('faster',(TN.LANG==='fr'?'\u26a1 Trajet plus rapide : ':'\u26a1 Faster route: ')+Math.round(save/60)+' min'+(TN.LANG==='fr'?' de moins':' less'));this.note('faster offer',{premium:false,saveMin:Math.round(save/60)});}catch(e){}return;}const fr=TN.LANG==='fr',map=this.api.map;this.offer=rt;
   /* the faster way on the map, in grey */
@@ -1227,28 +1388,37 @@ TN.Nav.prototype.closeTrip=function(){this.ov.style.display='none';this.ov.class
 /* the junction from above: our roads around it in grey, the route in blue with an arrow, the approach pointing up;
    the exit number on a green sign for highway exits */
 TN.Nav.prototype.junctionSvg=function(nx){
+  /* (Nov 22: clearer and in colour: roads with dark edges, the route in blue with a white outline and a big arrow, your
+     car where you come from, the roundabout's exit number, the exit number on a green sign for highway exits) */
   const R=this.route,net=this.api.net;let ia=0;while(ia<R.cum.length-1&&R.cum[ia]<nx.at) ia++;
   const M=R.pts[ia];let ib=ia;while(ib>0&&R.cum[ia]-R.cum[ib]<35) ib--;
   const B=R.pts[ib];let h=Math.atan2(M[0]-B[0],-(M[1]-B[1]));if(ib===ia) h=0;
-  const fx=Math.sin(h),fz=-Math.cos(h),rx=Math.cos(h),rz=Math.sin(h),K=48/80;
-  const P=p=>{const dx=p[0]-M[0],dz=p[1]-M[1];return [50+(dx*rx+dz*rz)*K,60-(dx*fx+dz*fz)*K];};
-  const f1=v=>v.toFixed(1);let roads='';const seen=new Set();
-  const wid={motorway:9,trunk:8,primary:7,secondary:6,tertiary:6,motorway_link:5,trunk_link:5,primary_link:5};
-  if(net&&net.near) net.near(M[0],M[1],95,(w,k)=>{const key=w.id+':'+k;if(seen.has(key)||k>=w.pts.length-1) return;seen.add(key);
-    const a=P(w.pts[k]),b=P(w.pts[k+1]);roads+='<path d="M'+f1(a[0])+' '+f1(a[1])+'L'+f1(b[0])+' '+f1(b[1])+'" stroke="#5f656e" stroke-width="'+(wid[w.cls]||4.5)+'" stroke-linecap="round"/>';});
-  /* the route: 80 m before to 70 m after */
-  let path='',last=null,prev=null;
-  const k0=R.steps.indexOf(nx),nxt=k0>=0?R.steps[k0+1]:null,after=nxt?Math.max(20,Math.min(70,nxt.at-nx.at-10)):70;
-  for(let i=Math.max(0,ia-200);i<Math.min(R.pts.length,ia+200);i++){const d=R.cum[i]-R.cum[ia];if(d<-80||d>after) continue;
-    const q=P(R.pts[i]);path+=(path?'L':'M')+f1(q[0])+' '+f1(q[1]);prev=last;last=q;}
+  const round=/roundabout|rotary/.test(nx.type||'');
+  const fx=Math.sin(h),fz=-Math.cos(h),rx=Math.cos(h),rz=Math.sin(h),K=round?48/60:48/80;
+  const P=p=>{const dx=p[0]-M[0],dz=p[1]-M[1];return [50+(dx*rx+dz*rz)*K,58-(dx*fx+dz*fz)*K];};
+  const f1=v=>v.toFixed(1);let casing='',fill='';const seen=new Set();
+  const wid={motorway:9,trunk:8,primary:7,secondary:6.5,tertiary:6,motorway_link:5.5,trunk_link:5.5,primary_link:5.5,residential:4.5};
+  if(net&&net.near) net.near(M[0],M[1],round?75:95,(w,k)=>{const key=w.id+':'+k;if(seen.has(key)||k>=w.pts.length-1||w.tun) return;seen.add(key);
+    const a=P(w.pts[k]),b=P(w.pts[k+1]),wd=(wid[w.cls]||4)*(round?1.2:1),d='M'+f1(a[0])+' '+f1(a[1])+'L'+f1(b[0])+' '+f1(b[1]);
+    casing+='<path d="'+d+'" stroke="#141a22" stroke-width="'+(wd+2.4).toFixed(1)+'" stroke-linecap="round"/>';
+    fill+='<path d="'+d+'" stroke="'+(/motorway|trunk/.test(w.cls||'')?'#9aa3b0':'#7d8693')+'" stroke-width="'+wd.toFixed(1)+'" stroke-linecap="round"/>';});
+  /* the route: 80 m before (60 at roundabouts) to 70 m after */
+  let path='',last=null,prev=null,first=null;
+  const k0=R.steps.indexOf(nx),nxt=k0>=0?R.steps[k0+1]:null,after=nxt?Math.max(20,Math.min(70,nxt.at-nx.at-10)):70,before=round?60:80;
+  for(let i=Math.max(0,ia-200);i<Math.min(R.pts.length,ia+200);i++){const d=R.cum[i]-R.cum[ia];if(d<-before||d>after) continue;
+    const q=P(R.pts[i]);if(!first) first=q;path+=(path?'L':'M')+f1(q[0])+' '+f1(q[1]);prev=last;last=q;}
   if(!path) return '';
-  let arrow='';if(last&&prev){const ang=Math.atan2(last[1]-prev[1],last[0]-prev[0]),L=9;
-    const a1=[last[0]-L*Math.cos(ang-0.6),last[1]-L*Math.sin(ang-0.6)],a2=[last[0]-L*Math.cos(ang+0.6),last[1]-L*Math.sin(ang+0.6)];
-    arrow='<path d="M'+f1(a1[0])+' '+f1(a1[1])+'L'+f1(last[0])+' '+f1(last[1])+'L'+f1(a2[0])+' '+f1(a2[1])+'" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';}
+  let arrow='';if(last&&prev){const ang=Math.atan2(last[1]-prev[1],last[0]-prev[0]),L=12;
+    const t=[last[0]+Math.cos(ang)*6,last[1]+Math.sin(ang)*6],a1=[t[0]-L*Math.cos(ang-0.55),t[1]-L*Math.sin(ang-0.55)],a2=[t[0]-L*Math.cos(ang+0.55),t[1]-L*Math.sin(ang+0.55)];
+    arrow='<path d="M'+f1(a1[0])+' '+f1(a1[1])+'L'+f1(t[0])+' '+f1(t[1])+'L'+f1(a2[0])+' '+f1(a2[1])+'Z" fill="#ffffff" stroke="#1d5fd0" stroke-width="1.5" stroke-linejoin="round"/>';}
+  /* your car, where the route comes in */
+  const car=first?'<g transform="translate('+f1(first[0])+' '+f1(Math.min(94,first[1]))+')"><circle r="5.5" fill="#ffffff"/><path d="M0 -3.6L3 3L0 1.6L-3 3Z" fill="#1d5fd0"/></g>':'';
   const ex=(nx.exits||'').split(';')[0];
-  const sign=ex?'<rect x="4" y="80" width="'+(10+ex.length*7)+'" height="15" rx="3" fill="#0d7a3d"/><text x="9" y="91.5" fill="#fff" font-size="10" font-weight="700" font-family="system-ui,sans-serif">'+TN.esc(ex)+'</text>':'';
-  return '<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true"><rect width="100" height="100" fill="#1b2533"/>'+roads+
-    '<path d="'+path+'" stroke="#378ADD" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+arrow+sign+'</svg>';
+  const sign=ex?'<rect x="4" y="4" width="'+(12+ex.length*7)+'" height="16" rx="3" fill="#0d7a3d" stroke="#fff" stroke-width="1"/><text x="10" y="16" fill="#fff" font-size="10.5" font-weight="700" font-family="system-ui,sans-serif">'+TN.esc(ex)+'</text>':'';
+  const rx2=round&&nx.exit?'<circle cx="88" cy="12" r="9" fill="#e8913a" stroke="#fff" stroke-width="1.2"/><text x="88" y="16" text-anchor="middle" fill="#fff" font-size="11" font-weight="800" font-family="system-ui,sans-serif">'+TN.esc(String(nx.exit))+'</text>':'';
+  return '<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true"><rect width="100" height="100" fill="#2a3a2f"/>'+casing+fill+
+    '<path d="'+path+'" stroke="#ffffff" stroke-width="10.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<path d="'+path+'" stroke="#2f8cff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+arrow+car+sign+rx2+'</svg>';
 };
 TN.Nav.prototype.go=function(){
   this.clearAlts();
@@ -1271,6 +1441,7 @@ TN.Nav.prototype.routeDist=function(x,z){
   return Math.sqrt(m);
 };
 TN.Nav.prototype.end=function(why){
+  if(why==='arrived') TN.arrivedAt=Date.now();   /* (the parking rules show right after arriving) */
   TN.navActive=false;TN.routeNear=null;TN.blink=0;this.blk=null;try{this.wx=null;this.wxSaid={};this.wxChip(null);this.bar.classList.remove('slim');}catch(e){}try{this.clearAlts();}catch(e){}this.alts=null;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
@@ -1279,6 +1450,7 @@ TN.Nav.prototype.end=function(why){
   this.ov.style.display='none';this.bar.style.display='none';this.endBtn.style.display='none';this.roadName.style.display='none';
   if(this.mesh){this.api.scene.three.scene.remove(this.mesh);this.mesh.geometry.dispose();this.mesh=null;}
   if(this.arrows){this.api.scene.three.scene.remove(this.arrows);this.arrows.geometry.dispose();this.arrows=null;}
+  if(this.ar) this.ar.visible=false;
   this.clearMapLine();this.input.value='';this.syncX();this.api.setFollow(true);
 };
 /* ---------- the car on the route (like Google Maps, Waze, Codriver) ----------
@@ -1412,11 +1584,13 @@ TN.Nav.prototype.place=function(base,L,now,dt){
     this.latD=(far&&Math.abs(nx-lo)<0.05)?null:nx;}
   else this.latD=null;
   let y=base.y!=null?base.y:mi(3);
-  /* (Nov 21, trip 17:09: on climbs and descents the car sat about 0.2 m under (or over) the blue line: its height
-     was read about 2 m behind where it is drawn on the route, so it sank into the slope going up (bridges and ramps at
-     27:20, 31:15, 44:20). On the route's road it now takes the route's height at its own spot: within 0.6 m it is the
-     same road; higher by up to 4 m is a bridge deck it sits on, as before) */
-  {const ry=mi(3);if((Math.abs(ry-y)<0.6)||(ry-y>0.15&&ry-y<4)) y=ry;}
+  {const ry=mi(3);if(ry-y>0.15&&ry-y<4) y=ry;}   /* the route's road is a little higher (a bridge deck): sit on it */
+  /* (Nov 21, trips 17:09, 19:10 and 22:38: on climbs the blue line floated 0.15-0.2 m too high over the road under the
+     car, and on descents too low, so on bridges and ramps the car looked sunk under the line. The line's heights are
+     read a couple of metres off along the slope. The whole line is now shifted up or down by exactly that difference
+     at the car (smoothly), so near the car it lies on the road the car is on) */
+  if(this.mesh){const dd=base.y!=null?base.y-mi(3):0,want=Math.abs(dd)<0.6?dd:0;
+    this.lineDy=(this.lineDy||0)+(want-(this.lineDy||0))*Math.min(1,dt*3);this.mesh.position.y=this.lineDy;}
   /* (Nov 19, trip 15:03 at 16:33 and 17:09: in city turns the car is pulled onto this point (the turn blend), which sat
      on the route's centre, while the blue line is drawn where the car is across the road (latD): car in one lane, line
      in the next for 2-3 s. The point now uses the line's own place across the road, so the car is pulled onto the line) */
@@ -1448,12 +1622,20 @@ TN.Nav.prototype.place=function(base,L,now,dt){
      the road the car tracks on (trk), the car as shown (car, smoothed) and the highest road piece within 3 m (top)) */
   this.lhT=(this.lhT||0)+dt;if(this.lhT>=1&&this.CL&&this.CL.length>1){this.lhT=0;
     try{const C=this.CL;let k=0;while(k<C.length-2&&C[k+1][3]<this.ps) k++;const A=C[k],B=C[k+1],g2=B[3]-A[3]||1,tt=Math.max(0,Math.min(1,(this.ps-A[3])/g2));
-      if(this.ps>=A[3]-5&&this.ps<=B[3]+5){const ly=A[1]+(B[1]-A[1])*tt,cy=TN._ys!=null?TN._ys:y,gap=ly-cy;
+      if(this.ps>=A[3]-5&&this.ps<=B[3]+5){const ly=A[1]+(B[1]-A[1])*tt,cy=TN._ys!=null?TN._ys:y,gap=ly+(this.lineDy||0)-cy;
         if(Math.abs(gap-0.22)>0.1){let top=-1e9,nw=0;this.api.net.near(ox,oz,3,(w,kk)=>{if(w.tun) return;const r=TN.seg(w,kk,ox,oz);if(r.d>TN.width(w)/2) return;nw++;
             const h=w.hs?w.hs[kk]+(w.hs[kk+1]-w.hs[kk])*r.u:(w.br?w.H:0);if(h>top) top=h;});
           const ll=TN.fromLocal(ox,oz);
           this.note('line height',{gap:+gap.toFixed(2),line:+ly.toFixed(2),car:+cy.toFixed(2),rt:+mi(3).toFixed(2),trk:base.y!=null?+base.y.toFixed(2):null,top:top>-1e8?+top.toFixed(2):null,roads:nw,v:+(L.v||0).toFixed(1),at:[+ll[1].toFixed(5),+ll[0].toFixed(5)]});}}}catch(e){}}
   this._lc=null;
+  /* (Nov 21, trip 19:10 at 1:35, the left turn onto the Champlain approach: through the corner the car's direction
+     came from the line's corner points, which zig-zag a little (282° → 261° → 272° → 278° within 4 s): the car
+     shook. Its direction now eases toward the line's (in about 0.4 s), so small zig-zags are smoothed out) */
+  {const d=((oh-(this.hdS==null?oh:this.hdS)+540)%360)-180;
+   const tn=Date.now(),gap=tn-(this.hdT||0);this.hdT=tn;   /* (a fresh start after the car was let go) */
+   if(this.hdS==null||gap>500||Math.abs(d)>100) this.hdS=oh;
+   else this.hdS=(this.hdS+d*Math.min(1,dt*2.5)+360)%360;
+   oh=this.hdS;}
   return Object.assign({},base,{x:ox,z:oz,hd:oh,y:y,onRoute:true});
 };
 /* the speed limit sign next to your speed (null hides it); red and pulsing when more than 3 km/h over */
@@ -1486,7 +1668,9 @@ TN.Nav.prototype.instr=function(s){
   let t,a=arrow;
   switch(s.type){
     case 'depart':t='Head '+(s.name?'on '+s.name:'out');break;
-    case 'arrive':t=s.stop?'Arrive at your stop'+(this.stops[s.stop-1]?' \u00b7 '+this.stops[s.stop-1].name:''):'Arrive at your destination';a='flag';break;
+    /* (Nov 22: which side of the street, when the route says: "Your destination is on the right") */
+    case 'arrive':{const side=/left/.test(m||'')?' on the left':/right/.test(m||'')?' on the right':'';
+      t=s.stop?'Your stop is'+(side||' ahead')+(this.stops[s.stop-1]?' \u00b7 '+this.stops[s.stop-1].name:''):(side?'Your destination is'+side:'Arrive at your destination');a='flag';break;}
     case 'turn':case 'end of road':t='Turn '+(m||'');break;
     case 'fork':t='Keep '+(side||'straight');break;
     case 'merge':t='Merge'+(side?' '+side:'');break;
@@ -1558,9 +1742,19 @@ TN.Nav.prototype.update=function(dt){
   /* where the car is along the route: from the real GPS position when there is one (the matched car can
      briefly sit on a wrong street), searching a little ahead of the last place */
   const G=this.api.gps?this.api.gps():null,px=G&&G.x!=null?G.x:c.x,pz=G&&G.x!=null?G.z:c.z;
-  let bi=this.idx,bd=1e18;
-  for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length,this.idx+400);i++){const d=(R.pts[i][0]-px)**2+(R.pts[i][1]-pz)**2;if(d<bd){bd=d;bi=i;}}
-  const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi],left=R.L-s;this.lastOff=off;
+  /* (Nov 22, trip 10:25 at 8:10: in a cloverleaf the route passes again 40 m away, 430 m further on; measured to the
+     route's corner points only, the car on a long straight stretch looked closer to that later loop: "off the route by
+     35 m", a new route for nothing. Now: the distance to the route's line itself, and a jump far ahead must be much
+     closer to count) */
+  let bi=this.idx,bd=1e18,bu=0,bs=null;const s0=R.cum[this.idx]||0;
+  for(let i=Math.max(0,this.idx-20);i<Math.min(R.pts.length-1,this.idx+400);i++){
+    const a0=R.pts[i],b0=R.pts[i+1],dx=b0[0]-a0[0],dz=b0[1]-a0[1],l2=dx*dx+dz*dz||1e-9;
+    const u=Math.max(0,Math.min(1,((px-a0[0])*dx+(pz-a0[1])*dz)/l2)),qx=a0[0]+dx*u,qz=a0[1]+dz*u;
+    let d=(qx-px)**2+(qz-pz)**2;const sc=R.cum[i]+u*Math.sqrt(l2),ahead=sc-s0-80;
+    const score=ahead>0?d+(ahead*0.5)**2:d;
+    if(bs===null||score<bs){bs=score;bd=d;bi=i;bu=u;}}
+  if(R.pts.length<2){bd=(R.pts[0][0]-px)**2+(R.pts[0][1]-pz)**2;}
+  const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi]+bu*((R.cum[bi+1]||R.cum[bi])-R.cum[bi]),left=R.L-s;this.lastOff=off;
   this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,glued:!!(TN.settings&&TN.settings.glueRoute),drawn:this.drawn});}
   const lnow=this.latS!=null?this.latS:this.latD,laneMoved=Math.abs((lnow==null?0:lnow)-(this.drawLat==null?0:this.drawLat))>(this.latS!=null?0.35:0.5);
   if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||(this.api.net.ver+':'+(this.api.net.hVer||0))!==this.drawVer||laneMoved){this.draw(Math.max(0,bi-4));this.drawLat=this.latS!=null?this.latS:this.latD;}
@@ -1607,6 +1801,7 @@ TN.Nav.prototype.update=function(dt){
      if(dNext<1200&&this.rkNote!==nx.at){this.rkNote=nx.at;this.note('next turn',{type:nx.type,mod:nx.mod,exit:nx.exits||'',dest:nx.dest||'',d:Math.round(dNext),theme:th||'rocco'});}
      if(on!==!!this.rkOn){this.rkOn=on;this.note('rocco',{on:on});}
      const bub=rk.querySelector('.bub');if(bub){const off=!on||Date.now()-(this.rkT||0)>5000;if(off!==bub.classList.contains('off')) bub.classList.toggle('off',off);}}}
+  try{this.arTurn(nx,dNext,s);}catch(e){}
   /* lane arrows for the next turn (where the directions include lanes), from 1 km before it */
   {const le=this.bar.querySelector('.lanes');let html='';
    if(nx.lanes&&nx.lanes.length&&dNext<1000){
