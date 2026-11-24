@@ -226,7 +226,7 @@ TN.Nav.prototype.etaFor=function(k){
   if(!c||now-c.t>15000){this.etaC[k]={t:now,key:pl.lng+','+pl.lat,from:h,min:c&&c.key===pl.lng+','+pl.lat?c.min:null};
     const to=TN.routeTo(pl);
     fetch('https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+h[0].toFixed(6)+','+h[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+'?overview=false&access_token='+TN.MBX)
-      .then(r=>r.ok?r.json():null).then(j=>{if(j&&j.routes&&j.routes[0]){this.etaC[k].min=Math.max(1,Math.round(j.routes[0].duration/60));
+      .then(r=>r.ok?r.json():null).then(j=>{if(j&&j.routes&&j.routes[0]){this.etaC[k].min=Math.max(1,Math.round(j.routes[0].duration/60));this.etaC[k].ratio=j.routes[0].duration_typical?j.routes[0].duration/j.routes[0].duration_typical:1;
         if(this.res.style.display!=='none'&&!this.input.value) this.showStart();}}).catch(()=>{});}
   return c&&c.key===pl.lng+','+pl.lat?c.min:null;
 };

@@ -32,9 +32,9 @@ TN.Weather.prototype.check=async function(lat,lng){
     const w=this.fromCode(T[0],T[1]);w.snowDepth=this.test==='snow'?0.1:0;if(this.test==='rain'||this.test==='snow'){this.wind=6;this.windDir=270;}this.set(w);return;
   }
   try{
-    const u='https://api.open-meteo.com/v1/forecast?latitude='+lat.toFixed(3)+'&longitude='+lng.toFixed(3)+'&current=weather_code,cloud_cover,snow_depth,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=auto';
+    const u='https://api.open-meteo.com/v1/forecast?latitude='+lat.toFixed(3)+'&longitude='+lng.toFixed(3)+'&current=temperature_2m,weather_code,cloud_cover,snow_depth,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=auto';
     const r=await fetch(u,{cache:'no-store'});if(!r.ok) return;const j=await r.json();
-    if(j&&j.current){const w=this.fromCode(j.current.weather_code,j.current.cloud_cover);w.snowDepth=+j.current.snow_depth||0;this.wind=+j.current.wind_speed_10m||0;this.windDir=+j.current.wind_direction_10m||0;this.set(w);}
+    if(j&&j.current){const w=this.fromCode(j.current.weather_code,j.current.cloud_cover);w.snowDepth=+j.current.snow_depth||0;this.wind=+j.current.wind_speed_10m||0;this.windDir=+j.current.wind_direction_10m||0;this.temp=j.current.temperature_2m;this.code=j.current.weather_code;this.set(w);}
   }catch(e){}
 };
 TN.Weather.prototype.set=function(w){

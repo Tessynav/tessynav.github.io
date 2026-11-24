@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v7 Nov 24: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -22,10 +22,16 @@ TN.Layout=function(){
   'body.tn-l1 #tn-limit{left:112px!important;bottom:13px!important;width:50px!important;height:62px!important;box-shadow:none!important}'+
   'body.tn-l1 #tn-mus{left:196px!important;bottom:12px!important;background:transparent!important;box-shadow:none!important;border:0!important;max-width:min(560px,calc(100vw - 260px))!important}'+
   'body.tn-l1.tn-routing #tn-mus{max-width:calc(100vw - 640px)!important}'+
+  '#tn-mus .t b,#tn-mus .t span{text-overflow:clip!important}#tn-mus i.mq{display:inline-block;font-style:normal;white-space:nowrap;will-change:transform;animation:tnmq 12s linear infinite}#tn-mus i.mq.r{animation-name:tnmqr;direction:rtl}'+
+  '@keyframes tnmq{0%,12%{transform:translateX(0)}100%{transform:translateX(-50%)}}@keyframes tnmqr{0%,12%{transform:translateX(0)}100%{transform:translateX(50%)}}'+
   'body.tn-l1 #tn-mus::before{content:"";position:absolute;left:-12px;top:10px;bottom:10px;width:1px;background:var(--tn-line)}'+
   /* right side of the bar while navigating */
   '#tn-beta{position:absolute;right:226px;bottom:14px;height:60px;z-index:5;display:none;flex-direction:column;align-items:flex-end;justify-content:center;color:var(--tn-text);font:14px system-ui,sans-serif;max-width:260px;cursor:pointer}'+
   'body.tn-routing #tn-beta{display:flex}#tn-beta b{font-size:22px;line-height:1.1}#tn-beta .d{font-size:12px;color:var(--tn-joke);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}'+
+  '#tn-quick{position:absolute;right:18px;bottom:14px;height:60px;z-index:5;display:none;gap:10px;align-items:center;font:14px system-ui,sans-serif;color:var(--tn-text)}'+
+  'body.tn-l1:not(.tn-routing):not(.tn-intro) #tn-quick{display:flex}#tn-quick>div{display:flex;align-items:center;gap:9px;height:52px;padding:0 16px 0 12px;border-radius:14px;background:rgba(127,140,160,.13);cursor:pointer;white-space:nowrap}'+
+  '#tn-quick>div:active{transform:scale(.96)}#tn-quick b{display:block;font-size:15px;line-height:1.15}#tn-quick small{display:block;font-size:13px;font-weight:600;color:#16a34a}#tn-quick small.o{color:#ea8a0c}#tn-quick small.r{color:#dc2626}#tn-quick small.n{color:var(--tn-joke);font-weight:400}'+
+  '#tn-quick .wx{cursor:default;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk{display:none}'+
   '#tn-beta::before{content:"";position:absolute;left:-14px;top:4px;bottom:4px;width:1px;background:var(--tn-line)}'+
   'body.tn-l1 #tn-alt{bottom:20px!important;top:auto!important;left:auto!important;padding:0 14px!important;height:48px;font-size:15px!important;background:var(--tn-btn)!important;box-shadow:none!important;border-radius:12px!important}'+
   'body.tn-l1 #tn-end{right:16px!important;bottom:20px!important;height:48px;padding:0 18px!important;font-size:15px!important;font-weight:700!important;background:rgba(198,40,40,.22)!important;box-shadow:none!important;border-radius:12px!important}'+
@@ -57,7 +63,7 @@ TN.Layout=function(){
   'body.tn-film.tnh-ui :is(#tn-bbar,#tn-rcol,#tn-beta){visibility:hidden!important}';
   document.head.appendChild(st);
   const mk=(id)=>{let e=document.getElementById(id);if(!e){e=document.createElement('div');e.id=id;document.body.appendChild(e);}return e;};
-  this.bbar=mk('tn-bbar');this.rcol=mk('tn-rcol');this.beta=mk('tn-beta');
+  this.bbar=mk('tn-bbar');this.rcol=mk('tn-rcol');this.beta=mk('tn-beta');this.quick=mk('tn-quick');this.quick.onclick=ev=>this.quickTap(ev);
   this.beta.onclick=()=>{const d=document.querySelector('#tn-bar .dst');if(d) d.click();};   /* (the destination: opens the route overview, as before) */
   this.tick();setInterval(()=>this.tick(),700);
 };
@@ -80,12 +86,22 @@ TN.Layout.prototype.tick=function(){
   if(wide){let minL=innerWidth;for(const id of ['tn-alt','tn-end']){const b=document.getElementById(id);if(!b) continue;const cs=getComputedStyle(b);if(cs.display==='none') continue;const r=b.getBoundingClientRect();if(r.width&&r.top>innerHeight-120) minL=Math.min(minL,r.left);}
     const k=window.TN_UIK||1;this.beta.style.right=((innerWidth-minL)/k+18)+'px';
     const bl=this.beta.getBoundingClientRect(),mus=document.getElementById('tn-mus');
-    if(mus) mus.style.setProperty('max-width',Math.max(160,((document.body.classList.contains('tn-routing')&&bl.width?bl.left:innerWidth-24)/k)-196-44)+'px','important');}
+    if(mus) mus.style.setProperty('max-width',Math.max(160,((document.body.classList.contains('tn-routing')&&bl.width?bl.left:Math.min(innerWidth-24,(196+44+460)*k))/k)-196-44)+'px','important');}
   /* not enough room (the car's browser beside the Tesla's own screen): the album cover, then the "previous" button and the
      destination name are left out, so the music never covers the arrival time */
   if(wide){const mus=document.getElementById('tn-mus'),B=document.body;
     const over=()=>{if(!mus||!B.classList.contains('tn-routing')) return false;const a=mus.getBoundingClientRect(),b=this.beta.getBoundingClientRect();return a.width&&b.width&&a.right>b.left-8;};
     B.classList.remove('tn-l1t1','tn-l1t2');if(over()){B.classList.add('tn-l1t1');if(over()) B.classList.add('tn-l1t2');}}
+  /* long song names: the name (and the artist) slowly scroll instead of being cut off; Arabic/Hebrew scroll the other way */
+  try{document.querySelectorAll('#tn-mus .t b,#tn-mus .t span').forEach(el=>{
+    const w=el.querySelector('i.mq');
+    if(w){if(w.offsetWidth/2<=el.clientWidth-4){el.textContent=el.dataset.mq;el.style.direction='';delete el.dataset.mq;}return;}
+    if(el.scrollWidth<=el.clientWidth+2) return;
+    const t=el.textContent,rtl=/[\u0590-\u08ff]/.test(t),gap='\u00a0\u00a0\u00a0\u2022\u00a0\u00a0\u00a0';
+    el.dataset.mq=t;el.textContent='';const i=document.createElement('i');i.className='mq'+(rtl?' r':'');el.style.direction=rtl?'rtl':'';i.textContent=t+gap+t+gap;el.appendChild(i);
+    i.style.animationDuration=Math.max(8,i.offsetWidth/2/35)+'s';});}catch(e){}
+  /* when not navigating: Home and Work (live drive time, green / orange / red with traffic) and the weather outside */
+  if(wide&&!document.body.classList.contains('tn-routing')) try{this.quickFill();}catch(e){}
   let y=84+6,n=0;
   for(const [id,lbl] of TN.Layout.COL){const b=document.getElementById(id);if(!b) continue;
     const cs=getComputedStyle(b),shown=cs.display!=='none'&&cs.visibility!=='hidden'&&!b.hidden;
@@ -94,6 +110,26 @@ TN.Layout.prototype.tick=function(){
     b.classList.add('tn-incol');if(lbl) b.setAttribute('data-lbl',lbl);b.style.top=y+'px';y+=60;n++;}
   this.rcol.style.display=wide&&n?'block':'none';this.rcol.style.height=(n*60+12)+'px';
   this.bbar.style.display=wide?'block':'none';
+};
+TN.Layout.prototype.quickFill=function(){
+  const nv=TN.nav,tr=x=>TN.tr?TN.tr(x):x;let h='';
+  for(const k of ['home','work']){const pl=nv&&nv.places&&nv.places[k],col=k==='home'?'#60a5fa':'#f59e0b',lab=tr(k==='home'?'Home':'Work');
+    if(pl){const m=nv.etaFor(k),c=nv.etaC&&nv.etaC[k],r=c&&c.ratio||1;
+      h+='<div class="'+(k==='home'?'hm':'wk')+'" data-go="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="'+(m?(r>1.5?'r':r>1.2?'o':''):'n')+'">'+(m?m+' min':'\u2026')+'</small></span></div>';}
+    else if(nv) h+='<div class="'+(k==='home'?'hm':'wk')+'" data-set="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="n">'+tr('Tap to set')+'</small></span></div>';}
+  const w=TN.wx;if(w&&w.temp!=null){const hr=new Date().getHours(),nt=hr<7||hr>=17,k=w.kind,
+      ic=k==='snow'?'\u2744\ufe0f':k==='rain'?'\ud83c\udf27\ufe0f':k==='fog'?'\ud83c\udf2b\ufe0f':k==='overcast'?'\u2601\ufe0f':k==='cloudy'?(nt?'\u2601\ufe0f':'\u26c5'):(nt?'\ud83c\udf19':'\u2600\ufe0f');
+    h+='<div class="wx"><i>'+ic+'</i>'+Math.round(w.temp)+'\u00b0</div>';}
+  if(h!==this.lastQ){this.lastQ=h;this.quick.innerHTML=h;}
+  /* too narrow: the weather goes first, then Work; never over the music */
+  const q=this.quick,mus=document.getElementById('tn-mus');q.classList.remove('c1','c2');
+  const hit=()=>{if(!mus) return false;const a=mus.getBoundingClientRect(),b=q.getBoundingClientRect();return a.width&&b.width&&a.right>b.left-14;};
+  if(hit()){q.classList.add('c1');if(hit()) q.classList.add('c2');}
+};
+TN.Layout.prototype.quickTap=function(ev){
+  const d=ev.target.closest('[data-go],[data-set]'),nv=TN.nav;if(!d||!nv) return;
+  if(d.dataset.set){if(nv.openSearch) nv.openSearch();nv.startSetting(d.dataset.set);return;}
+  const pl=nv.places[d.dataset.go];if(pl) nv.pick(Object.assign({},pl));
 };
 /* starts once the app has set itself up (its buttons exist) */
 (function(){if(typeof document==='undefined') return;let n=0;const go=()=>{if(document.body&&document.body.classList.contains('tn-app')){if(!TN.layout) TN.layout=new TN.Layout();return;}if(++n<200) setTimeout(go,150);};go();})();

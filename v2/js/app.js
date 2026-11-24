@@ -62,7 +62,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const nav=TN.Nav?new TN.Nav({map:map,scene:scene,net:net,getCar:()=>track.car,
     gps:()=>track.last?{x:track.last.x,z:track.last.z,v:track.last.v,hd:track.hd,t:track.last.t,raw:track.last.hd}:null,gpsHd:()=>track.hd,note:(k,d,sh)=>{if(rec&&rec.rec) rec.note(k,d,sh);if(TN.fb) TN.fb.note(k,d);},
     setFollow:b=>{if(b){if(typeof startFollow==='function') startFollow();}else{follow=false;$('btn').classList.add('free');}}}):null;
-  if(nav){try{nav.build();}catch(e){}}
+  if(nav){try{nav.build();}catch(e){}}TN.nav=nav;
   /* road incidents with Rocco (TomTom) */
   /* shadows that follow the real sun (buildings and the car), and the car's soft contact shadow */
   TN.shadows=TN.Shadows?new TN.Shadows(scene):null;
