@@ -61,11 +61,12 @@ TN.Weather.prototype.buildRain=function(){
 TN.Weather.prototype.update=function(dt,lat,lng,cx,cy,cz){
   if(!this.scene.three) return;
   /* (Premium: rain, snow and fog on the map; switched off without it, back on with it if the setting is on) */
+  const now=Date.now();
+  /* (Nov 24) the 10-minute timer starts only once the car's position is known, so the first check isn't lost at start-up */
+  if(lat&&now-this.last>(this.temp==null&&this.last?60000:600000)){this.last=now;this.check(lat,lng);}
   {const pro=!TN.isPro||TN.isPro();if(!pro&&this.on){this.proOff=true;this.setOn(false);}
    else if(pro&&this.proOff){this.proOff=false;this.setOn(!(TN.settings&&TN.settings.weather===false));}
    if(!pro) return;}
-  const now=Date.now();
-  if(now-this.last>600000||(!this.last&&lat)){this.last=now;if(lat) this.check(lat,lng);}
   const r=this.on?this.rain:0;
   /* (Nov 22) wet roads: wet within a minute of rain starting, drying slowly (a few minutes) after it stops */
   if(TN.WETU){const wt=this.on?Math.min(1,r*1.3):0,W=TN.WETU.wet;W.value+=(wt-W.value)*Math.min(1,dt*(wt>W.value?0.05:0.008));if(this.test) W.value=wt;
