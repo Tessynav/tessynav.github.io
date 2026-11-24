@@ -1,4 +1,4 @@
-/* TessyNav v2 — landmarks.js (v4)
+/* TessyNav v2 — landmarks.js (v5, Nov 24: Place Ville Marie, 1000 de la Gauchetière, Saint Joseph's Oratory)
    Well-known places as their own 3D models, in TessyNav's style (simple shapes, flat colours, no photos, no logos):
    - Stade Saputo: the pitch with its markings and goals, stands on four sides (the main stand taller, two tiers),
      roofs over the two long stands, light rows along the roof edges
@@ -15,7 +15,13 @@ TN.LANDMARKS=[
   {id:'olympic',name:'Olympic Stadium',lng:-73.551575,lat:45.557861,tower:[-73.551468,45.558941],kind:'olympic',r:165},
   /* the Biosphère (Expo 67 geodesic dome, 76 m wide, 62 m high) and the big orange on Décarie (12.3 m) */
   {id:'biosphere',name:'Biosphère',lng:-73.531746,lat:45.514164,kind:'dome',r:48},
-  {id:'orange',name:'Big orange (Décarie)',lng:-73.6568,lat:45.4957,kind:'orange',r:12}
+  {id:'orange',name:'Big orange (Décarie)',lng:-73.6568,lat:45.4957,kind:'orange',r:12},
+  /* (Nov 24) the downtown skyline and the Oratory, so driving into Montréal looks like Montréal:
+     Place Ville Marie (188 m, the cross-shaped tower with its beacon), 1000 de la Gauchetière (205 m, the tallest, with
+     its copper-green pyramid top) and Saint Joseph's Oratory (the great green dome, 97 m). Seen from far away (5 km) */
+  {id:'pvm',name:'Place Ville Marie',lng:-73.56907,lat:45.50153,kind:'pvm',r:60,far:5000},
+  {id:'g1000',name:'1000 de la Gauchetière',lng:-73.56652,lat:45.49882,kind:'g1000',r:42,far:5000},
+  {id:'oratory',name:"Saint Joseph's Oratory",lng:-73.61787,lat:45.49243,kind:'oratory',r:75,far:5000}
 ];
 TN.landmarkHide=[];   /* [{x,z,r}]: areas where the map's own buildings are left out */
 TN.Landmarks=function(scene){
@@ -24,7 +30,11 @@ TN.Landmarks=function(scene){
   this.mat=null;
 };
 TN.Landmarks.prototype.material=function(){
-  if(!this.mat) this.mat=new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true,side:THREE.DoubleSide});
+  if(!this.mat){this.mat=new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true,side:THREE.DoubleSide});
+    /* (Nov 24) at night the landmarks are floodlit: they glow softly in their own colours instead of going dark */
+    const m=this.mat,sc=this.scene;m.onBeforeCompile=sh=>{sh.uniforms.lmGlow={value:0};m.userData.sh=sh;
+      sh.fragmentShader='uniform float lmGlow;\n'+sh.fragmentShader.replace('#include <dithering_fragment>','gl_FragColor.rgb+=vColor.rgb*lmGlow*0.55;\n#include <dithering_fragment>');};
+    this.glowTick=()=>{const sh=m.userData.sh;if(sh) sh.uniforms.lmGlow.value=(sc&&sc.glowOp)||0;};}
   return this.mat;
 };
 TN.Landmarks.prototype.update=function(lng,lat){
@@ -38,9 +48,10 @@ TN.Landmarks.prototype.update=function(lng,lat){
   if(performance.now()-(this.hideT||0)>5000){this.hideT=performance.now();try{this.hideMap();}catch(e){}}
   for(const L of TN.LANDMARKS){
     const d=TN.distLL([lng,lat],[L.lng,L.lat]),have=this.built.get(L.id);
-    if(d<2500&&!have){let grp=null;try{grp=this.build(L);}catch(e){grp=null;}
+    const near=L.far||2500;
+    if(d<near&&!have){let grp=null;try{grp=this.build(L);}catch(e){grp=null;}
       this.built.set(L.id,grp||'none');if(grp){this.scene.three.scene.add(grp);try{this.hideMap();}catch(e){}}}
-    else if(d>3500&&have){if(have!=='none'){this.scene.three.scene.remove(have);have.traverse(o=>{if(o.geometry) o.geometry.dispose();});}
+    else if(d>near+1000&&have){if(have!=='none'){this.scene.three.scene.remove(have);have.traverse(o=>{if(o.geometry) o.geometry.dispose();});}
       this.built.delete(L.id);TN.landmarkHide=TN.landmarkHide.filter(h=>h.id!==L.id);}
   }
 };
@@ -125,7 +136,7 @@ TN.Landmarks.prototype.buildOlympic=function(L){
 /* simple meshes for the dome and the orange */
 TN.Landmarks.prototype.mesh=function(pos,col,id){
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();
-  const m=new THREE.Mesh(g,this.material());m.name='landmark-'+id;const grp=new THREE.Group();grp.add(m);return grp;
+  const m=new THREE.Mesh(g,this.material());m.name='landmark-'+id;m.onBeforeRender=()=>{if(this.glowTick) this.glowTick();};const grp=new THREE.Group();grp.add(m);return grp;
 };
 TN.Landmarks.prototype.buildDome=function(L){
   const c=TN.toLocal(L.lng,L.lat),R=38,cy=62-R,pos=[],col=[],STEEL=[0.62,0.64,0.66],HUB=[0.50,0.52,0.55],MUS=[0.86,0.85,0.82],GL=[0.30,0.42,0.50];
@@ -172,7 +183,81 @@ TN.Landmarks.prototype.buildOrange=function(L){
   const ball=new THREE.Mesh(new THREE.SphereGeometry(R,40,24),this.orangeMat);ball.position.set(c[0],cy,c[1]);grp.add(ball);
   return grp;
 };
+/* ---- skyline helpers: shapes in the downtown street grid (Sainte-Catherine runs about 55 degrees east of north) ---- */
+TN.Landmarks.prototype.kit=function(L,bearing){
+  const c=TN.toLocal(L.lng,L.lat),b=(bearing==null?55:bearing)*Math.PI/180,ax=[Math.sin(b),-Math.cos(b)],az=[Math.cos(b),Math.sin(b)];
+  const pos=[],col=[],P=(u,y,v)=>[c[0]+ax[0]*u+az[0]*v,y,c[1]+ax[1]*u+az[1]*v];
+  const tri=(a,b2,d,k)=>{for(const p of [a,b2,d]){pos.push(p[0],p[1],p[2]);col.push(k[0],k[1],k[2]);}};
+  const quad=(a,b2,d,e,k)=>{tri(a,b2,d,k);tri(a,d,e,k);};
+  /* a wall from (u0,v0) to (u1,v1), y0..y1, in vertical strips: glass bands between light piers, like curtain walls */
+  const wall=(u0,v0,u1,v1,y0,y1,k,k2,step)=>{const L2=Math.hypot(u1-u0,v1-v0),n=Math.max(1,Math.round(L2/(step||3)));
+    for(let i=0;i<n;i++){const t0=i/n,t1=(i+1)/n,a=[u0+(u1-u0)*t0,v0+(v1-v0)*t0],e=[u0+(u1-u0)*t1,v0+(v1-v0)*t1];
+      quad(P(a[0],y0,a[1]),P(e[0],y0,e[1]),P(e[0],y1,e[1]),P(a[0],y1,a[1]),k2&&i%2?k2:k);}};
+  const box=(u0,u1,v0,v1,y0,y1,k,k2,step)=>{wall(u0,v0,u1,v0,y0,y1,k,k2,step);wall(u1,v0,u1,v1,y0,y1,k,k2,step);wall(u1,v1,u0,v1,y0,y1,k,k2,step);wall(u0,v1,u0,v0,y0,y1,k,k2,step);
+    quad(P(u0,y1,v0),P(u1,y1,v0),P(u1,y1,v1),P(u0,y1,v1),k);};
+  const pyr=(u0,u1,v0,v1,y0,y1,k)=>{const m=P((u0+u1)/2,y1,(v0+v1)/2),q=[[u0,v0],[u1,v0],[u1,v1],[u0,v1]];
+    for(let i=0;i<4;i++){const a=q[i],e=q[(i+1)%4];tri(P(a[0],y0,a[1]),P(e[0],y0,e[1]),m,k);}};
+  const cyl=(cu,cv,r,y0,y1,k,N)=>{N=N||32;for(let i=0;i<N;i++){const t0=i/N*Math.PI*2,t1=(i+1)/N*Math.PI*2;
+    quad(P(cu+Math.cos(t0)*r,y0,cv+Math.sin(t0)*r),P(cu+Math.cos(t1)*r,y0,cv+Math.sin(t1)*r),P(cu+Math.cos(t1)*r,y1,cv+Math.sin(t1)*r),P(cu+Math.cos(t0)*r,y1,cv+Math.sin(t0)*r),k);}};
+  const dome=(cu,cv,r,y0,h,k,N)=>{N=N||32;const M=10;for(let j=0;j<M;j++){const a0=j/M*Math.PI/2,a1=(j+1)/M*Math.PI/2;
+    for(let i=0;i<N;i++){const t0=i/N*Math.PI*2,t1=(i+1)/N*Math.PI*2,q=(t,a)=>P(cu+Math.cos(t)*r*Math.cos(a),y0+h*Math.sin(a),cv+Math.sin(t)*r*Math.cos(a));
+      quad(q(t0,a0),q(t1,a0),q(t1,a1),q(t0,a1),k);}}};
+  TN.landmarkHide.push({id:L.id,x:c[0],z:c[1],r:L.r});
+  return {c:c,P:P,tri:tri,quad:quad,wall:wall,box:box,pyr:pyr,cyl:cyl,dome:dome,done:()=>this.mesh(pos,col,L.id)};
+};
+/* a small light that shines at night (a beacon or the lantern on a dome) */
+TN.Landmarks.prototype.beacon=function(grp,p,size,color){
+  const m=new THREE.MeshBasicMaterial({color:color||0xffffff,transparent:true,opacity:0.9,depthWrite:false});
+  const s=new THREE.Mesh(new THREE.SphereGeometry(size,12,8),m);s.position.set(p[0],p[1],p[2]);s.userData.beacon=true;grp.add(s);
+  const sc=this.scene;s.onBeforeRender=()=>{m.opacity=0.25+0.75*(sc.glowOp||0);};return s;
+};
+TN.Landmarks.prototype.buildPVM=function(L){
+  /* Place Ville Marie: four equal arms in a cross, 188 m, light aluminium with dark glass bands, a crown on top and the
+     rotating beacon (its white light sweeps the sky at night) */
+  const K=this.kit(L),AL=[0.78,0.80,0.83],GL=[0.30,0.36,0.44],TOP=[0.62,0.64,0.68],H=184,a=42,w=12;
+  /* the cross: a centre square and four arms, each arm's three outer faces in vertical strips */
+  K.box(-w,w,-a,a,0,H,AL,GL,2.6);K.box(-a,a,-w,w,0,H,AL,GL,2.6);
+  K.box(-w+2,w-2,-w+2,w-2,H,H+4,TOP);   /* the crown */
+  const grp=K.done(),bp=K.P(0,H+6,0);this.beacon(grp,bp,1.6,0xfff6e0);
+  /* the beacon's beams: two soft light beams turning slowly, only after dark */
+  const bm=new THREE.MeshBasicMaterial({color:0xfff3d6,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+  const piv=new THREE.Group();piv.position.set(bp[0],bp[1],bp[2]);
+  for(const sd of [1,-1]){const cone=new THREE.Mesh(new THREE.ConeGeometry(28,700,16,1,true),bm);cone.rotation.z=sd*Math.PI/2;cone.position.x=sd*350;piv.add(cone);}
+  const sc=this.scene;piv.children[0].onBeforeRender=()=>{piv.rotation.y=performance.now()/1000*0.6;const g=sc.glowOp||0;bm.opacity=0.09*g;};
+  grp.add(piv);
+  return grp;
+};
+TN.Landmarks.prototype.buildG1000=function(L){
+  /* 1000 de la Gauchetière: the tallest (205 m): a light stone and blue-glass tower stepping in near the top, under a
+     copper-green pyramid */
+  const K=this.kit(L),ST=[0.84,0.80,0.72],GL=[0.32,0.42,0.56],CU=[0.42,0.64,0.54];
+  K.box(-27,27,-22,22,0,150,ST,GL,3);
+  K.box(-22,22,-18,18,150,168,ST,GL,3);
+  K.box(-17,17,-14,14,168,178,ST,GL,3);
+  K.pyr(-17,17,-14,14,178,203,CU);
+  const grp=K.done();this.beacon(grp,K.P(0,204,0),0.7,0xff5040);
+  return grp;
+};
+TN.Landmarks.prototype.buildOratory=function(L){
+  /* Saint Joseph's Oratory: the long granite basilica facing south-east, its columned front, and the great green dome
+     (the second biggest of its kind in the world) on a tall drum, with a lantern and cross on top: 97 m */
+  const K=this.kit(L,135),GR=[0.74,0.72,0.68],DK=[0.58,0.57,0.54],CU=[0.38,0.60,0.52],RF=[0.40,0.52,0.48];
+  K.box(-52,48,-30,30,0,34,GR,DK,4);                         /* the basilica */
+  for(let i=-1;i<=1;i+=2) K.pyr(-52,48,i<0?-30:0,i<0?0:30,34,34,RF);   /* (flat roof under the dome) */
+  K.box(48,58,-22,22,0,30,GR,DK,2.2);                       /* the front with its columns */
+  K.pyr(48,58,-22,22,30,38,GR);
+  K.cyl(-2,0,22,34,58,GR,36);                               /* the drum */
+  K.cyl(-2,0,23,56,59,DK,36);
+  K.dome(-2,0,22,58,24,CU,36);                              /* the dome */
+  K.cyl(-2,0,3.5,82,90,GR,12);K.dome(-2,0,3.5,90,3,CU,12);  /* the lantern */
+  K.box(-2.3,-1.7,-0.3,0.3,93,98,DK);K.box(-2.3,-1.7,-1.8,1.8,95.6,96.4,DK);   /* the cross */
+  const grp=K.done();this.beacon(grp,K.P(-2,86,0),1.2,0xffe7b0);
+  return grp;
+};
 TN.Landmarks.prototype.build=function(L){
+  if(L.kind==='pvm') return this.buildPVM(L);
+  if(L.kind==='g1000') return this.buildG1000(L);
+  if(L.kind==='oratory') return this.buildOratory(L);
   if(L.kind==='dome') return this.buildDome(L);
   if(L.kind==='orange') return this.buildOrange(L);
   if(L.kind==='olympic') return this.buildOlympic(L);

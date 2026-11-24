@@ -704,6 +704,23 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     if(TN.Intro){try{started=new TN.Intro(scene,map).start(scene.pendingNt!=null?scene.pendingNt:lastNt);}catch(e){}}
     if(!started){const b=document.getElementById('tn-boot');if(b&&b.parentNode) b.parentNode.removeChild(b);document.body.classList.remove('tn-intro');}
   });
+  /* the welcome flight (see the follow camera): first start only, or ?welcome=1; ?welcome=0 never */
+  try{const q=location.search;let first=false;try{first=!localStorage.getItem('tn2_welcomed');}catch(e){}
+    if(!/[?&]welcome=0/.test(q)&&!TN.ORBIT&&(/[?&]welcome=1/.test(q)||(first&&!/[?&]r=\d/.test(q)))){
+      TN.welcome={t0:0,dur:6200,done:false};
+      const stop=()=>{if(TN.welcome&&!TN.welcome.done){TN.welcome.done=true;try{localStorage.setItem('tn2_welcomed','1');}catch(x){}}};
+      map.getCanvasContainer().addEventListener('pointerdown',stop,{once:true});
+      setTimeout(()=>{if(TN.welcome&&!TN.welcome.t0) TN.welcome.done=true;},30000);   /* (no car found in time: skipped) */
+      TN.welcomeHello=()=>{
+        const fr=TN.LANG==='fr',d=document.createElement('div');d.id='tn-hello';
+        d.innerHTML=(TN.roccoSVG?TN.roccoSVG(54):'')+'<div><b>'+(fr?'Salut, moi c\u2019est Rocco !':'Hi, I\u2019m Rocco!')+'</b><span>'+(fr?'Bienvenue dans MapKoon. On roule ?':'Welcome to MapKoon. Ready to drive?')+'</span></div>';
+        const st=document.createElement('style');st.textContent='#tn-hello{position:absolute;left:50%;top:22%;transform:translate(-50%,10px);display:flex;align-items:center;gap:14px;padding:14px 22px 14px 14px;border-radius:22px;'+
+          'background:rgb(var(--tn-panel-rgb,24 26 30) / .94);color:var(--tn-text,#fff);font:16px system-ui,sans-serif;z-index:30;opacity:0;transition:opacity .6s,transform .6s;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.35)}'+
+          '#tn-hello.on{opacity:1;transform:translate(-50%,0)}#tn-hello b{display:block;font-size:20px;margin-bottom:2px}#tn-hello span{opacity:.8}';
+        document.head.appendChild(st);document.body.appendChild(d);
+        requestAnimationFrame(()=>d.classList.add('on'));
+        setTimeout(()=>d.classList.remove('on'),5200);setTimeout(()=>{d.remove();st.remove();},6000);
+        try{if(TN.voice&&TN.voice.say&&!(TN.settings&&TN.settings.voice===false)) TN.voice.say(fr?'Salut, moi c\u2019est Rocco. Bienvenue dans MapKoon !':'Hi, I\u2019m Rocco. Welcome to MapKoon!');}catch(e){}};}}catch(e){}
   /* snapshots are taken right after the map is drawn (the picture is only complete at that moment) */
   map.on('render',()=>{if(rec.rec) rec.shoot(map.getCanvas(),map);});
   let last=performance.now(),fpsN=0,fpsT=performance.now(),worst=0,lastRec=0,prevCar=null,lastFps=0;
@@ -867,6 +884,17 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
         autoZoom=gZoom;
         /* 2D view: flat and a little zoomed out (was 2 levels: too far, Nov 17), the car a little lower than the middle so more road ahead shows */
         const view={center:aim,bearing:camHd,zoom:Math.min(gZoom+userZoom,zMaxNow)-0.35*ck,pitch:pitchNow,padding:{top:Math.round(H*(0.56-0.06*ck)),bottom:0,left:0,right:0}};   /* (Clean: a bit higher than Classic, not "from space": 0.9 zoom out, 50°; it was 1.7 and 45°, which also drew up to a million triangles) */
+        /* (Nov 24) the welcome flight, on the very first start (and with ?welcome=1, for videos): the camera starts high
+           above the city and sweeps down in a curve to the car, while Rocco says hello. About 6 s, right after the
+           opening animation. Any tap ends it. */
+        try{const W=TN.welcome;if(W&&!W.done){
+          if(document.body.classList.contains('tn-intro')||!ready){W.t0=0;}
+          else{if(!W.t0){W.t0=performance.now();W.from={c:aim,z:Math.max(12.6,view.zoom-5),p:20,b:view.bearing-140};try{TN.welcomeHello&&TN.welcomeHello();}catch(e){}}
+            const k=Math.min(1,(performance.now()-W.t0)/W.dur),e=k<0.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2,F=W.from;
+            const db=((view.bearing-F.b+540)%360)-180;
+            view.zoom=F.z+(view.zoom-F.z)*e;view.pitch=F.p+(view.pitch-F.p)*e;view.bearing=F.b+db*e;
+            view.padding={top:Math.round(view.padding.top*e),bottom:0,left:0,right:0};
+            if(k>=1){W.done=true;try{localStorage.setItem('tn2_welcomed','1');}catch(x){}}}}}catch(e){}
         map.jumpTo(view);
         if(ready) setLite(true);
       }

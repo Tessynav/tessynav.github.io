@@ -839,6 +839,57 @@ TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
 };
 /* turn arrows painted on the route line: three chevrons before your next turn, and a bent arrow at the turn whose stem
    follows the route's own curve through the intersection (so it bends the way you'll go) */
+/* (Nov 24) lane guidance on the road: before a turn or exit where only some lanes go the right way, those lanes glow on
+   the road itself (a soft cyan glow down the middle of each lane, from about 300 m before the turn to just before it),
+   so you see which lanes to be in, like in the newest car systems. Lanes come from the directions (Mapbox), placed
+   across our own road. Spoken once too: "Use the right 2 lanes". Only when it adds something: some lanes valid and some
+   not, and the road's width fits the number of lanes. Settings -> Driving -> Floating turn arrows also turns this off. */
+TN.Nav.prototype.laneGlow=function(nx,dNext,spd){
+  const R=this.route,S=this.api.scene,off=()=>{if(this.lg) this.lg.visible=false;};
+  if(!R||!R.fit||!nx||!nx.lanes||nx.lanes.length<2||(TN.settings&&TN.settings.arTurn===false)) return off();
+  const L=nx.lanes,n=L.length,val=L.map(l=>!!l.valid);
+  if(!val.some(v=>v)||val.every(v=>v)) return off();
+  if(dNext>420||dNext<6) return off();
+  if(this.lgAt!==nx.at||this.lgR!==R){this.lgAt=nx.at;this.lgR=R;this.lgSaid=false;
+    if(this.lg){S.three.scene.remove(this.lg);this.lg.geometry.dispose();this.lg=null;}
+    /* the stretch of route before the turn */
+    const sA=Math.max(0,nx.at-320),sB=nx.at-10;let i0=0;while(i0<R.pts.length-1&&R.cum[i0]<sA) i0++;
+    try{this.fitRange(Math.max(0,i0-1),Math.min(R.pts.length-1,i0+400));}catch(e){}
+    const pos=[],uv=[],idx=[];let nv=0;
+    for(let k=0;k<n;k++){if(!val[k]) continue;
+      let prev=null;
+      for(let i=i0;i<R.pts.length-1&&R.cum[i]<=sB;i++){const f=R.fit[i];if(!f||f.miss){prev=null;continue;}
+        const lw=(f.ow?2*f.hw:f.hw)/n;if(lw<2.3||lw>5.2){prev=null;continue;}   /* (our road doesn't fit that many lanes) */
+        const p=R.pts[i],q=R.pts[i+1],ux0=q[0]-p[0],uz0=q[1]-p[1],ul=Math.hypot(ux0,uz0)||1,ux=ux0/ul,uz=uz0/ul,rx=-uz,rz=ux;
+        const cx=p[0]+f.dx,cz=p[1]+f.dz,o=f.ow?-f.hw+(k+0.5)*lw:(k+0.5)*lw,hw=lw*0.36;
+        const x=cx+rx*o,z=cz+rz*o,y=f.h+0.06,t=(R.cum[i]-sA)/(sB-sA);
+        const a=[x-rx*hw,y,z-rz*hw],b=[x+rx*hw,y,z+rz*hw];
+        if(prev){pos.push(...prev[0],...prev[1],...b,...a);uv.push(0,prev[2],1,prev[2],1,t,0,t);idx.push(nv,nv+1,nv+2,nv,nv+2,nv+3);nv+=4;}
+        prev=[a,b,t];}}
+    if(nv){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);
+      if(!this.lgMat){this.lgMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+        uniforms:{tm:{value:0},op:{value:1}},
+        vertexShader:'varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+        fragmentShader:'uniform float tm;uniform float op;varying vec2 vU;void main(){float x=abs(vU.x-0.5)*2.0;float edge=1.0-smoothstep(0.55,1.0,x);'+
+          'float fade=smoothstep(0.0,0.18,vU.y)*(1.0-smoothstep(0.92,1.0,vU.y));float pulse=0.75+0.25*sin(vU.y*40.0-tm*5.0);'+
+          'gl_FragColor=vec4(vec3(0.25,0.85,1.0)*edge*fade*pulse*op,1.0);}'});
+        if(TN.liftPatch) try{TN.liftPatch(this.lgMat,0.9);}catch(e){}}
+      this.lg=new THREE.Mesh(g,this.lgMat);this.lg.frustumCulled=false;this.lg.renderOrder=5;S.three.scene.add(this.lg);}}
+  if(!this.lg) return;
+  this.lg.visible=true;this.lg.position.y=this.lineDy||0;
+  this.lgMat.uniforms.tm.value=performance.now()/1000;
+  this.lgMat.uniforms.op.value=Math.min(1,(420-dNext)/80)*Math.min(1,(dNext-6)/20);
+  /* spoken once, about 350 m before (sooner at highway speed), unless the instructions already speak of lanes */
+  if(!this.lgSaid&&dNext<(spd&&spd>20?400:330)){this.lgSaid=true;
+    const k1=val.indexOf(true),k2=val.lastIndexOf(true),cnt=val.filter(v=>v).length,fr=TN.LANG==='fr';
+    let t=null;
+    if(k2===n-1&&k1>0) t=cnt===1?(fr?'Prends la voie de droite':'Use the right lane'):(fr?'Prends les '+cnt+' voies de droite':'Use the right '+cnt+' lanes');
+    else if(k1===0&&k2<n-1) t=cnt===1?(fr?'Prends la voie de gauche':'Use the left lane'):(fr?'Prends les '+cnt+' voies de gauche':'Use the left '+cnt+' lanes');
+    else if(k1>0&&k2<n-1) t=fr?'Reste dans les voies du centre':'Stay in the middle lanes';
+    const said=((nx.ann||[]).map(a=>a.text||'').join(' ')).toLowerCase();
+    if(t&&!/lane|voie/.test(said)) try{if(TN.voice&&TN.voice.say) TN.voice.say(t);}catch(e){}
+    try{this.note('lane glow',{n:n,valid:val.map(v=>v?1:0).join(''),said:t});}catch(e){}}
+};
 TN.Nav.prototype.drawArrows=function(CL){
   const S=this.api.scene,R=this.route;
   if(this.arrows){S.three.scene.remove(this.arrows);this.arrows.geometry.dispose();this.arrows=null;}
@@ -1802,6 +1853,7 @@ TN.Nav.prototype.update=function(dt){
      if(on!==!!this.rkOn){this.rkOn=on;this.note('rocco',{on:on});}
      const bub=rk.querySelector('.bub');if(bub){const off=!on||Date.now()-(this.rkT||0)>5000;if(off!==bub.classList.contains('off')) bub.classList.toggle('off',off);}}}
   try{this.arTurn(nx,dNext,s);}catch(e){}
+  try{this.laneGlow(nx,dNext,s);}catch(e){}
   /* lane arrows for the next turn (where the directions include lanes), from 1 km before it */
   {const le=this.bar.querySelector('.lanes');let html='';
    if(nx.lanes&&nx.lanes.length&&dNext<1000){
