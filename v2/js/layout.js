@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v10 Nov 24: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v11 Nov 24: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -31,9 +31,10 @@ TN.Layout=function(){
   '#tn-quick{position:absolute;right:18px;bottom:14px;height:60px;z-index:5;display:none;gap:10px;align-items:center;font:14px system-ui,sans-serif;color:var(--tn-text)}'+
   'body.tn-l1:not(.tn-routing):not(.tn-intro) #tn-quick{display:flex}#tn-quick>div{display:flex;align-items:center;gap:9px;height:52px;padding:0 16px 0 12px;border-radius:14px;background:rgba(127,140,160,.13);cursor:pointer;white-space:nowrap}'+
   '#tn-quick>div:active{transform:scale(.96)}#tn-quick b{display:block;font-size:15px;line-height:1.15}#tn-quick small{display:block;font-size:13px;font-weight:600;color:#16a34a}#tn-quick small.o{color:#ea8a0c}#tn-quick small.r{color:#dc2626}#tn-quick small.n{color:var(--tn-joke);font-weight:400}'+
-  '#tn-quick .wx{cursor:pointer;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}'+
+  '#tn-quick .wx{cursor:pointer;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}#tn-quick .unset{padding:0 12px 0 10px}#tn-quick .unset svg{opacity:.75}'+
   '#tn-wxc{position:absolute;right:18px;bottom:100px;width:min(460px,calc(100vw - 120px));z-index:30;background:'+P+';color:var(--tn-text);border-radius:20px;box-shadow:0 10px 34px rgba(0,0,0,.3);font:14px system-ui,sans-serif;padding:16px 18px 18px;display:none}'+
   '#tn-wxc.on{display:block}#tn-wxc .hd{display:flex;align-items:center;gap:12px}#tn-wxc .big{font-size:44px;font-weight:700;line-height:1}#tn-wxc .ic{font-size:44px}#tn-wxc .cd{flex:1}#tn-wxc .cd b{display:block;font-size:17px}#tn-wxc .cd small{color:var(--tn-joke)}'+
+  '#tn-wxc .rk{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 12px 8px 8px;border-radius:14px;background:rgba(245,158,11,.13);font-size:14px;line-height:1.3}#tn-wxc .rk svg{flex:none}'+
   '#tn-wxc .x{width:40px;height:40px;border-radius:50%;border:0;background:rgba(127,140,160,.15);color:inherit;font-size:20px;cursor:pointer}'+
   '#tn-wxc .tb{display:flex;gap:6px;margin:14px 0 10px;background:rgba(127,140,160,.13);border-radius:12px;padding:4px}#tn-wxc .tb button{flex:1;height:40px;border:0;border-radius:9px;background:none;color:inherit;font:600 15px system-ui,sans-serif;cursor:pointer}#tn-wxc .tb button.on{background:'+P+';box-shadow:0 1px 4px rgba(0,0,0,.15)}'+
   '#tn-wxc .hr{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px}#tn-wxc .hr div{flex:none;width:58px;text-align:center;padding:8px 0;border-radius:12px}#tn-wxc .hr div.nw{background:rgba(96,165,250,.16)}#tn-wxc .hr i{display:block;font-style:normal;font-size:24px;margin:4px 0}#tn-wxc .hr b{font-size:16px}#tn-wxc .hr small,#tn-wxc .dy small{display:block;font-size:12px;color:#3b82f6;min-height:15px}'+
@@ -123,7 +124,7 @@ TN.Layout.prototype.quickFill=function(){
   for(const k of ['home','work']){const pl=nv&&nv.places&&nv.places[k],col=k==='home'?'#60a5fa':'#f59e0b',lab=tr(k==='home'?'Home':'Work');
     if(pl){const m=nv.etaFor(k),c=nv.etaC&&nv.etaC[k],r=c&&c.ratio||1;
       h+='<div class="'+(k==='home'?'hm':'wk')+'" data-go="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="'+(m?(r>1.5?'r':r>1.2?'o':''):'n')+'">'+(m?m+' min':'\u2026')+'</small></span></div>';}
-    else if(nv) h+='<div class="unset '+(k==='home'?'hm':'wk')+'" data-set="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="n">'+tr('Tap to set')+'</small></span></div>';}
+    else if(nv) h+='<div class="unset '+(k==='home'?'hm':'wk')+'" data-set="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="n">+ '+tr('Set')+'</small></span></div>';}
   const w=TN.wx;
   /* no temperature yet (no GPS at start, underground): ask using the same position Home/Work use, at most once a minute */
   if(w&&w.temp==null&&nv&&nv.here&&w.check&&!w.test&&Date.now()-(this.wxT||0)>60000){this.wxT=Date.now();try{const p=nv.here();if(p&&p[1]) w.check(p[1],p[0]);}catch(e){}}
@@ -139,7 +140,7 @@ TN.Layout.prototype.quickFill=function(){
   const musR=()=>{let r=0;if(mus) for(const c of mus.children){const b=c.getBoundingClientRect();if(b.width&&getComputedStyle(c).display!=='none') r=Math.max(r,b.right);}return r;};
   const hit=()=>{const r=musR(),b=q.getBoundingClientRect();return r&&b.width&&r>b.left-14;};
   /* not enough room: first a "Tap to set" button, then tighter buttons, then Work, then the weather */
-  if(hit()) q.classList.add('c0');if(hit()) q.classList.add('c3');if(hit()) q.classList.add('c2');if(hit()) q.classList.add('c1');
+  if(hit()) q.classList.add('c3');if(hit()) q.classList.add('c0');if(hit()) q.classList.add('c2');if(hit()) q.classList.add('c1');
 };
 TN.Layout.prototype.quickTap=function(ev){
   if(ev.target.closest('.wx')){this.wxCard();return;}
@@ -165,10 +166,25 @@ TN.Layout.prototype.wxCard=function(){
     .then(r=>r.ok?r.json():null).then(j=>{if(!j) throw 0;this.wxData={t:Date.now(),j:j};if(c.classList.contains('on')) this.wxDraw();})
     .catch(()=>{c.innerHTML='<div class="hd"><div class="cd"><b>'+tr('Weather unavailable')+'</b></div><button class="x">✕</button></div>';});
 };
+/* Rocco's one-line tip, only when the weather changes how you drive (otherwise he stays quiet) */
+TN.Layout.wxTip=function(j,fr){
+  const cu=j.current||{},H=j.hourly||{},T=H.time||[],now=(cu.time||'').slice(0,13);let i0=Math.max(0,T.findIndex(t=>t.slice(0,13)===now));
+  const snowC=c=>(c>=71&&c<=77)||c===85||c===86,wetC=c=>(c>=51&&c<=67)||(c>=80&&c<=82)||c>=95,hh=i=>Math.round(+T[i].slice(11,13))+(fr?' h':':00');
+  const t=cu.temperature_2m,c=+cu.weather_code;
+  if(snowC(c)) return fr?'Il neige : garde tes distances et freine en douceur.':'It’s snowing: keep your distance and brake gently.';
+  if(wetC(c)&&t<=1) return fr?'Pluie et 0° : routes glissantes possibles, doucement sur les freins.':'Rain near 0°: roads may be icy, easy on the brakes.';
+  for(let i=i0+1;i<Math.min(T.length,i0+12);i++){if(snowC(H.weather_code[i])) return fr?'Neige vers '+hh(i)+' : pars un peu plus tôt.':'Snow around '+hh(i)+': maybe leave a little earlier.';}
+  if(c===45||c===48) return fr?'Brouillard : allume tes feux de croisement.':'Foggy: low beams on.';
+  if(wetC(c)) return fr?'Il pleut : la route est mouillée, garde de l’espace.':'It’s raining: wet roads, leave some extra space.';
+  for(let i=i0+1;i<Math.min(T.length,i0+4);i++){if(wetC(H.weather_code[i])||(H.precipitation_probability&&H.precipitation_probability[i]>=60)) return fr?'Pluie vers '+hh(i)+' : essuie-glaces prêts !':'Rain around '+hh(i)+': wipers ready!';}
+  if(t<=-15) return fr?'Très froid : ton autonomie va baisser, pense à préchauffer la batterie.':'Very cold: your range will drop, precondition the battery.';
+  return '';
+};
 TN.Layout.prototype.wxDraw=function(){
   const c=document.getElementById('tn-wxc'),j=this.wxData&&this.wxData.j;if(!c||!j) return;
   const tr=x=>TN.tr?TN.tr(x):x,fr=tr('Home')!=='Home',loc=fr?'fr-CA':'en-CA',cu=j.current||{},L=TN.Layout,R=Math.round;
   let h='<div class="hd"><span class="ic">'+L.wxIcon(cu.weather_code,!cu.is_day)+'</span><span class="big">'+R(cu.temperature_2m)+'°</span><div class="cd"><b>'+tr(L.wxName(cu.weather_code))+'</b><small>'+tr('Feels like')+' '+R(cu.apparent_temperature)+'° · '+tr('Wind')+' '+R(cu.wind_speed_10m)+' km/h</small></div><button class="x">✕</button></div>';
+  {const tip=L.wxTip(j,fr);if(tip) h+='<div class="rk">'+(TN.roccoSVG?TN.roccoSVG(38):'')+'<span>'+tip+'</span></div>';}
   h+='<div class="tb"><button data-t="h" class="'+(this.wxTab==='h'?'on':'')+'">'+tr('Today')+'</button><button data-t="d" class="'+(this.wxTab==='d'?'on':'')+'">'+tr('7 days')+'</button></div>';
   if(this.wxTab==='h'){const H=j.hourly,now=(cu.time||'').slice(0,13);let i=Math.max(0,H.time.findIndex(t=>t.slice(0,13)===now));h+='<div class="hr">';
     for(let n=0;n<24&&i<H.time.length;n++,i++){const pp=H.precipitation_probability?H.precipitation_probability[i]:0;
