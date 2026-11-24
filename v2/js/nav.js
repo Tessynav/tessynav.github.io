@@ -867,17 +867,18 @@ TN.Nav.prototype.laneGlow=function(nx,dNext,spd){
         if(prev){pos.push(...prev[0],...prev[1],...b,...a);uv.push(0,prev[2],1,prev[2],1,t,0,t);idx.push(nv,nv+1,nv+2,nv,nv+2,nv+3);nv+=4;}
         prev=[a,b,t];}}
     if(nv){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);
-      if(!this.lgMat){this.lgMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
-        uniforms:{tm:{value:0},op:{value:1}},
+      if(!this.lgMat){this.lgMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,
+        uniforms:{tm:{value:0},op:{value:1},night:{value:0}},
         vertexShader:'varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-        fragmentShader:'uniform float tm;uniform float op;varying vec2 vU;void main(){float x=abs(vU.x-0.5)*2.0;float edge=1.0-smoothstep(0.55,1.0,x);'+
+        fragmentShader:'uniform float tm;uniform float op;uniform float night;varying vec2 vU;void main(){float x=abs(vU.x-0.5)*2.0;float edge=1.0-smoothstep(0.55,1.0,x);'+
           'float fade=smoothstep(0.0,0.18,vU.y)*(1.0-smoothstep(0.92,1.0,vU.y));float pulse=0.75+0.25*sin(vU.y*40.0-tm*5.0);'+
-          'gl_FragColor=vec4(vec3(0.25,0.85,1.0)*edge*fade*pulse*op,1.0);}'});
+          'float a=edge*fade*pulse*op;gl_FragColor=vec4(mix(vec3(0.05,0.55,1.0),vec3(0.35,0.9,1.0),night),a*mix(0.78,0.9,night));}'});
         if(TN.liftPatch) try{TN.liftPatch(this.lgMat,0.9);}catch(e){}}
       this.lg=new THREE.Mesh(g,this.lgMat);this.lg.frustumCulled=false;this.lg.renderOrder=5;S.three.scene.add(this.lg);}}
   if(!this.lg) return;
   this.lg.visible=true;this.lg.position.y=this.lineDy||0;
   this.lgMat.uniforms.tm.value=performance.now()/1000;
+  this.lgMat.uniforms.night.value=(S&&S.night)||0;   /* (Nov 24: by day a solid bright blue, not a glow: added light vanished on the light grey road in daylight) */
   this.lgMat.uniforms.op.value=Math.min(1,(420-dNext)/80)*Math.min(1,(dNext-6)/20);
   /* spoken once, about 350 m before (sooner at highway speed), unless the instructions already speak of lanes */
   if(!this.lgSaid&&dNext<(spd&&spd>20?400:330)){this.lgSaid=true;
