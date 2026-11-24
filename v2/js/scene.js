@@ -564,7 +564,7 @@ TN.groundSeason=function(dt){
 TN.seasonC=function(c){const t=TN.GSEASON[c];if(!t) return c;const f=TN.groundSeason();if(!f) return c;
   return TN.mix(TN.mix(t[0],t[1],f[0]),t[2],f[1]);};
 TN.Scene.prototype.tintMat=function(k,m){
-  const nt=this.night||0;m.color.set(TN.mix('#ffffff',k==='mark'?'#c9d0de':'#6f7686',nt));
+  const nt=this.night||0;m.color.set(TN.mix('#ffffff',k==='mark'?(TN.SOFTNIGHT?'#b9bfdb':'#c9d0de'):(TN.SOFTNIGHT?'#7a7d9e':'#6f7686'),nt));
 };
 TN.Scene.prototype.applyGround=function(nt){
   /* (test mode ?mbx=1: Mapbox's own light: dawn/dusk around sunrise and sunset, night after dark) */
@@ -633,8 +633,9 @@ TN.Scene.prototype.applyNight=function(nt){
   try{
     /* the real weather: clouds grey the sky, rain darkens it, fog brings the haze in close */
     const W=this.weather||{cloud:0,rain:0,fog:0},cl=Math.min(1,W.cloud*0.85+W.rain*0.3),fg=Math.max(W.fog,W.rain*0.5);
-    let sky=TN.mix(TN.mix('#3f7fcf','#9aa4ae',cl),TN.mix('#0d1830','#141920',cl),nt);
-    let hor=TN.mix(TN.mix('#b9d3ee','#c3c9cf',cl),TN.mix('#2a3a5c','#232a33',cl),nt);   /* (a light blue haze, not near-white) */
+    const SN=TN.SOFTNIGHT;
+    let sky=TN.mix(TN.mix('#3f7fcf','#9aa4ae',cl),SN?TN.mix('#111a3e','#1f2438',cl):TN.mix('#0d1830','#141920',cl),nt);
+    let hor=TN.mix(TN.mix('#b9d3ee','#c3c9cf',cl),SN?TN.mix('#33396a','#363a50',cl):TN.mix('#2a3a5c','#232a33',cl),nt);   /* (soft night: the violet glow of the city lights on the horizon) */   /* (a light blue haze, not near-white) */
     /* sunrise and sunset: warm orange at the horizon and a violet-blue sky, when the sun is low (less with clouds) */
     const sp=this.sunNow(),gold=sp?Math.max(0,1-Math.abs(sp.el-2)/8)*(1-0.8*cl):0;this.gold=gold;
     if(gold>0.02){sky=TN.mix(sky,'#56609a',gold*0.7);hor=TN.mix(hor,'#ffb07a',gold*0.85);}
@@ -642,7 +643,7 @@ TN.Scene.prototype.applyNight=function(nt){
     try{const L=this.sunLight;if(L&&sp){const el=Math.max(8,sp.el)*TN.R,az=sp.az*TN.R;L.position.set(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
       L.color.set(TN.mix('#ffffff','#ffc08a',gold));L.intensity=2.2*(1-0.4*cl);}
       if(this.hemiLight) this.hemiLight.intensity=1.6*(1+0.12*cl);}catch(e){}   /* (night darkening stays as before, done elsewhere) */
-    let fogc=TN.mix(TN.mix('#c6daec','#c9cdd1',cl),TN.mix('#1c2638','#20252c',cl),nt);   /* (clear day: close to the horizon blue, so the map's edge and what's under it match) */
+    let fogc=TN.mix(TN.mix('#c6daec','#c9cdd1',cl),SN?TN.mix('#2e3358','#30344a',cl):TN.mix('#1c2638','#20252c',cl),nt);   /* (clear day: close to the horizon blue, so the map's edge and what's under it match) */
     if(gold>0.02) fogc=TN.mix(fogc,hor,gold*0.6);   /* (the haze warms up with the sunset too) */
     /* behind the map: where the map stops drawing (past its horizon, which sits higher than the 3D scene's when the
        camera looks far ahead) the page itself shows. It was one pale colour, a hard-edged white band under the blue
@@ -663,8 +664,16 @@ TN.Scene.prototype.applyNight=function(nt){
 /* buildings further away (the map's own): coloured by height like the detailed ones, instead of plain cement */
 TN.NIGHTCOL={'#c2c3b6':'#3a3f48','#c8c7bb':'#3d424b','#2f9fd6':'#0e2a44','#3f9a3a':'#173320','#5dbb44':'#1e3d25',
   '#6cc24a':'#21412a','#e6d39b':'#45433a'};
+/* (Nov 24) the soft night: instead of near-black, the city at night is a calm blue-violet, like Mapbox's night light:
+   the sky deep indigo with a soft violet glow over the city on the horizon, the ground, grass and water in cool blue
+   tones, roads blue-grey and the lane paint a softer white, so night driving is easier on the eyes and everything still
+   reads clearly. Settings -> Map and view -> Night look: Soft (default) or Classic. */
+TN.SOFTNIGHT=(()=>{try{return (JSON.parse(localStorage.getItem('tn2_settings')||'{}').nightLook||'soft')!=='classic';}catch(e){return true;}})();
+if(TN.SOFTNIGHT) Object.assign(TN.NIGHTCOL,{'#c2c3b6':'#3d4058','#c8c7bb':'#41445c','#2f9fd6':'#1a3866','#3f9a3a':'#1c3240','#5dbb44':'#203a46',
+  '#6cc24a':'#233d48','#e6d39b':'#4a4858'});
+TN.NIGHTFAR=TN.SOFTNIGHT?'#5c5f80':'#4e5463';
 TN.farBuildingColor=function(nt){
-  const d=c=>TN.mix(c,'#4e5463',nt*0.75);
+  const d=c=>TN.mix(c,TN.NIGHTFAR||'#4e5463',nt*0.75);
   return ['step',['coalesce',['get','render_height'],8],d('#b47862'),13,d('#cfc6b4'),32,d('#a7b4c1')];
 };
 TN.mix=function(a,b,t){

@@ -20,7 +20,7 @@ TN.Buildings.prototype.material=function(){
      (set by shadows.js every 30 s; softer when cloudy, off at night). Settings -> 3D world -> Sun-lit walls */
   if(!TN.SUNU) TN.SUNU={sunDir:{value:new THREE.Vector3(0,1,0)},sunK:{value:0}};
   this.mat=new THREE.ShaderMaterial({
-    uniforms:Object.assign({night:{value:this.night},clean:{value:0}},TN.CUTU||{},TN.SUNU),
+    uniforms:Object.assign({night:{value:this.night},clean:{value:0},softN:{value:TN.SOFTNIGHT?1:0}},TN.CUTU||{},TN.SUNU),
     vertexColors:true,side:THREE.DoubleSide,
     vertexShader:[
       'attribute vec3 wuv;',
@@ -33,12 +33,12 @@ TN.Buildings.prototype.material=function(){
       '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'].join('\n'),
     fragmentShader:[
       (TN.CUTGLSL||'varying vec3 vCutW;float tnCutK(){return 0.0;}'),
-      'uniform float night;uniform float clean;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
+      'uniform float night;uniform float clean;uniform float softN;varying vec3 vCol;varying vec3 vUv;varying float vShade;',
       'float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
       'void main(){',
       '  float tnK=tnCutK();if(tnK>0.97) discard;float al=1.0-tnK;',
       /* Clean view (Codriver-like): flatter, lighter walls (less shading) and soft daytime windows */
-      '  float sh=mix(vShade,0.82+0.18*vShade,clean);vec3 wall=mix(vCol,mix(vCol,vec3(0.93,0.92,0.89),0.18),clean)*sh*(1.0-0.62*night);',
+      '  float sh=mix(vShade,0.82+0.18*vShade,clean);vec3 wall=mix(vCol,mix(vCol,vec3(0.93,0.92,0.89),0.18),clean)*sh*(1.0-0.62*night);wall=mix(wall,wall*vec3(0.86,0.9,1.25)+vec3(0.03,0.03,0.07),night*softN);',
       '  if(vUv.z<0.0){gl_FragColor=vec4(wall,al);return;}',
       '  vec2 cell=vec2(floor(vUv.x/3.2),floor(vUv.y/3.0));vec2 f=vec2(fract(vUv.x/3.2),fract(vUv.y/3.0));',
       '  float win=step(0.22,f.x)*step(f.x,0.78)*step(0.28,f.y)*step(f.y,0.80)*step(1.0,vUv.y);',
