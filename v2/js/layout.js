@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v9 Nov 24: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v10 Nov 24: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -31,7 +31,14 @@ TN.Layout=function(){
   '#tn-quick{position:absolute;right:18px;bottom:14px;height:60px;z-index:5;display:none;gap:10px;align-items:center;font:14px system-ui,sans-serif;color:var(--tn-text)}'+
   'body.tn-l1:not(.tn-routing):not(.tn-intro) #tn-quick{display:flex}#tn-quick>div{display:flex;align-items:center;gap:9px;height:52px;padding:0 16px 0 12px;border-radius:14px;background:rgba(127,140,160,.13);cursor:pointer;white-space:nowrap}'+
   '#tn-quick>div:active{transform:scale(.96)}#tn-quick b{display:block;font-size:15px;line-height:1.15}#tn-quick small{display:block;font-size:13px;font-weight:600;color:#16a34a}#tn-quick small.o{color:#ea8a0c}#tn-quick small.r{color:#dc2626}#tn-quick small.n{color:var(--tn-joke);font-weight:400}'+
-  '#tn-quick .wx{cursor:default;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}'+
+  '#tn-quick .wx{cursor:pointer;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}'+
+  '#tn-wxc{position:absolute;right:18px;bottom:100px;width:min(460px,calc(100vw - 120px));z-index:30;background:'+P+';color:var(--tn-text);border-radius:20px;box-shadow:0 10px 34px rgba(0,0,0,.3);font:14px system-ui,sans-serif;padding:16px 18px 18px;display:none}'+
+  '#tn-wxc.on{display:block}#tn-wxc .hd{display:flex;align-items:center;gap:12px}#tn-wxc .big{font-size:44px;font-weight:700;line-height:1}#tn-wxc .ic{font-size:44px}#tn-wxc .cd{flex:1}#tn-wxc .cd b{display:block;font-size:17px}#tn-wxc .cd small{color:var(--tn-joke)}'+
+  '#tn-wxc .x{width:40px;height:40px;border-radius:50%;border:0;background:rgba(127,140,160,.15);color:inherit;font-size:20px;cursor:pointer}'+
+  '#tn-wxc .tb{display:flex;gap:6px;margin:14px 0 10px;background:rgba(127,140,160,.13);border-radius:12px;padding:4px}#tn-wxc .tb button{flex:1;height:40px;border:0;border-radius:9px;background:none;color:inherit;font:600 15px system-ui,sans-serif;cursor:pointer}#tn-wxc .tb button.on{background:'+P+';box-shadow:0 1px 4px rgba(0,0,0,.15)}'+
+  '#tn-wxc .hr{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px}#tn-wxc .hr div{flex:none;width:58px;text-align:center;padding:8px 0;border-radius:12px}#tn-wxc .hr div.nw{background:rgba(96,165,250,.16)}#tn-wxc .hr i{display:block;font-style:normal;font-size:24px;margin:4px 0}#tn-wxc .hr b{font-size:16px}#tn-wxc .hr small,#tn-wxc .dy small{display:block;font-size:12px;color:#3b82f6;min-height:15px}'+
+  '#tn-wxc .dy div{display:flex;align-items:center;gap:10px;height:44px;border-top:1px solid var(--tn-line)}#tn-wxc .dy div:first-child{border-top:0}#tn-wxc .dy .n{width:70px;font-weight:600}#tn-wxc .dy i{font-style:normal;font-size:22px;width:30px}#tn-wxc .dy small{width:40px}#tn-wxc .dy .lo{width:34px;text-align:right;color:var(--tn-joke)}#tn-wxc .dy .hi{width:34px;font-weight:700}'+
+  '#tn-wxc .bar{flex:1;height:6px;border-radius:3px;background:rgba(127,140,160,.18);position:relative}#tn-wxc .bar span{position:absolute;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,#60a5fa,#fbbf24,#f97316)}'+
   '#tn-beta::before{content:"";position:absolute;left:-14px;top:4px;bottom:4px;width:1px;background:var(--tn-line)}'+
   'body.tn-l1 #tn-alt{bottom:20px!important;top:auto!important;left:auto!important;padding:0 14px!important;height:48px;font-size:15px!important;background:var(--tn-btn)!important;box-shadow:none!important;border-radius:12px!important}'+
   'body.tn-l1 #tn-end{right:16px!important;bottom:20px!important;height:48px;padding:0 18px!important;font-size:15px!important;font-weight:700!important;background:rgba(198,40,40,.22)!important;box-shadow:none!important;border-radius:12px!important}'+
@@ -125,17 +132,53 @@ TN.Layout.prototype.quickFill=function(){
     h+='<div class="wx"><i>'+ic+'</i>'+Math.round(w.temp)+'\u00b0</div>';}
   if(h!==this.lastQ){this.lastQ=h;this.quick.innerHTML=h;}
   /* too narrow: the weather goes first, then Work; never over the music */
-  const q=this.quick,mus=document.getElementById('tn-mus');q.classList.remove('c1','c2');
+  const q=this.quick,mus=document.getElementById('tn-mus'),B0=document.body;q.classList.remove('c0','c1','c2','c3');
+  /* the buttons come first: the music gets narrower (its title scrolls) to leave them room, down to a minimum */
+  if(mus&&!B0.classList.contains('tn-routing')){const k=window.TN_UIK||1,ml=mus.getBoundingClientRect().left,ql=q.getBoundingClientRect().left;
+    if(ml&&ql) mus.style.setProperty('max-width',Math.max(300,(ql-ml)/k-22)+'px','important');}
   const musR=()=>{let r=0;if(mus) for(const c of mus.children){const b=c.getBoundingClientRect();if(b.width&&getComputedStyle(c).display!=='none') r=Math.max(r,b.right);}return r;};
   const hit=()=>{const r=musR(),b=q.getBoundingClientRect();return r&&b.width&&r>b.left-14;};
   /* not enough room: first a "Tap to set" button, then tighter buttons, then Work, then the weather */
-  for(const c of ['c0','c3']) q.classList.remove(c);
   if(hit()) q.classList.add('c0');if(hit()) q.classList.add('c3');if(hit()) q.classList.add('c2');if(hit()) q.classList.add('c1');
 };
 TN.Layout.prototype.quickTap=function(ev){
+  if(ev.target.closest('.wx')){this.wxCard();return;}
   const d=ev.target.closest('[data-go],[data-set]'),nv=TN.nav;if(!d||!nv) return;
   if(d.dataset.set){if(nv.openSearch) nv.openSearch();nv.startSetting(d.dataset.set);return;}
   const pl=nv.places[d.dataset.go];if(pl) nv.pick(Object.assign({},pl));
+};
+/* the weather card: now, today hour by hour, and the next 7 days (Open-Meteo, the same free service as the map's weather) */
+TN.Layout.wxIcon=function(c,night){c=+c;return c>=95?'⛈️':(c>=71&&c<=77)||c===85||c===86?'❄️':(c>=51&&c<=67)||(c>=80&&c<=82)?'🌧️':c===45||c===48?'🌫️':c===3?'☁️':c===2||c===1?(night?'☁️':'⛅'):(night?'🌙':'☀️');};
+TN.Layout.wxName=function(c){c=+c;return c>=95?'Thunderstorm':(c>=71&&c<=77)||c===85||c===86?'Snow':(c>=51&&c<=57)?'Drizzle':(c>=61&&c<=67)||(c>=80&&c<=82)?'Rain':c===45||c===48?'Fog':c===3?'Overcast':c===2?'Partly cloudy':c===1?'Mostly clear':'Clear';};
+TN.Layout.prototype.wxCard=function(){
+  const tr=x=>TN.tr?TN.tr(x):x,fr=tr('Home')!=='Home',loc=fr?'fr-CA':'en-CA';
+  let c=document.getElementById('tn-wxc');
+  if(!c){c=document.createElement('div');c.id='tn-wxc';document.body.appendChild(c);
+    c.onclick=ev=>{ev.stopPropagation();const t=ev.target.closest('[data-t]');if(t){this.wxTab=t.dataset.t;this.wxDraw();}if(ev.target.closest('.x')) c.classList.remove('on');};
+    document.addEventListener('pointerdown',ev=>{if(c.classList.contains('on')&&!c.contains(ev.target)&&!ev.target.closest('#tn-quick .wx')) c.classList.remove('on');},true);}
+  if(c.classList.contains('on')){c.classList.remove('on');return;}
+  c.classList.add('on');this.wxTab=this.wxTab||'h';
+  if(this.wxData&&Date.now()-this.wxData.t<900000){this.wxDraw();return;}
+  c.innerHTML='<div class="hd"><div class="cd"><b>'+tr('Loading')+'…</b></div><button class="x">✕</button></div>';
+  let p=null;try{p=TN.nav&&TN.nav.here();}catch(e){}if(!p) return;
+  fetch('https://api.open-meteo.com/v1/forecast?latitude='+p[1].toFixed(3)+'&longitude='+p[0].toFixed(3)+'&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day&hourly=temperature_2m,weather_code,precipitation_probability,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=7&timezone=auto')
+    .then(r=>r.ok?r.json():null).then(j=>{if(!j) throw 0;this.wxData={t:Date.now(),j:j};if(c.classList.contains('on')) this.wxDraw();})
+    .catch(()=>{c.innerHTML='<div class="hd"><div class="cd"><b>'+tr('Weather unavailable')+'</b></div><button class="x">✕</button></div>';});
+};
+TN.Layout.prototype.wxDraw=function(){
+  const c=document.getElementById('tn-wxc'),j=this.wxData&&this.wxData.j;if(!c||!j) return;
+  const tr=x=>TN.tr?TN.tr(x):x,fr=tr('Home')!=='Home',loc=fr?'fr-CA':'en-CA',cu=j.current||{},L=TN.Layout,R=Math.round;
+  let h='<div class="hd"><span class="ic">'+L.wxIcon(cu.weather_code,!cu.is_day)+'</span><span class="big">'+R(cu.temperature_2m)+'°</span><div class="cd"><b>'+tr(L.wxName(cu.weather_code))+'</b><small>'+tr('Feels like')+' '+R(cu.apparent_temperature)+'° · '+tr('Wind')+' '+R(cu.wind_speed_10m)+' km/h</small></div><button class="x">✕</button></div>';
+  h+='<div class="tb"><button data-t="h" class="'+(this.wxTab==='h'?'on':'')+'">'+tr('Today')+'</button><button data-t="d" class="'+(this.wxTab==='d'?'on':'')+'">'+tr('7 days')+'</button></div>';
+  if(this.wxTab==='h'){const H=j.hourly,now=(cu.time||'').slice(0,13);let i=Math.max(0,H.time.findIndex(t=>t.slice(0,13)===now));h+='<div class="hr">';
+    for(let n=0;n<24&&i<H.time.length;n++,i++){const pp=H.precipitation_probability?H.precipitation_probability[i]:0;
+      h+='<div class="'+(n?'':'nw')+'">'+(n?R(+H.time[i].slice(11,13))+(fr?' h':''):tr('Now'))+'<i>'+L.wxIcon(H.weather_code[i],!H.is_day[i])+'</i><b>'+R(H.temperature_2m[i])+'°</b><small>'+(pp>=20?pp+'%':'')+'</small></div>';}
+    h+='</div>';}
+  else{const D=j.daily,lo=Math.min(...D.temperature_2m_min),hi=Math.max(...D.temperature_2m_max),sp=Math.max(1,hi-lo);h+='<div class="dy">';
+    D.time.forEach((t,i)=>{const nm=i?new Date(t+'T12:00').toLocaleDateString(loc,{weekday:'short'}):tr('Today'),a=D.temperature_2m_min[i],b=D.temperature_2m_max[i],pp=D.precipitation_probability_max?D.precipitation_probability_max[i]:0;
+      h+='<div><span class="n">'+nm+'</span><i>'+L.wxIcon(D.weather_code[i],false)+'</i><small>'+(pp>=20?pp+'%':'')+'</small><span class="lo">'+R(a)+'°</span><span class="bar"><span style="left:'+((a-lo)/sp*100)+'%;right:'+((hi-b)/sp*100)+'%"></span></span><span class="hi">'+R(b)+'°</span></div>';});
+    h+='</div>';}
+  c.innerHTML=h;
 };
 /* starts once the app has set itself up (its buttons exist) */
 (function(){if(typeof document==='undefined') return;let n=0;const go=()=>{if(document.body&&document.body.classList.contains('tn-app')){if(!TN.layout) TN.layout=new TN.Layout();return;}if(++n<200) setTimeout(go,150);};go();})();

@@ -29,7 +29,7 @@ const D={
   'Navigation for Tesla':'Navigation pour Tesla','MapKoon v2 · test':'MapKoon v2 · test',
   /* search, places, favorites */
   'Show all nearby on map':'Tout afficher à proximité','Cancel adding a stop':'Annuler l’ajout d’un arrêt','Back to your route':'Retour à l’itinéraire',
-  'No results':'Aucun résultat','Cancel':'Annuler','Keep':'Garder','Home':'Domicile','Work':'Travail','as it is':'tel quel','Tap to set':'Toucher pour définir',
+  'No results':'Aucun résultat','Cancel':'Annuler','Keep':'Garder','Home':'Domicile','Work':'Travail','as it is':'tel quel','Tap to set':'Toucher pour définir','7 days':'7 jours','Now':'Maint.','Feels like':'Ressenti','Wind':'Vent','Loading':'Chargement','Weather unavailable':'Météo indisponible','Thunderstorm':'Orage','Drizzle':'Bruine','Rain':'Pluie','Snow':'Neige','Fog':'Brouillard','Overcast':'Couvert','Partly cloudy':'Partiellement nuageux','Mostly clear':'Plutôt dégagé','Clear':'Dégagé','Today':"Aujourd'hui",
   'Set':'Définir','Favorite':'Favori','Search your home address':'Chercher votre adresse de domicile','Search your work address':'Chercher votre adresse de travail',
   'Place':'Lieu','Quebec':'Québec','Search is not available right now':'La recherche n’est pas disponible pour le moment','Could not open that place':'Impossible d’ouvrir ce lieu',
   'Close':'Fermer','Add a stop on the way':'Ajouter un arrêt en chemin','Tap a pin to choose':'Touchez une épingle pour choisir','Tap a pin':'Touchez une épingle',
