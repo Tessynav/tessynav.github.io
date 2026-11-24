@@ -696,6 +696,10 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
    b.onclick=ev=>{ev.stopPropagation();TN.viewClean=!TN.viewClean;try{if(settings&&settings.set) settings.set('view',TN.viewClean?'2d':'3d');}catch(e){}applyView();
      try{if(rec&&rec.rec) rec.note('view',{d2:TN.viewClean});}catch(e){}};
    document.body.appendChild(b);}
+  /* (Nov 24) the update marker (?r=, ?bust=) is taken out of the address once the app has started, so the next time the app
+     is opened it is a normal start again (with the opening animation and the welcome flight); it stayed in the address
+     bar and made every later start count as an update reload */
+  setTimeout(()=>{try{if(/[?&](r|bust)=\d/.test(location.search)){const u=new URLSearchParams(location.search);u.delete('r');u.delete('bust');const q=u.toString();history.replaceState(null,'',location.pathname+(q?'?'+q:'')+location.hash);}}catch(e){}},6000);
   map.on('load',()=>{scene.styleMap();ready=true;setTimeout(()=>{try{applyView();setLite(follow);}catch(e){}},500);if(settings){try{settings.applyAll();}catch(e){}}night();
     try{window.TN_PROGRESS&&window.TN_PROGRESS(90,'Building the streets…');}catch(e){}
     try{map.once('idle',()=>{try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e){}});}catch(e){try{window.TN_PROGRESS&&window.TN_PROGRESS(100,'Ready');}catch(e2){}}
