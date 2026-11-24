@@ -706,7 +706,11 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
   });
   /* the welcome flight (see the follow camera): first start only, or ?welcome=1; ?welcome=0 never */
   try{const q=location.search;let first=false;try{first=!localStorage.getItem('tn2_welcomed');}catch(e){}
-    if(!/[?&]welcome=0/.test(q)&&!TN.ORBIT&&(/[?&]welcome=1/.test(q)||(first&&!/[?&]r=\d/.test(q)))){
+    /* (Nov 24) Settings -> Map and view -> Welcome flight: every start (default), first start only, or off.
+       Not after an update reload. */
+    let wm='always';try{wm=(JSON.parse(localStorage.getItem('tn2_settings')||'{}').welcome)||'always';}catch(e){}
+    const want=wm==='always'||(wm==='first'&&first);
+    if(!/[?&]welcome=0/.test(q)&&!TN.ORBIT&&(/[?&]welcome=1/.test(q)||(want&&!/[?&]r=\d/.test(q)))){
       TN.welcome={t0:0,dur:6200,done:false};
       const stop=()=>{if(TN.welcome&&!TN.welcome.done){TN.welcome.done=true;try{localStorage.setItem('tn2_welcomed','1');}catch(x){}}};
       map.getCanvasContainer().addEventListener('pointerdown',stop,{once:true});
