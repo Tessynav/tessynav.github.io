@@ -19,7 +19,21 @@ TN.Rec.prototype.note=function(kind,data,shot){if(!this.rec) return;const R=this
    changes height fast, loses the road, or the screen gets slow). They are uploaded with the trip so I can see
    what you saw. */
 TN.Rec.prototype.wantShot=function(why){if(this.rec&&!this.shotWhy) this.shotWhy=why;};
-TN.Rec.prototype.shoot=function(canvas){
+/* (Nov 23, trip 21:21: the top of the picture (the far buildings, the sky) stayed exactly the same for minutes while the
+   car turned, with floating arrows stuck in it) every picture also checks the top strip: when it is pixel for pixel the
+   same as on the previous picture although the map turned more than 20°, a 'top frozen' note records the map's state */
+TN.Rec.prototype.topCheck=function(map){
+  if(!map||!this.cv) return;const w=this.cv.width,h=this.cv.height;
+  const px=this.cx.getImageData(0,Math.round(h*0.06),w,Math.round(h*0.14)).data;let sum=0,sig=[];
+  for(let i=0;i<px.length;i+=4*97){const v=px[i]+px[i+1]+px[i+2];sig.push(v);sum+=v;}
+  const b=map.getBearing(),prev=this.topSig;this.topSig={sig:sig,b:b};if(!prev||prev.sig.length!==sig.length) return;
+  let same=0;for(let i=0;i<sig.length;i++) if(Math.abs(sig[i]-prev.sig[i])<6) same++;
+  const turned=Math.abs(((b-prev.b+540)%360)-180);
+  if(same/sig.length>0.97&&turned>20&&sum/sig.length>60){const tr=map.transform||{};
+    this.note('top frozen',{turned:Math.round(turned),pitch:Math.round(map.getPitch()),zoom:+map.getZoom().toFixed(2),
+      cw:map.getCanvas().width,ch:map.getCanvas().height,hz:tr.getHorizon?Math.round(tr.getHorizon()):null,sky:!!(map.getSky&&map.getSky())});}
+};
+TN.Rec.prototype.shoot=function(canvas,map){
   if(!this.rec) return;
   const now=Date.now(),R=this.rec;R.shots=R.shots||[];
   const due=now-(this.shotT||0)>10000,ev=this.shotWhy&&now-(this.shotT||0)>2500;
@@ -29,6 +43,7 @@ TN.Rec.prototype.shoot=function(canvas){
     const w=320,h=Math.round(320*canvas.height/canvas.width);
     if(this.cv.width!==w){this.cv.width=w;this.cv.height=h;}
     this.cx.drawImage(canvas,0,0,w,h);
+    try{this.topCheck(map);}catch(e){}
     R.shots.push([this.t(),this.cv.toDataURL('image/jpeg',0.6),ev?this.shotWhy:'']);
     this.shotT=now;this.shotWhy=null;
   }catch(e){}

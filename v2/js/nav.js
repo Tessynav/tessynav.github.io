@@ -824,13 +824,16 @@ TN.Nav.prototype.arTurn=function(nx,dNext,sNow){
     else{if(mat.map!==this.arTex()){mat.map=this.arTex();mat.needsUpdate=true;}this.ar.geometry.dispose();this.ar.geometry=new THREE.PlaneGeometry(14,3.5);
       mat.map.repeat.x=this.arDir;mat.map.offset.x=this.arDir>0?0:1;}
     try{this.note('ar dir',{mod:m,type:nx.type,bend:Math.round(bend),show:this.arUp?'ahead':this.arDir>0?'left':'right'});}catch(e){}}
-  const sc=Math.max(1,Math.min(3.5,dNext/60));
+  /* (Nov 23, trip 21:21: the "straight ahead" column at a roundabout 300 m away was 14 m x 3.5 = up to 49 m tall,
+     floating up in the sky above the buildings: the column grows at most 1.4 times and shows from 250 m) */
+  const sc=this.arUp?Math.max(1,Math.min(1.4,dNext/80)):Math.max(1,Math.min(3.5,dNext/60));
+  if(this.arUp&&dNext>250){this.ar.visible=false;return;}
   this.ar.scale.set(sc,sc,1);this.ar.rotation.set(0,this.arRot,0);
   this.ar.position.set(this.arPos[0],this.arPos[1]+1.4+(this.arUp?7:1.75)*sc,this.arPos[2]);
   /* flowing toward the turn */
   const now=performance.now(),dt=Math.min(0.1,((now-(this.arLast||now))/1000));this.arLast=now;
   if(this.arUp) this.ar.material.map.offset.y-=dt*0.35;else this.ar.material.map.offset.x+=dt*0.35;
-  const fadeIn=Math.min(1,(450-dNext)/60),fadeOut=Math.min(1,(dNext-18)/22);
+  const fadeIn=Math.min(1,((this.arUp?250:450)-dNext)/60),fadeOut=Math.min(1,(dNext-18)/22);
   this.ar.material.opacity=Math.max(0,Math.min(fadeIn,fadeOut));this.ar.visible=this.ar.material.opacity>0.02;
   if(this.arNoted!==nx.at&&dNext<300){this.arNoted=nx.at;try{this.note('ar sign',{mod:nx.mod,type:nx.type,d:Math.round(dNext)});}catch(e){}}
 };

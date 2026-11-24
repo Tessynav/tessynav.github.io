@@ -701,7 +701,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
     if(!started){const b=document.getElementById('tn-boot');if(b&&b.parentNode) b.parentNode.removeChild(b);document.body.classList.remove('tn-intro');}
   });
   /* snapshots are taken right after the map is drawn (the picture is only complete at that moment) */
-  map.on('render',()=>{if(rec.rec) rec.shoot(map.getCanvas());});
+  map.on('render',()=>{if(rec.rec) rec.shoot(map.getCanvas(),map);});
   let last=performance.now(),fpsN=0,fpsT=performance.now(),worst=0,lastRec=0,prevCar=null,lastFps=0;
   let loopErr=0;
   function loop(){
