@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v17 Nov 24: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v18 Nov 24: street name box stops before the search box; v17: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -119,6 +119,10 @@ TN.Layout.prototype.tick=function(){
     i.style.animationDuration=Math.max(8,i.offsetWidth/2/35)+'s';});}catch(e){}
   /* when not navigating: Home and Work (live drive time, green / orange / red with traffic) and the weather outside */
   if(wide&&!document.body.classList.contains('tn-routing')) try{this.quickFill();}catch(e){}
+  /* (Nov 24) the street name + GPS box never runs under the search box (the screen enlargement made them overlap on long names) */
+  try{const st=document.getElementById('status'),sb=document.getElementById('tn-search');
+    if(st&&sb&&!document.body.classList.contains('tn-routing')){const a=st.getBoundingClientRect(),b=sb.getBoundingClientRect(),k=window.TN_UIK||1;
+      if(a.width&&b.width&&b.top<a.bottom&&b.left>a.left){const cs=getComputedStyle(st),pad=cs.boxSizing==='border-box'?0:(parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0)+(parseFloat(cs.borderLeftWidth)||0)+(parseFloat(cs.borderRightWidth)||0),m=Math.max(120,Math.floor((b.left-a.left)/k-12-pad));if(m!==this.stMax){this.stMax=m;st.style.setProperty('max-width',m+'px','important');}}}}catch(e){}
   if(document.body.classList.contains('tn-routing')) try{this.wxDrive();}catch(e){}
   if(wide&&document.body.classList.contains('tn-routing')) try{this.wxRoute();}catch(e){}else if(this.wxr) this.wxr.classList.remove('ok');
   let y=84+6,n=0;
