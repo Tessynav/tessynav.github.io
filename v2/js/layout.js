@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v7 Nov 24: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v8 Nov 24: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -31,7 +31,7 @@ TN.Layout=function(){
   '#tn-quick{position:absolute;right:18px;bottom:14px;height:60px;z-index:5;display:none;gap:10px;align-items:center;font:14px system-ui,sans-serif;color:var(--tn-text)}'+
   'body.tn-l1:not(.tn-routing):not(.tn-intro) #tn-quick{display:flex}#tn-quick>div{display:flex;align-items:center;gap:9px;height:52px;padding:0 16px 0 12px;border-radius:14px;background:rgba(127,140,160,.13);cursor:pointer;white-space:nowrap}'+
   '#tn-quick>div:active{transform:scale(.96)}#tn-quick b{display:block;font-size:15px;line-height:1.15}#tn-quick small{display:block;font-size:13px;font-weight:600;color:#16a34a}#tn-quick small.o{color:#ea8a0c}#tn-quick small.r{color:#dc2626}#tn-quick small.n{color:var(--tn-joke);font-weight:400}'+
-  '#tn-quick .wx{cursor:default;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk{display:none}'+
+  '#tn-quick .wx{cursor:default;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}'+
   '#tn-beta::before{content:"";position:absolute;left:-14px;top:4px;bottom:4px;width:1px;background:var(--tn-line)}'+
   'body.tn-l1 #tn-alt{bottom:20px!important;top:auto!important;left:auto!important;padding:0 14px!important;height:48px;font-size:15px!important;background:var(--tn-btn)!important;box-shadow:none!important;border-radius:12px!important}'+
   'body.tn-l1 #tn-end{right:16px!important;bottom:20px!important;height:48px;padding:0 18px!important;font-size:15px!important;font-weight:700!important;background:rgba(198,40,40,.22)!important;box-shadow:none!important;border-radius:12px!important}'+
@@ -116,15 +116,18 @@ TN.Layout.prototype.quickFill=function(){
   for(const k of ['home','work']){const pl=nv&&nv.places&&nv.places[k],col=k==='home'?'#60a5fa':'#f59e0b',lab=tr(k==='home'?'Home':'Work');
     if(pl){const m=nv.etaFor(k),c=nv.etaC&&nv.etaC[k],r=c&&c.ratio||1;
       h+='<div class="'+(k==='home'?'hm':'wk')+'" data-go="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="'+(m?(r>1.5?'r':r>1.2?'o':''):'n')+'">'+(m?m+' min':'\u2026')+'</small></span></div>';}
-    else if(nv) h+='<div class="'+(k==='home'?'hm':'wk')+'" data-set="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="n">'+tr('Tap to set')+'</small></span></div>';}
+    else if(nv) h+='<div class="unset '+(k==='home'?'hm':'wk')+'" data-set="'+k+'">'+TN.ICON(k,24,col)+'<span><b>'+lab+'</b><small class="n">'+tr('Tap to set')+'</small></span></div>';}
   const w=TN.wx;if(w&&w.temp!=null){const hr=new Date().getHours(),nt=hr<7||hr>=17,k=w.kind,
       ic=k==='snow'?'\u2744\ufe0f':k==='rain'?'\ud83c\udf27\ufe0f':k==='fog'?'\ud83c\udf2b\ufe0f':k==='overcast'?'\u2601\ufe0f':k==='cloudy'?(nt?'\u2601\ufe0f':'\u26c5'):(nt?'\ud83c\udf19':'\u2600\ufe0f');
     h+='<div class="wx"><i>'+ic+'</i>'+Math.round(w.temp)+'\u00b0</div>';}
   if(h!==this.lastQ){this.lastQ=h;this.quick.innerHTML=h;}
   /* too narrow: the weather goes first, then Work; never over the music */
   const q=this.quick,mus=document.getElementById('tn-mus');q.classList.remove('c1','c2');
-  const hit=()=>{if(!mus) return false;const a=mus.getBoundingClientRect(),b=q.getBoundingClientRect();return a.width&&b.width&&a.right>b.left-14;};
-  if(hit()){q.classList.add('c1');if(hit()) q.classList.add('c2');}
+  const musR=()=>{let r=0;if(mus) for(const c of mus.children){const b=c.getBoundingClientRect();if(b.width&&getComputedStyle(c).display!=='none') r=Math.max(r,b.right);}return r;};
+  const hit=()=>{const r=musR(),b=q.getBoundingClientRect();return r&&b.width&&r>b.left-14;};
+  /* not enough room: first a "Tap to set" button, then tighter buttons, then Work, then the weather */
+  for(const c of ['c0','c3']) q.classList.remove(c);
+  if(hit()) q.classList.add('c0');if(hit()) q.classList.add('c3');if(hit()) q.classList.add('c2');if(hit()) q.classList.add('c1');
 };
 TN.Layout.prototype.quickTap=function(ev){
   const d=ev.target.closest('[data-go],[data-set]'),nv=TN.nav;if(!d||!nv) return;
