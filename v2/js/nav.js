@@ -881,12 +881,14 @@ TN.Nav.prototype.drawArrows=function(CL){
    on raised roads our road surface is sometimes a few tens of cm higher than the line, and covered it) the line's points are
    moved toward the camera along their own line of sight, far enough to clear the road by about 1 m in height (further
    when seen at a shallow angle): on screen nothing moves, only its depth, so the road surface can no longer cover it;
-   a real overpass, 5 m and more above, still does. */
+   a real overpass, 5 m and more above, still does. (Nov 24, trip 07:00: lifted under the car, the line was drawn over the
+   car itself: no lift within 5 m of the car, full from 12 m) */
 TN.liftPatch=function(mat,m){
   const prev=mat.onBeforeCompile;
-  mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);sh.uniforms.liftCam=TN.CUTU.cutCam;sh.uniforms.liftM={value:m};
-    sh.vertexShader='uniform vec3 liftCam;uniform float liftM;\n'+sh.vertexShader.replace('#include <project_vertex>',
-      '{vec3 wp=(modelMatrix*vec4(transformed,1.0)).xyz;vec3 tc=liftCam-wp;float l=length(tc);vec3 u=tc/max(l,0.001);float dm=min(min(liftM/max(u.y,0.06),10.0),l*0.5);transformed+=u*dm;}\n#include <project_vertex>');};
+  if(!TN.LIFTCAR) TN.LIFTCAR={value:new THREE.Vector3(0,-1e6,0)};
+  mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);sh.uniforms.liftCam=TN.CUTU.cutCam;sh.uniforms.liftM={value:m};sh.uniforms.liftCar=TN.LIFTCAR;
+    sh.vertexShader='uniform vec3 liftCam;uniform float liftM;uniform vec3 liftCar;\n'+sh.vertexShader.replace('#include <project_vertex>',
+      '{vec3 wp=(modelMatrix*vec4(transformed,1.0)).xyz;vec3 tc=liftCam-wp;float l=length(tc);vec3 u=tc/max(l,0.001);float dm=min(min(liftM/max(u.y,0.06),10.0),l*0.5)*smoothstep(5.0,12.0,length(wp.xz-liftCar.xz));transformed+=u*dm;}\n#include <project_vertex>');};
   mat.customProgramCacheKey=()=>'lift'+m;
 };
 TN.Nav.prototype.rainbowMat=function(){

@@ -36,6 +36,7 @@ TN.Scene.prototype.layer=function(){
         TN.CUTU.cutCam.value.set(0,0,-1).applyMatrix4(inv);
         S.updateSky(TN.CUTU.cutCam.value);
         const c=S.car3d;
+        if(c&&TN.LIFTCAR) TN.LIFTCAR.value.set(c.position.x,c.position.y,c.position.z);   /* (the blue line keeps off the car: nav.js liftPatch) */
         if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=4.5;
           TN.CUTU.cutBub.value+=((TN.carOffRoad?24:(TN.tunnel&&TN.tunnel.k>0.3?60:0))-TN.CUTU.cutBub.value)*0.06;}   /* (in a tunnel: the buildings above fade away, 60 m around) */   /* (the bubble grows and shrinks smoothly) */
         else TN.CUTU.cutR.value=0;
@@ -88,7 +89,7 @@ TN.Scene.prototype.meshOf=function(L){
     g.setAttribute('position',new THREE.Float32BufferAttribute(G.p,3));
     g.setAttribute('color',new THREE.Float32BufferAttribute(G.c,3));
     g.setIndex(G.i);
-    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,trk:2,mark:3,glow:4}[k];
+    const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;if(TN.MBXMODE) mesh.visible=false;mesh.renderOrder={lot:0,curb:1,road:2,trk:2,mark:3,glow:4}[k];
     if(k==='glow'){mesh.tnGlow=true;mesh.visible=(this.glowOp||0)>0.01;}
     grp.add(mesh);
   }
@@ -158,7 +159,7 @@ TN.Scene.prototype.update=function(lng,lat){
       const g=new THREE.BufferGeometry();
       g.setAttribute('position',new THREE.BufferAttribute(F.typed[0],3));g.setAttribute('color',new THREE.BufferAttribute(F.typed[1],3));
       g.setIndex(new THREE.BufferAttribute(F.typed[2],1));
-      const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;mesh.renderOrder={lot:0,curb:1,road:2,trk:2,mark:3,glow:4}[k];
+      const mesh=new THREE.Mesh(g,this.mat(k));mesh.frustumCulled=false;if(TN.MBXMODE) mesh.visible=false;mesh.renderOrder={lot:0,curb:1,road:2,trk:2,mark:3,glow:4}[k];
       if(k==='glow'){mesh.tnGlow=true;mesh.visible=(this.glowOp||0)>0.01;}
       F.grp.add(mesh);F.li++;F.st=0;F.typed=null;
     }
@@ -459,6 +460,8 @@ TN.Scene.prototype.carPhysics=function(hd,v,dt){
 };
 /* ---------- map style ---------- */
 TN.Scene.prototype.styleMap=function(){
+  /* (test mode ?mbx=1: Mapbox Standard keeps its own look; only our 3D layer (car, route, arrows) is added on top) */
+  if(TN.MBXMODE){try{this.map.addLayer(this.layer());}catch(e){}this.dayPaint=[];return;}
   const map=this.map;
   for(const l of map.getStyle().layers){
     const sl=l['source-layer']||'';
@@ -487,6 +490,7 @@ TN.Scene.prototype.styleMap=function(){
         else if(/park|garden|playground|nature|cemetery/.test(id)) c='#5dbb44';
         else if(/grass|meadow|scrub|farmland|landcover|pitch|golf|village_green|recreation/.test(id)) c='#6cc24a';
         else if(/sand|beach/.test(id)) c='#e6d39b';
+        else if(/commercial|retail/.test(id)) c='#6cc24a';   /* (Nov 24: shop and office land is mostly lawns between the lots; see tn-city) */
         else if(/residential|commercial|industrial|retail|school|hospital|railway|airport|parking|landuse/.test(id)) c='#c8c7bb';
         if(c){const sc=TN.seasonC(c);map.setPaintProperty(l.id,'fill-color',sc);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',sc);}catch(e){}
           this.dayPaint.push([l.id,'fill-color',sc,TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);
@@ -499,10 +503,13 @@ TN.Scene.prototype.styleMap=function(){
   }
   /* city blocks: the map draws its residential land only when zoomed out (up to zoom 12) and has no layer at all for
      commercial, industrial or retail land, so up close, streets of houses and shops sat on grass like fields. Our own
-     layer paints that land a light warm grey at every zoom, under the parks, woods and grass (so parks stay green) */
+     layer paints that land a light warm grey at every zoom, under the parks, woods and grass (so parks stay green).
+     (Nov 24, trip 07:00 at DIX30: shop and office land is no longer painted grey: the whole DIX30 is "retail" land, so the
+     grass strip and the Daigneault Creek beside Boulevard Leduc came out as one flat grey. Its parking lots, buildings and
+     roads are drawn on top in their own colours anyway, so the rest now shows as grass, like the lawns it mostly is) */
   try{if(!map.getLayer('tn-city')&&map.getSource('openmaptiles')){const c='#c8c7bb',before=map.getLayer('park')?'park':(map.getLayer('landcover_wood')?'landcover_wood':undefined);
     map.addLayer({id:'tn-city',type:'fill',source:'openmaptiles','source-layer':'landuse',minzoom:12,
-      filter:['match',['get','class'],['residential','commercial','industrial','retail','garages','railway'],true,false],
+      filter:['match',['get','class'],['residential','industrial','garages','railway'],true,false],
       paint:{'fill-color':TN.seasonC(c),'fill-opacity':['interpolate',['linear'],['zoom'],12,0,13,1],'fill-antialias':false}},before);
     this.dayPaint.push(['tn-city','fill-color',TN.seasonC(c),TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);}}catch(e){}
   /* (Nov 21, a test: real aerial photos on the ground instead of the painted grass and city ground, from Mapbox
@@ -560,6 +567,8 @@ TN.Scene.prototype.tintMat=function(k,m){
   const nt=this.night||0;m.color.set(TN.mix('#ffffff',k==='mark'?'#c9d0de':'#6f7686',nt));
 };
 TN.Scene.prototype.applyGround=function(nt){
+  /* (test mode ?mbx=1: Mapbox's own light: dawn/dusk around sunrise and sunset, night after dark) */
+  if(TN.MBXMODE){const p=nt>0.75?'night':nt>0.2?'dusk':'day';if(p!==this.mbxLight){this.mbxLight=p;try{this.map.setConfigProperty('basemap','lightPreset',p);}catch(e){}}return;}
   if(!this.dayPaint||Math.abs((this.lastNt==null?-1:this.lastNt)-nt)<=0.01) return;this.lastNt=nt;
   /* snow on the ground: the land turns white (water stays water) */
   const sg=this.snowG||0;

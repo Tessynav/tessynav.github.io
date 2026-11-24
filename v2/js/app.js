@@ -11,7 +11,11 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   /* (declared first: the navigation and alert modules can ask about it while the app is still starting) */
   let follow=false;
   const start=(()=>{try{return JSON.parse(localStorage.getItem('lastPos'))||TN.ORIGIN;}catch(e){return TN.ORIGIN;}})();
-  const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:start,zoom:17,pitch:60,maxPitch:85,
+  /* (Nov 24, test mode ?mbx=1: Mapbox's own 3D map, "Mapbox Standard", draws the city; see index.html) */
+  TN.MBXMODE=!!(window.TN_MBXMODE&&window.mapboxgl);
+  if(TN.MBXMODE) try{mapboxgl.accessToken=TN.MBX;}catch(e){}
+  const map=new maplibregl.Map({container:'map',style:TN.MBXMODE?'mapbox://styles/mapbox/standard':'https://tiles.openfreemap.org/styles/liberty',center:start,zoom:17,pitch:60,maxPitch:85,
+    ...(TN.MBXMODE?{projection:'mercator',config:{basemap:{showPointOfInterestLabels:false,showTransitLabels:false,show3dObjects:true}}}:{}),
     fadeDuration:0,pixelRatio:1,
     attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
   document.body.classList.add('tn-app');   /* (the buttons can show now) */
@@ -40,17 +44,17 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
           if(m.id==null) failAll();}}};
     W.onerror=e=>{rwNote('crashed',{msg:String(e&&e.message||'').slice(0,200)});failAll();};
     net.mirror=true;net.remoteHeights=true;TN.RW=RW;}catch(e){TN.RW=null;}}   /* (round 2: the heights are worked out in the background too) */
-  const trees=TN.Trees?new TN.Trees(scene,net):null;
-  const buildings=TN.Buildings?new TN.Buildings(scene,net):null;TN.buildings=buildings;
+  const trees=TN.Trees&&!TN.MBXMODE?new TN.Trees(scene,net):null;
+  const buildings=TN.Buildings&&!TN.MBXMODE?new TN.Buildings(scene,net):null;TN.buildings=buildings;
   const rem=TN.Rem?new TN.Rem(scene,net):null;
   const buses=TN.Buses?new TN.Buses(scene,net):null;TN.rec=rec;TN.buses=buses;const fuel=TN.Fuel?new TN.Fuel(scene,net):null;TN.fuel=fuel;const chg3d=TN.Chg3D?new TN.Chg3D(scene,net):null;TN.chg3d=chg3d;   /* (gas station canopies, Settings → 3D details) */   /* (STM live buses, Settings → The city) */
-  const landmarks=TN.Landmarks?new TN.Landmarks(scene):null;
+  const landmarks=TN.Landmarks&&!TN.MBXMODE?new TN.Landmarks(scene):null;
   const garage=TN.Garage?new TN.Garage({scene:scene,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;
   /* Can I park here? (City of Montréal parking signs, read when you stop) */
   const parking=TN.Parking?new TN.Parking({getCar:()=>track.car,getSpeed:()=>track.last?track.last.v:0,note:(k,d)=>{try{if(rec&&rec.rec) rec.note(k,d);}catch(e){}}}):null;TN.parking=parking;
   const season=TN.Season?new TN.Season(scene,trees):null;
   const ground=TN.Ground?new TN.Ground(scene,net,trees,season):null;   /* fallen leaves, snowy ground and car */
-  const water=TN.Water?new TN.Water(scene):null;
+  const water=TN.Water&&!TN.MBXMODE?new TN.Water(scene):null;
   /* the settings menu (gear button) */
   const settings=TN.Settings?new TN.Settings({scene:scene,trees:trees,buildings:buildings,water:water,season:season,rem:rem,buses:buses,fuel:fuel,chg3d:chg3d,night:()=>night()}):null;
   if(settings){try{settings.build();}catch(e){}}
