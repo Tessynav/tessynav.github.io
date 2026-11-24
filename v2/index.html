@@ -154,7 +154,7 @@ window.TN_PROGRESS=function(){};
 <template id="tn-files">
 <script src="js/roads.js?v=64"></script>
 <script src="js/store.js?v=1"></script>
-<script src="js/i18n.js?v=30"></script>
+<script src="js/i18n.js?v=31"></script>
 <script src="js/rocco.js?v=1"></script>
 <script src="js/track.js?v=41"></script>
 <script src="js/scene.js?v=69"></script>
@@ -175,7 +175,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/ground.js?v=3"></script>
 <script src="js/water.js?v=2"></script>
 <script src="js/weather.js?v=5"></script>
-<script src="js/settings.js?v=56"></script>
+<script src="js/settings.js?v=57"></script>
 <script src="js/voice.js?v=5"></script>
 <script src="js/nav.js?v=143"></script>
 <script src="js/incidents.js?v=24"></script>
@@ -186,7 +186,7 @@ window.TN_PROGRESS=function(){};
 <script src="js/tunnel.js?v=3"></script>
 <script src="js/feedback.js?v=9"></script>
 <script src="js/rec.js?v=7"></script>
-<script src="js/app.js?v=160"></script>
+<script src="js/app.js?v=161"></script>
 <script src="js/layout.js?v=5"></script>
 <script src="js/music.js?v=13"></script>
 </template>
@@ -212,16 +212,23 @@ window.addEventListener('error',function(e){
   const localList=parse(document.getElementById('tn-files').innerHTML);
   const load=(base,list)=>{
     window.TN_FILES=list;window.TN_BASE=base;let i=0;
-    const next=()=>{if(i>=list.length){setTimeout(()=>{try{sessionStorage.removeItem('tn2_bust');}catch(e){}},8000);return;}
-      const s=document.createElement('script');const f=list[i++];s.src=base+f+(bust?(f.indexOf('?')>=0?'&':'?')+'b='+bust:'');s.async=false;
-      s.onload=()=>{try{window.TN_PROGRESS(10+60*i/list.length,'Loading the new version…');}catch(e){}next();};
-      s.onerror=()=>{if(base){location.replace(location.pathname+'?local=1&r='+Date.now());}else next();};
-      document.body.appendChild(s);};
-    next();
+    /* (Nov 24: all files are asked for at once and still run in order (async=false keeps the order): one after
+       another, each waiting for the last, took several seconds more on the car's connection) */
+    let n=0,failed=false;
+    for(const f of list){const s=document.createElement('script');s.src=base+f+(bust?(f.indexOf('?')>=0?'&':'?')+'b='+bust:'');s.async=false;
+      s.onload=()=>{n++;try{window.TN_PROGRESS(10+60*n/list.length,'Loading…');}catch(e){}
+        if(n>=list.length) setTimeout(()=>{try{sessionStorage.removeItem('tn2_bust');}catch(e){}},8000);};
+      s.onerror=()=>{if(base&&!failed){failed=true;location.replace(location.pathname+'?local=1&r='+Date.now());}else n++;};
+      document.body.appendChild(s);}
   };
   if(/[?&]local=1/.test(location.search)){load('',localList);return;}
   let done=false;const finish=(b,l)=>{if(done) return;done=true;load(b,l);};
-  setTimeout(()=>finish('',localList),3500);
+  /* (Nov 24) start at once with the version found last time (its files are already saved by the browser); the check for
+     a newer one goes on in the background, is remembered for the next start, and the app offers "Update" as before.
+     Only the very first time (nothing remembered yet) does it wait for the check, at most 1.5 s. */
+  let mem=null;try{mem=JSON.parse(localStorage.getItem('tn2_ver')||'null');}catch(e){}
+  if(!bust&&mem&&/^[0-9a-f]{40}$/.test(mem.sha)&&Array.isArray(mem.list)&&mem.list.length) finish('https://cdn.jsdelivr.net/gh/Tessynav/tessynav.github.io@'+mem.sha+'/v2/',mem.list);
+  setTimeout(()=>finish('',localList),1500);
   (async()=>{
     try{
       const h={'Accept':'application/vnd.github+json'};let tok='';try{tok=localStorage.getItem('up:token')||'';}catch(e){}
@@ -232,6 +239,7 @@ window.addEventListener('error',function(e){
       const base='https://cdn.jsdelivr.net/gh/Tessynav/tessynav.github.io@'+sha+'/v2/';
       const ih=await fetch(base+'index.html',{cache:'no-store'});if(!ih.ok) throw 0;
       const list=parse(await ih.text());if(!list.length) throw 0;
+      try{localStorage.setItem('tn2_ver',JSON.stringify({sha:sha,list:list}));}catch(e){}
       finish(base,list);
     }catch(e){finish('',localList);}
   })();
