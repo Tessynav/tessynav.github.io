@@ -723,7 +723,7 @@ TN.Nav.prototype.draw=function(from){
   const S=this.api.scene;if(!S.three) return;
   /* (lifted 0.22 m above the road with only a light "on top" setting: a strong one made it draw over the car's
      lower body on bridges, so the car looked sunk) */
-  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});}
+  if(!this.mat){this.mat=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});if(TN.CUTU) TN.liftPatch(this.mat,0.9);}
   const pos=[],idx=[],col=[],rd=[],hw=1.3,CL=[];let n=0;const tc=new THREE.Color();
   const a0=Math.max(0,from|0);
   let a1=a0;while(a1<R.pts.length-1&&R.cum[a1]-R.cum[a0]<1500) a1++;
@@ -871,12 +871,24 @@ TN.Nav.prototype.drawArrows=function(CL){
       tri([E.x-E.uz*hw2,E.y,E.z+E.ux*hw2],[E.x+E.uz*hw2,E.y,E.z-E.ux*hw2],[E.x+E.ux*hl,E.y,E.z+E.uz*hl]);}
   }
   if(!n) return;
-  if(!this.arrowMat) this.arrowMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.95,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4});
+  if(!this.arrowMat) this.arrowMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.95,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4});if(this.arrowMat&&TN.CUTU&&!this.arrowMat.userData.lift){this.arrowMat.userData.lift=1;TN.liftPatch(this.arrowMat,0.95);}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);
   this.arrows=new THREE.Mesh(g,this.arrowMat);this.arrows.frustumCulled=false;this.arrows.renderOrder=5;S.three.scene.add(this.arrows);
 };
 /* the rainbow road material: the colour comes from the distance along the route, shifted a little every frame (the
    graphics card does the colours; the app only moves one number) */
+/* (Nov 23, trip 21:21 on Highway 10 and the Champlain Bridge: the blue line vanished ahead of the car or showed in pieces:
+   on raised roads our road surface is sometimes a few tens of cm higher than the line, and covered it) the line's points are
+   moved toward the camera along their own line of sight, far enough to clear the road by about 1 m in height (further
+   when seen at a shallow angle): on screen nothing moves, only its depth, so the road surface can no longer cover it;
+   a real overpass, 5 m and more above, still does. */
+TN.liftPatch=function(mat,m){
+  const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=(sh,r)=>{if(prev) prev(sh,r);sh.uniforms.liftCam=TN.CUTU.cutCam;sh.uniforms.liftM={value:m};
+    sh.vertexShader='uniform vec3 liftCam;uniform float liftM;\n'+sh.vertexShader.replace('#include <project_vertex>',
+      '{vec3 wp=(modelMatrix*vec4(transformed,1.0)).xyz;vec3 tc=liftCam-wp;float l=length(tc);vec3 u=tc/max(l,0.001);float dm=min(min(liftM/max(u.y,0.06),10.0),l*0.5);transformed+=u*dm;}\n#include <project_vertex>');};
+  mat.customProgramCacheKey=()=>'lift'+m;
+};
 TN.Nav.prototype.rainbowMat=function(){
   if(this.rmat) return this.rmat;
   this.rmat=new THREE.ShaderMaterial({uniforms:{shift:{value:0},op:{value:0.85}},transparent:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2,
