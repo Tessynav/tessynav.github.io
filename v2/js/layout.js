@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v13 Nov 24: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v14 Nov 24: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -39,7 +39,7 @@ TN.Layout=function(){
   '#tn-wxc .tb{display:flex;gap:6px;margin:14px 0 10px;background:rgba(127,140,160,.13);border-radius:12px;padding:4px}#tn-wxc .tb button{flex:1;height:40px;border:0;border-radius:9px;background:none;color:inherit;font:600 15px system-ui,sans-serif;cursor:pointer}#tn-wxc .tb button.on{background:'+P+';box-shadow:0 1px 4px rgba(0,0,0,.15)}'+
   '#tn-wxc .hr{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px}#tn-wxc .hr div{flex:none;width:58px;text-align:center;padding:8px 0;border-radius:12px}#tn-wxc .hr div.nw{background:rgba(96,165,250,.16)}#tn-wxc .hr i{display:flex;justify-content:center;margin:6px 0}#tn-wxc .hr b{font-size:16px}#tn-wxc .hr small,#tn-wxc .dy small{display:block;font-size:12px;color:#3b82f6;min-height:15px}'+
   '#tn-wxc .dy div{display:flex;align-items:center;gap:10px;height:44px;border-top:1px solid var(--tn-line)}#tn-wxc .dy div:first-child{border-top:0}#tn-wxc .dy .n{width:70px;font-weight:600}#tn-wxc .dy i{width:32px;display:flex;justify-content:center}#tn-wxc .dy small{width:40px}#tn-wxc .dy .lo{width:34px;text-align:right;color:var(--tn-joke)}#tn-wxc .dy .hi{width:34px;font-weight:700}'+
-  '#tn-wxc .bar{flex:1;height:6px;border-radius:3px;background:rgba(127,140,160,.18);position:relative}#tn-wxc .bar span{position:absolute;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,#60a5fa,#fbbf24,#f97316)}'+
+  '#tn-wxc .bar{flex:1;height:6px;border-radius:3px;background:rgba(127,140,160,.18);position:relative}#tn-wxc .bar span{position:absolute;top:0;bottom:0;border-radius:3px;background:#38bdf8}'+
   '#tn-beta::before{content:"";position:absolute;left:-14px;top:4px;bottom:4px;width:1px;background:var(--tn-line)}'+
   'body.tn-l1 #tn-alt{bottom:20px!important;top:auto!important;left:auto!important;padding:0 14px!important;height:48px;font-size:15px!important;background:var(--tn-btn)!important;box-shadow:none!important;border-radius:12px!important}'+
   'body.tn-l1 #tn-end{right:16px!important;bottom:20px!important;height:48px;padding:0 18px!important;font-size:15px!important;font-weight:700!important;background:rgba(198,40,40,.22)!important;box-shadow:none!important;border-radius:12px!important}'+
@@ -204,6 +204,10 @@ TN.Layout.wxTip=function(j,fr){
   if(t<=-15) return fr?'Très froid : ton autonomie va baisser, pense à préchauffer la batterie.':'Very cold: your range will drop, precondition the battery.';
   return '';
 };
+/* (Nov 24) a bar's colour follows the real temperature: purple/blue when freezing, green when mild, orange/red only when it's hot */
+TN.Layout.tCol=function(t){const S=[[-20,[124,58,237]],[-10,[79,70,229]],[-3,[59,130,246]],[2,[56,189,248]],[8,[52,211,153]],[14,[163,230,53]],[20,[250,204,21]],[26,[251,146,60]],[32,[239,68,68]]];
+  if(t<=S[0][0]) return 'rgb('+S[0][1]+')';for(let i=1;i<S.length;i++){if(t<=S[i][0]){const k=(t-S[i-1][0])/(S[i][0]-S[i-1][0]),a=S[i-1][1],b=S[i][1];return 'rgb('+a.map((v,j)=>Math.round(v+(b[j]-v)*k)).join(',')+')';}}
+  return 'rgb('+S[S.length-1][1]+')';};
 TN.Layout.prototype.wxDraw=function(){
   const c=document.getElementById('tn-wxc'),j=this.wxData&&this.wxData.j;if(!c||!j) return;
   const tr=x=>TN.tr?TN.tr(x):x,fr=tr('Home')!=='Home',loc=fr?'fr-CA':'en-CA',cu=j.current||{},L=TN.Layout,R=Math.round;
@@ -216,7 +220,7 @@ TN.Layout.prototype.wxDraw=function(){
     h+='</div>';}
   else{const D=j.daily,lo=Math.min(...D.temperature_2m_min),hi=Math.max(...D.temperature_2m_max),sp=Math.max(1,hi-lo);h+='<div class="dy">';
     D.time.forEach((t,i)=>{const nm=i?new Date(t+'T12:00').toLocaleDateString(loc,{weekday:'short'}):tr('Today'),a=D.temperature_2m_min[i],b=D.temperature_2m_max[i],pp=D.precipitation_probability_max?D.precipitation_probability_max[i]:0;
-      h+='<div><span class="n">'+nm+'</span><i>'+L.wxIcon(D.weather_code[i],false)+'</i><small>'+(pp>=20?pp+'%':'')+'</small><span class="lo">'+R(a)+'°</span><span class="bar"><span style="left:'+((a-lo)/sp*100)+'%;right:'+((hi-b)/sp*100)+'%"></span></span><span class="hi">'+R(b)+'°</span></div>';});
+      h+='<div><span class="n">'+nm+'</span><i>'+L.wxIcon(D.weather_code[i],false)+'</i><small>'+(pp>=20?pp+'%':'')+'</small><span class="lo">'+R(a)+'°</span><span class="bar"><span style="left:'+((a-lo)/sp*100)+'%;right:'+((hi-b)/sp*100)+'%;background:linear-gradient(90deg,'+L.tCol(a)+','+L.tCol((a+b)/2)+','+L.tCol(b)+')"></span></span><span class="hi">'+R(b)+'°</span></div>';});
     h+='</div>';}
   c.innerHTML=h;
 };
