@@ -107,7 +107,12 @@ TN.Nav.prototype.build=function(){
   this.limit=el('tn-limit','','<small>MAX</small><b></b>');
   const inp=this.input=this.box.querySelector('input'),x=this.box.querySelector('.x');
   let tmr=null;
-  inp.addEventListener('focus',()=>{if(!inp.value) this.showRecent();});
+  /* (Nov 24) the Tesla browser puts the cursor in the first text box by itself when the page loads; in the first
+     6 seconds the list only opens after a real tap on the box, otherwise the box is left alone */
+  this.t0=Date.now();inp.addEventListener('pointerdown',()=>{this.boxTap=Date.now();});
+  inp.addEventListener('focus',()=>{
+    if(Date.now()-this.t0<6000&&Date.now()-(this.boxTap||0)>1500&&!this.setting){try{inp.blur();}catch(e){}return;}
+    if(!inp.value) this.showRecent();});
   inp.addEventListener('input',()=>{x.style.display=inp.value?'flex':'none';clearTimeout(tmr);
     if(inp.value.trim().length<2){this.showRecent();return;}tmr=setTimeout(()=>this.search(inp.value.trim()),300);});
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&this.results&&this.results[0]) this.pick(this.results[0]);if(e.key==='Escape'){if(this.addingStop) this.cancelAddStop();else this.closeSearch();}});
@@ -227,7 +232,7 @@ TN.Nav.prototype.etaFor=function(k){
     const to=TN.routeTo(pl);
     fetch('https://api.mapbox.com/directions/v5/mapbox/driving-traffic/'+h[0].toFixed(6)+','+h[1].toFixed(6)+';'+to[0].toFixed(6)+','+to[1].toFixed(6)+'?overview=false&access_token='+TN.MBX)
       .then(r=>r.ok?r.json():null).then(j=>{if(j&&j.routes&&j.routes[0]){this.etaC[k].min=Math.max(1,Math.round(j.routes[0].duration/60));this.etaC[k].ratio=j.routes[0].duration_typical?j.routes[0].duration/j.routes[0].duration_typical:1;
-        if(this.res.style.display!=='none'&&!this.input.value) this.showStart();}}).catch(()=>{});}
+        if(this.res.style.display==='block'&&!this.input.value) this.showStart();}}).catch(()=>{});}
   return c&&c.key===pl.lng+','+pl.lat?c.min:null;
 };
 /* your recent places (and Home / Work) that match what's typed: every word typed is the start of a word in the name or
