@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v11 Nov 24: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v12 Nov 24: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -31,7 +31,7 @@ TN.Layout=function(){
   '#tn-quick{position:absolute;right:18px;bottom:14px;height:60px;z-index:5;display:none;gap:10px;align-items:center;font:14px system-ui,sans-serif;color:var(--tn-text)}'+
   'body.tn-l1:not(.tn-routing):not(.tn-intro) #tn-quick{display:flex}#tn-quick>div{display:flex;align-items:center;gap:9px;height:52px;padding:0 16px 0 12px;border-radius:14px;background:rgba(127,140,160,.13);cursor:pointer;white-space:nowrap}'+
   '#tn-quick>div:active{transform:scale(.96)}#tn-quick b{display:block;font-size:15px;line-height:1.15}#tn-quick small{display:block;font-size:13px;font-weight:600;color:#16a34a}#tn-quick small.o{color:#ea8a0c}#tn-quick small.r{color:#dc2626}#tn-quick small.n{color:var(--tn-joke);font-weight:400}'+
-  '#tn-quick .wx{cursor:pointer;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}#tn-quick .unset{padding:0 12px 0 10px}#tn-quick .unset svg{opacity:.75}'+
+  '#tn-quick .wx{cursor:pointer;padding:0 14px;font-size:22px;font-weight:600;gap:6px}#tn-quick .wx i{font-style:normal;font-size:24px}#tn-quick.c1 .wx,#tn-quick.c2 .wk,#tn-quick.c0 .unset{display:none}#tn-quick.c3{gap:6px}#tn-quick.c3>div{padding:0 10px;gap:6px}#tn-quick.c4 b{display:none}#tn-quick.c4 small{font-size:15px}#tn-quick.c4 .unset b{display:block}#tn-quick .unset{padding:0 12px 0 10px}#tn-quick .unset svg{opacity:.75}'+
   '#tn-wxc{position:absolute;right:18px;bottom:100px;width:min(460px,calc(100vw - 120px));z-index:30;background:'+P+';color:var(--tn-text);border-radius:20px;box-shadow:0 10px 34px rgba(0,0,0,.3);font:14px system-ui,sans-serif;padding:16px 18px 18px;display:none}'+
   '#tn-wxc.on{display:block}#tn-wxc .hd{display:flex;align-items:center;gap:12px}#tn-wxc .big{font-size:44px;font-weight:700;line-height:1}#tn-wxc .ic{font-size:44px}#tn-wxc .cd{flex:1}#tn-wxc .cd b{display:block;font-size:17px}#tn-wxc .cd small{color:var(--tn-joke)}'+
   '#tn-wxc .rk{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 12px 8px 8px;border-radius:14px;background:rgba(245,158,11,.13);font-size:14px;line-height:1.3}#tn-wxc .rk svg{flex:none}'+
@@ -133,14 +133,14 @@ TN.Layout.prototype.quickFill=function(){
     h+='<div class="wx"><i>'+ic+'</i>'+Math.round(w.temp)+'\u00b0</div>';}
   if(h!==this.lastQ){this.lastQ=h;this.quick.innerHTML=h;}
   /* too narrow: the weather goes first, then Work; never over the music */
-  const q=this.quick,mus=document.getElementById('tn-mus'),B0=document.body;q.classList.remove('c0','c1','c2','c3');
+  const q=this.quick,mus=document.getElementById('tn-mus'),B0=document.body;q.classList.remove('c0','c1','c2','c3','c4');
   /* the buttons come first: the music gets narrower (its title scrolls) to leave them room, down to a minimum */
   if(mus&&!B0.classList.contains('tn-routing')){const k=window.TN_UIK||1,ml=mus.getBoundingClientRect().left,ql=q.getBoundingClientRect().left;
-    if(ml&&ql) mus.style.setProperty('max-width',Math.max(300,(ql-ml)/k-22)+'px','important');}
+    if(ml&&ql) mus.style.setProperty('max-width',Math.max(230,(ql-ml)/k-22)+'px','important');}
   const musR=()=>{let r=0;if(mus) for(const c of mus.children){const b=c.getBoundingClientRect();if(b.width&&getComputedStyle(c).display!=='none') r=Math.max(r,b.right);}return r;};
   const hit=()=>{const r=musR(),b=q.getBoundingClientRect();return r&&b.width&&r>b.left-14;};
   /* not enough room: first a "Tap to set" button, then tighter buttons, then Work, then the weather */
-  if(hit()) q.classList.add('c3');if(hit()) q.classList.add('c0');if(hit()) q.classList.add('c2');if(hit()) q.classList.add('c1');
+  if(hit()) q.classList.add('c3');if(hit()) q.classList.add('c4');if(hit()) q.classList.add('c0');if(hit()) q.classList.add('c2');if(hit()) q.classList.add('c1');
 };
 TN.Layout.prototype.quickTap=function(ev){
   if(ev.target.closest('.wx')){this.wxCard();return;}
