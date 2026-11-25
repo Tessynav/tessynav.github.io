@@ -721,9 +721,9 @@ TN.Nav.prototype.fitRange=function(i0,i1){
      and the car stepped sideways at every batch boundary, a weave of about 1 m every few seconds on highways. The
      points just before and after the batch are recomputed too. Averaged over 120 m.) */
   /* (Nov 25, trip 14:40: the line ran 2-5 m off our road for whole stretches: a 120 m average of the shift doesn't follow
-     the curves of the road. The line now follows OUR road closely: the shift is averaged over 25 m only, so the line
+     the curves of the road. The line now follows OUR road closely: the shift is averaged over 8 m only, so the line
      lies on the road the car is drawn on, curve by curve) */
-  const SW=25;let a0=i0,a1=i1;while(a0>0&&R.cum[i0]-R.cum[a0-1]<SW) a0--;while(a1<R.pts.length-1&&R.cum[a1+1]-R.cum[i1]<SW) a1++;
+  const SW=8;let a0=i0,a1=i1;while(a0>0&&R.cum[i0]-R.cum[a0-1]<SW) a0--;while(a1<R.pts.length-1&&R.cum[a1+1]-R.cum[i1]<SW) a1++;
   for(let i=a0;i<=a1;i++){if(!R.fit[i]) continue;let ln=0,nl=0,dx=0,dz=0,wt=0;
     /* (in a roundabout the shift points a different way at every point of the ring, so a 120 m average cancels it out:
        averaged over 12 m there) */
