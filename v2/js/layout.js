@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v20 Nov 25: map credit line above the bottom bar; v19: badge lower, moon after sunset; v18: street name box stops before the search box; v17: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v21 Nov 25: calmer screen (Record/Trips/GPS only in Developer mode, short credits, lighter buttons); v20: map credit line above the bottom bar; v19: badge lower, moon after sunset; v18: street name box stops before the search box; v17: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -39,6 +39,10 @@ TN.Layout=function(){
   '#tn-wxa.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}#tn-wxa b{display:block;font-size:16px}#tn-wxa svg{flex:none}'+
   '#tn-wxc .ar{display:flex;align-items:center;gap:14px;padding:6px 4px}#tn-wxc .ar .t{font-size:40px;font-weight:700}#tn-wxc .ar b{display:block;font-size:17px}#tn-wxc .ar small{color:var(--tn-joke)}#tn-wxc .ar3{display:flex;gap:6px;margin-top:10px}#tn-wxc .ar3 div{flex:1;text-align:center;padding:8px 0;border-radius:12px;background:rgba(127,140,160,.1)}#tn-wxc .ar3 i{display:flex;justify-content:center;margin:4px 0}#tn-wxc .ar3 small{display:block;font-size:12px;color:#3b82f6;min-height:15px}'+
   '.maplibregl-ctrl-bottom-right{z-index:4}.maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib{background:rgb(var(--tn-panel-rgb) / .6)!important;border-radius:8px 0 0 0;font-size:11px;color:var(--tn-text)}.maplibregl-ctrl-attrib a{color:inherit}'+
+  /* (Nov 25) for drivers: no Record / Trips buttons and no GPS accuracy (Developer mode shows them: 7 taps on the version in Settings) */
+  'body:not(.tn-dev) #rec,body:not(.tn-dev) #trips{display:none!important}body:not(.tn-dev) #status .g{display:none}'+
+  /* a lighter button column: quieter labels */
+  '.tn-incol[data-lbl]::after{opacity:.75}'+
   '#tn-wxc{position:absolute;right:18px;bottom:100px;width:min(460px,calc(100vw - 120px));z-index:30;background:'+P+';color:var(--tn-text);border-radius:20px;box-shadow:0 10px 34px rgba(0,0,0,.3);font:14px system-ui,sans-serif;padding:16px 18px 18px;display:none}'+
   '#tn-wxc.on{display:block}#tn-wxc .hd{display:flex;align-items:center;gap:12px}#tn-wxc .big{font-size:44px;font-weight:700;line-height:1}#tn-wxc .ic{font-size:44px}#tn-wxc .cd{flex:1}#tn-wxc .cd b{display:block;font-size:17px}#tn-wxc .cd small{color:var(--tn-joke)}'+
   '#tn-wxc .rk{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 12px 8px 8px;border-radius:14px;background:rgba(245,158,11,.13);font-size:14px;line-height:1.3}#tn-wxc .rk svg{flex:none}'+
@@ -127,6 +131,12 @@ TN.Layout.prototype.tick=function(){
   /* (Nov 25) the map's credit line (OpenStreetMap, Ville de Montréal, Mapillary) sits just above the bottom bar: it was hidden behind it */
   try{const cr=document.querySelector('.maplibregl-ctrl-bottom-right'),bb=document.getElementById('tn-bbar'),k=window.TN_UIK||1;
     if(cr){const r=bb&&bb.getBoundingClientRect(),b=r&&r.height?Math.max(0,(innerHeight-r.top)/k+2):0;if(b!==this.crB){this.crB=b;cr.style.bottom=b+'px';}}}catch(e){}
+  if(!this.devSet){this.devSet=1;document.body.classList.toggle('tn-dev',!!(TN.settings&&TN.settings.dev));}
+  /* (Nov 25) a short credit line: the long "OpenFreeMap © OpenMapTiles Data from OpenStreetMap" becomes one link each */
+  try{const ci=document.querySelector('.maplibregl-ctrl-attrib-inner');if(ci&&!ci.querySelector('.tn-cr')){
+    const keep=[...ci.querySelectorAll('.tn-mly,.tn-stm')];
+    ci.innerHTML='<span class="tn-cr">\u00a9 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> \u00b7 <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> \u00b7 <a href="https://www.openmaptiles.org" target="_blank" rel="noopener">OpenMapTiles</a> \u00b7 <a href="https://donnees.montreal.ca" target="_blank" rel="noopener">Ville de Montr\u00e9al</a></span>';
+    keep.forEach(k=>ci.appendChild(k));}}catch(e){}
   if(document.body.classList.contains('tn-routing')) try{this.wxDrive();}catch(e){}
   if(wide&&document.body.classList.contains('tn-routing')) try{this.wxRoute();}catch(e){}else if(this.wxr) this.wxr.classList.remove('ok');
   let y=84+6,n=0;

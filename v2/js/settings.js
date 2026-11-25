@@ -1,11 +1,12 @@
 /* MapKoon v2 — settings.js (v49, Nov 22: two panes, sections on the left (option B); v2: test update for the update dot; v30: the update dot explained at the top of Settings; v31: voice volume and turn chime)
    The settings menu (gear button): switch looks on and off, choose the time of day (auto, day, night), set how dark
    night gets, the opening animation, the Record button, and the version/update check.
+   (Nov 25) Text size (Small / Normal / Large) and Developer mode (7 taps on the version) in Account.
    Choices are remembered in this browser and apply instantly. Address switches like ?trees=0 still work. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 
 TN.ACCOUNT_URL='https://app.mapkoon.com/account.html';   /* (the MapKoon website's Account page; mapkoon.com once the domain is set up) */
-TN.SETDEF={habits:false,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,arTurn:true,layout:'tesla',nightLook:'soft',welcome:'always',glueRoute:false,glueTurns:true,railTurns:true,buses:false,fuel:true,chg3d:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,carMotion:true,screenDrops:true,sunWalls:true,smoothTurn:false,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
+TN.SETDEF={uiSize:'small',dev:false,habits:false,voiceVol:'normal',chime:false,lang:'en',glass:true,chargers:true,fastdc:false,theme:'rocco',voice:true,arrows:true,arTurn:true,layout:'tesla',nightLook:'soft',welcome:'always',glueRoute:false,glueTurns:true,railTurns:true,buses:false,fuel:true,chg3d:true,wideLanes:false,avoidToll:false,avoidHwy:false,avoidFerry:false,avoidUnpaved:false,rainbow:false,shadows:true,trees:true,leaves:true,weather:true,carMotion:true,screenDrops:true,sunWalls:true,smoothTurn:false,traffic:true,limits:true,incidents:true,cameras:true,rail:true,schools:true,fun:true,water:true,buildings:true,lights:true,rem:true,cut:true,time:'auto',nightLevel:0.5,intro:true,record:true,zoombtns:false,birdseye:false};
 TN.loadSettings=function(){let s={};try{s=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};}catch(e){}return Object.assign({},TN.SETDEF,s);};
 TN.settings=TN.loadSettings();
 
@@ -17,6 +18,8 @@ TN.Settings.prototype.set=function(k,v){this.s[k]=v;TN.settings=this.s;this.save
   /* the language: only when you change it, the app restarts in the new language (never at startup: if the
      translator file were missing or wrong, that used to restart the app again and again) */
   if(k==='nightLook') setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);   /* (the night look: on restart) */
+  if(k==='uiSize') setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);   /* (the text size: on restart) */
+  if(k==='dev'&&typeof document!=='undefined') document.body.classList.toggle('tn-dev',!!v);
   if(k==='layout') setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);   /* (the screen layout: on restart) */
   if(k==='lang'&&typeof TN.LANG==='string'&&(v==='en'?'en':'fr')!==TN.LANG){setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);}
   if(k==='lang'&&TN.LANG==='fr'&&(v==='fr'||v==='frfr')&&(v==='fr')!==!!TN.QC){setTimeout(()=>location.replace(location.pathname+'?r='+Date.now()),350);}   /* (Québec ↔ France: on restart) */
@@ -122,6 +125,7 @@ TN.Settings.prototype.build=function(){
      html:()=>'<div class="h">TIME OF DAY</div><div class="r"><div>Light</div><div class="seg" data-k="time"><span data-v="auto">Auto</span><span data-v="day">Day</span><span data-v="night">Night</span></div></div>'+
        '<div class="r" style="display:block"><div>Night brightness</div><input type="range" min="0" max="100" step="1" data-k="nightLevel" value="'+Math.round(S.nightLevel*100)+'"><div class="lbls"><span>Softer</span><span>Darker</span></div></div>'+
        '<div class="h">WELCOME</div><div class="r"><div>Welcome flight<div class="sub">The camera flies down to your car when the app opens</div></div><div class="seg" data-k="welcome"><span data-v="always">Every start</span><span data-v="first">First only</span><span data-v="off">Off</span></div></div>'+
+       '<div class="h">TEXT SIZE</div><div class="r"><div>Buttons and text<div class="sub">Small shows more of the map</div></div><div class="seg" data-k="uiSize"><span data-v="small">Small</span><span data-v="normal">Normal</span><span data-v="large">Large</span></div></div>'+
        '<div class="h">NIGHT</div><div class="r"><div>Night look<div class="sub">Soft: calm blue-violet night, easy on the eyes</div></div><div class="seg" data-k="nightLook"><span data-v="soft">Soft</span><span data-v="classic">Classic</span></div></div>'+
        '<div class="h">SCREEN LAYOUT</div><div class="r"><div>Layout<div class="sub">Tesla: one bar at the bottom, buttons in one column</div></div><div class="seg" data-k="layout"><span data-v="tesla">Tesla</span><span data-v="classic">Classic</span></div></div>'+'<div class="h">THEME</div><div class="r"><div>Theme<div class="sub">Tesla: light by day, dark at night</div></div><div class="seg" data-k="theme"><span data-v="rocco">Rocco</span><span data-v="tesla">Tesla</span><span data-v="futuristic">Futuristic</span></div></div>'+'<div class="h">MAP</div>'+tog('glass','See-through panels','The sky and buildings show behind the top bar and the buttons')+tog('traffic','Live traffic','Traffic colours when browsing the map')+tog('chargers','Superchargers on the map','Tap one for its stalls and to go there')+tog('fastdc','Other fast chargers','FLO, Circuit électrique, Electrify Canada… (adapter needed)')+tog('smoothTurn','Smooth map turning','In turns the map turns gently after the car (off: it turns with the car, like Tesla)')+tog('zoombtns','Zoom buttons','Pinching the map works too')},
     {id:'look',t:'3D world',sum:()=>{const k=['buildings','trees','shadows','leaves','weather','water','lights','rem'];return k.filter(on).length+' of '+k.length+' on'+(on('rainbow')?' \u00b7 rainbow road':'');},
@@ -160,7 +164,11 @@ TN.Settings.prototype.build=function(){
       this.set(key,x.dataset.v);mark();});});
     const rg=p.querySelector('input[type=range]');if(rg) rg.oninput=()=>this.set('nightLevel',rg.value/100);
     const tb=p.querySelector('#tn-tesla');if(tb) tb.onclick=()=>{if(!TN.tesla) return;if(TN.tesla.connected()){TN.tesla.signOut();show(id);}else TN.tesla.signIn();};
-    const vb=p.querySelector('#tn-setver');if(vb) vb.onclick=()=>{p.style.display='none';const v=document.getElementById('ver');if(v) v.click();};
+    /* (Nov 25) one tap: the version and update check, as before; 7 quick taps: Developer mode on / off (Record, Trips, GPS accuracy) */
+    const vb=p.querySelector('#tn-setver');if(vb) vb.onclick=()=>{const now=Date.now();this.vt=(now-(this.vtT||0)<1500)?(this.vt||0)+1:1;this.vtT=now;clearTimeout(this.vtTo);
+      if(this.vt>=7){this.vt=0;this.set('dev',!this.s.dev);try{const t=document.createElement('div');t.textContent=this.s.dev?'Developer mode on':'Developer mode off';
+        t.style.cssText='position:fixed;left:50%;top:40%;transform:translateX(-50%);background:#111;color:#fff;padding:12px 20px;border-radius:12px;font:600 16px system-ui;z-index:99';document.body.appendChild(t);setTimeout(()=>t.remove(),1800);}catch(e){}return;}
+      this.vtTo=setTimeout(()=>{if(this.vt===1){p.style.display='none';const v=document.getElementById('ver');if(v) v.click();}},700);};
     p.querySelectorAll('#tn-legal a').forEach(a=>{a.style.cursor='pointer';a.style.textDecoration='underline';a.onclick=()=>{const u=a.dataset.u;try{if(!window.open(u,'_blank')) location.href=u;}catch(e){location.href=u;}};});
     const ac=p.querySelector('#tn-acct');if(ac) ac.onclick=()=>{try{const w=window.open(TN.ACCOUNT_URL,'_blank');if(!w) location.href=TN.ACCOUNT_URL;}catch(e){location.href=TN.ACCOUNT_URL;}};
     const ub=p.querySelector('#tn-setupd .updnow');if(ub) ub.onclick=()=>{p.style.display='none';if(TN.doUpdate) TN.doUpdate();else{const v=document.getElementById('ver');if(v) v.click();}};
