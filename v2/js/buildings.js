@@ -203,10 +203,14 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   let area=0;for(let i=0;i<n;i++){const a=ring[i],c=ring[(i+1)%n];area+=a[0]*c[1]-c[0]*a[1];}
   if(area<0) ring=ring.slice().reverse();area=Math.abs(area)/2;
   if(area<12) return;
+  /* (Nov 25, trip 17:10: a tiny utility box in the grass by the A-10 on Nuns' Island was drawn as a whole house with
+     windows and a roof) a footprint under 40 m2 is a shed, kiosk or electrical box: low, flat, plain */
+  const tiny=area<40&&!(b.m&&b.m.roof>0);
+  if(tiny&&b.H>b.B+3) b=Object.assign({},b,{H:b.B+3});
   const seed=b.id!=null?(Math.abs(Math.floor(Number(b.id)))%997)+1:Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;
   const wholeArea=Math.max(area,b.wa||0),pieces=b.parts||1;
   const M=b.m||null;
-  const col=TN.hex(M&&M.wc>=0?TN.rgbHex(M.wc):this.palette(b.H,seed,wholeArea,M?M.cls:0));
+  const col=TN.hex(M&&M.wc>=0?TN.rgbHex(M.wc):tiny?'#9a9ea3':this.palette(b.H,seed,wholeArea,M?M.cls:0));
   /* a roof shape from the data: the walls stop where the roof starts (the building's height includes its roof) */
   const dataRoof=M&&M.roof>0&&M.roof!==5&&b.B<b.H-2;
   const rise0=dataRoof?(M.rh>0?Math.min(M.rh,b.H*0.6):Math.min(4,0.35*Math.sqrt(area))):0;
@@ -224,10 +228,10 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   let run=0;
   for(let i=0;i<n;i++){
     const a=out[i],c=out[(i+1)%n],len=Math.hypot(c[0]-a[0],c[1]-a[1]);if(len<0.05) continue;
-    quadWall(a,c,bot,top,run,len,seed+(top-bot>=25?1000:0),col);run+=len;   /* (+1000: an office-height building) */
+    quadWall(a,c,bot,top,run,len,tiny?-1:seed+(top-bot>=25?1000:0),col);run+=len;   /* (+1000: an office-height building) */
   }
   /* pitched roof: a shape from the data, or (no data) a whole small house in one piece */
-  const pitched=dataRoof||(b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1);
+  const pitched=dataRoof||(!tiny&&b.H<=13&&wholeArea<260&&pieces===1&&n<=10&&bot<1);
   const rcol=TN.hex(M&&M.rc>=0?TN.rgbHex(M.rc):['#4b4542','#5a3f36','#3f4448'][seed%3]);
   /* a gable roof (two slopes and a ridge) on a four-cornered building: from the data, or the guess for a house */
   const gable=pitched&&out.length===4&&(M&&(M.roof===1||M.roof===9));
