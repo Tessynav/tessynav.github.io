@@ -104,6 +104,17 @@ TN.Buildings.prototype.collect=function(ck){
 };
 TN.segX=function(a,b,c,d){const cr=(o,p,q)=>(p[0]-o[0])*(q[1]-o[1])-(p[1]-o[1])*(q[0]-o[0]);
   const d1=cr(c,d,a),d2=cr(c,d,b),d3=cr(a,b,c),d4=cr(a,b,d);return ((d1>0)!==(d2>0))&&((d3>0)!==(d4>0));};
+/* a point inside a building's ground floor: moved to just outside its nearest wall (null when it isn't inside one) */
+TN.outOfBuilding=function(x,z){
+  const F=TN.FOOT;if(!F) return null;const L=F.get(Math.floor(x/25)+','+Math.floor(z/25));if(!L) return null;
+  for(const e of L){if(x<e.x0||x>e.x1||z<e.z0||z>e.z1) continue;const r=e.r,n=r.length;let inside=false;
+    for(let i=0,j=n-1;i<n;j=i++){const a=r[i],b=r[j];if((a[1]>z)!==(b[1]>z)&&x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0]) inside=!inside;}
+    if(!inside) continue;
+    let best=null,bd=1e9;for(let i=0;i<n;i++){const a=r[i],b=r[(i+1)%n];const dx=b[0]-a[0],dz=b[1]-a[1],L2=dx*dx+dz*dz||1;let u=((x-a[0])*dx+(z-a[1])*dz)/L2;u=Math.max(0,Math.min(1,u));
+      const qx=a[0]+dx*u,qz=a[1]+dz*u,d=Math.hypot(x-qx,z-qz);if(d<bd){bd=d;best=[qx,qz];}}
+    if(!best||bd>12) return null;   /* (deep inside a big building: a tunnel or garage, left alone) */
+    const ux=(best[0]-x)/(bd||1),uz=(best[1]-z)/(bd||1);return [best[0]+ux*1.6,best[1]+uz*1.6];}
+  return null;};
 TN.Buildings.prototype.crossesRoad=function(ring){
   const net=this.net;if(!net||ring.length<3) return false;
   let cx=0,cz=0,r=0;for(const p of ring){cx+=p[0];cz+=p[1];}cx/=ring.length;cz/=ring.length;
@@ -205,6 +216,11 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
   if(area<12) return;
   /* (Nov 25, trip 17:10: a tiny utility box in the grass by the A-10 on Nuns' Island was drawn as a whole house with
      windows and a roof) a footprint under 40 m2 is a shed, kiosk or electrical box: low, flat, plain */
+  /* (Nov 25, trip 17:10 in a DIX30 parking lot: the car was drawn inside the shops, GPS bouncing off the walls) the
+     ground floor of each building is remembered on a 25 m grid, so the car can be kept outside it (TN.outOfBuilding) */
+  if(bot<1&&area>=40){const F=TN.FOOT||(TN.FOOT=new Map());let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+    const e={r:ring,x0:x0,x1:x1,z0:z0,z1:z1};for(let gx=Math.floor(x0/25);gx<=Math.floor(x1/25);gx++) for(let gz=Math.floor(z0/25);gz<=Math.floor(z1/25);gz++){const k=gx+','+gz;let L=F.get(k);if(!L){L=[];F.set(k,L);}if(L.length<40&&!L.some(q=>q.r===ring)) L.push(e);}
+    if(F.size>60000){let n=0;for(const k of F.keys()){F.delete(k);if(++n>15000) break;}}}
   const tiny=area<40&&!(b.m&&b.m.roof>0);
   if(tiny&&b.H>b.B+3) b=Object.assign({},b,{H:b.B+3});
   const seed=b.id!=null?(Math.abs(Math.floor(Number(b.id)))%997)+1:Math.abs(Math.floor(ring[0][0]*7+ring[0][1]*13))%997+1;

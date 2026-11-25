@@ -792,6 +792,8 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
           8 m away, rather than driving across a median to get there) */
        const justRel=nav&&nav.relAt&&Date.now()-nav.relAt<1500;
        if(dX==null||Math.hypot(car.x-dX,car.z-dZ)>(justRel?8:25)){dX=car.x;dZ=car.z;dH=car.hd;dV=vT;if(justRel) nav.relAt=0;}
+       /* never inside a building: GPS bouncing off shop walls drew the car inside them (DIX30 parking lot, Nov 25) */
+       if(!(track.last&&track.last.dr)&&!TN.inGarage){try{const ob=TN.outOfBuilding&&TN.outOfBuilding(car.x,car.z);if(ob) car=Object.assign({},car,{x:ob[0],z:ob[1]});}catch(e){}}
        TN.drawnCar={x:dX,z:dZ};   /* (where the car is drawn, for the recording's checks) */
        const hr=dH*Math.PI/180,sx=Math.sin(hr),sz=-Math.cos(hr);
        const ex=car.x-dX,ez=car.z-dZ,along=ex*sx+ez*sz,dist=Math.hypot(ex,ez);
