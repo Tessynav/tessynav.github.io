@@ -775,7 +775,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
          is optional (Settings), it made the car and the line shift sideways */
       /* navigating: on straight roads the car keeps its normal tracking (steady); in turns it follows the route's curve,
          blended in and out gradually (Settings: glue Off / In turns / Always) */
-      const glueAll=!!(TN.settings&&TN.settings.glueRoute),glueTurns=!(TN.settings&&TN.settings.glueTurns===false);
+      const glueAll=TN.glueAll(),glueTurns=!(TN.settings&&TN.settings.glueTurns===false);
       if(nav&&nav.active&&(glueAll||glueTurns)){try{const pc=nav.place(car,track.last,Date.now(),dt);
           /* (Nov 22, trip 16:00: in the tunnel the car's own position estimate drifted up to 9 m sideways and the car
              swung across the lanes: in a tunnel, on a route, the car stays on the route's line, moving at its speed) */

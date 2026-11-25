@@ -1609,7 +1609,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   {const f=R.fit&&R.fit[j];
    /* (lane picking only when the car is glued to the line everywhere: otherwise the car rides in the middle of wide
       roads, and the line must stay in that same middle, not in a lane guessed from the GPS) */
-   const wide=f&&!f.miss&&f.ow&&2*f.hw>=9.5&&!!(TN.settings&&TN.settings.glueRoute);
+   const wide=f&&!f.miss&&f.ow&&2*f.hw>=9.5&&TN.glueAll();
    if(wide&&L.v>3&&now-L.t<3000){
      const cx0=px+mi(1),cz0=pz+mi(2),latG=(L.x-cx0)*(-uz)+(L.z-cz0)*ux;
      this.latF=this.latF==null?latG:this.latF+(latG-this.latF)*Math.min(1,dt*1.0);
@@ -1625,7 +1625,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   /* the blue line in your lane (not glued): near the car the line is drawn where the car is across the road, so in a
      turn lane or the left lane of a wide street the car sits on the line instead of beside it (Rue De Montbrun, Nov 17:
      5 m apart). The line goes back to its normal place 60-200 m ahead. */
-  if(!(TN.settings&&TN.settings.glueRoute)&&this.latS==null&&base.x!=null){
+  if(!TN.glueAll()&&this.latS==null&&base.x!=null){
     const cx0=px+mi(1),cz0=pz+mi(2);let lc=(base.x-cx0)*(-uz)+(base.z-cz0)*ux;
     /* (Nov 20, "on rails" in turns: through a turn the line no longer follows where the GPS puts the car across the road;
        it eases back to its own place, and the car rides on it. Blended by how much of a turn this is) */
@@ -1658,7 +1658,7 @@ TN.Nav.prototype.place=function(base,L,now,dt){
   /* (Nov 19, trip 15:03 at 16:33 and 17:09: in city turns the car is pulled onto this point (the turn blend), which sat
      on the route's centre, while the blue line is drawn where the car is across the road (latD): car in one lane, line
      in the next for 2-3 s. The point now uses the line's own place across the road, so the car is pulled onto the line) */
-  const lp=(this.latD!=null&&!(TN.settings&&TN.settings.glueRoute)&&this.latS==null)?this.latD:lo;
+  const lp=(this.latD!=null&&!TN.glueAll()&&this.latS==null)?this.latD:lo;
   let ox=px+mi(1)-uz*lp,oz=pz+mi(2)+ux*lp,oh=hd;
   /* city turns: the route's corners sit in the middle of the intersection, while a driver starts turning earlier;
      near a turn at city speed, when the real direction clearly differs from the route line's, the car follows the
@@ -1819,7 +1819,7 @@ TN.Nav.prototype.update=function(dt){
     if(bs===null||score<bs){bs=score;bd=d;bi=i;bu=u;}}
   if(R.pts.length<2){bd=(R.pts[0][0]-px)**2+(R.pts[0][1]-pz)**2;}
   const off=Math.sqrt(bd);this.idx=bi;const s=R.cum[bi]+bu*((R.cum[bi+1]||R.cum[bi])-R.cum[bi]),left=R.L-s;this.lastOff=off;
-  this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,glued:!!(TN.settings&&TN.settings.glueRoute),drawn:this.drawn});}
+  this.stT=(this.stT||0)+dt;if(this.stT>5){this.stT=0;this.note('status',{at:Math.round(s),left:Math.round(left),off:+off.toFixed(1),onRoute:this.ps!=null,glued:TN.glueAll(),drawn:this.drawn});}
   const lnow=this.latS!=null?this.latS:this.latD,laneMoved=Math.abs((lnow==null?0:lnow)-(this.drawLat==null?0:this.drawLat))>(this.latS!=null?0.35:0.5);
   if(R.cum[bi]-R.cum[Math.max(0,this.drawn)]>100||bi<this.drawn||(this.api.net.ver+':'+(this.api.net.hVer||0))!==this.drawVer||laneMoved){this.draw(Math.max(0,bi-4));this.drawLat=this.latS!=null?this.latS:this.latD;}
   if(this.rerouting) return;
