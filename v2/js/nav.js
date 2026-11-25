@@ -696,7 +696,7 @@ TN.Nav.prototype.fitRange=function(i0,i1){
       if(w.ow&&(r.tx*ux+r.tz*uz)<0.3) return;   /* (the other carriageway of a divided road, or a one-way going the other way) */
       const h0=w.hs?w.hs[k]+(w.hs[k+1]-w.hs[k])*r.u:(w.br?w.H:0);
       const sc=r.d+(1-Math.abs(r.tx*ux+r.tz*uz))*20+(prev==null?0:Math.abs(h0-prev)*4)+(prevW!=null&&w.id!==prevW?6:0);
-      if(!best||sc<best.sc) best={sc:sc,h:h0,lane:w.ow?0:Math.max(1.2,TN.width(w)/4),dx:r.qx-p[0],dz:r.qz-p[1],hw:TN.width(w)/2,ow:!!w.ow,w:w.id};});
+      if(!best||sc<best.sc) best={dot:Math.abs(r.tx*ux+r.tz*uz),sc:sc,h:h0,lane:w.ow?0:Math.max(1.2,TN.width(w)/4),dx:r.qx-p[0],dz:r.qz-p[1],hw:TN.width(w)/2,ow:!!w.ow,w:w.id};});
     /* turning here (direction changes over 20 degrees within about 10 m): keep the arc, no snapping */
     let turnHere=false;{const a=R.pts[Math.max(0,i-15)],b=R.pts[i],c2=R.pts[Math.min(R.pts.length-1,i+15)];
       const h1=Math.atan2(b[0]-a[0],-(b[1]-a[1])),h2=Math.atan2(c2[0]-b[0],-(c2[1]-b[1]));let dh=Math.abs(h2-h1)*180/Math.PI;if(dh>180) dh=360-dh;turnHere=dh>20;}
@@ -705,7 +705,11 @@ TN.Nav.prototype.fitRange=function(i0,i1){
     /* (Nov 23, trip 14:57: in the Île-des-Soeurs roundabout, one long turn, the line let go of the road and slid up to
        2.5 m toward its edge, the car with it: on a one-way ring the line stays on our road through the turn) */
     const ring=best&&best.ow&&prevW!=null&&best.w===prevW&&Math.hypot(best.dx,best.dz)<best.hw+1;
-    if(best&&turnHere&&!ring){const pp=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1]:null;best.dx=pp?pp.dx*0.5:0;best.dz=pp?pp.dz*0.5:0;}
+    /* (Nov 25, trip 14:40: "turning" was judged over about 75 m each way, so on every curvy road the shift faded to
+       nothing and the line fell back on Mapbox's own shape, 2-4 m beside our road. A point whose road runs the same way
+       as the route (a curve, not a corner across an intersection) now always stays on our road) */
+    const follows=best&&best.dot>0.94&&Math.hypot(best.dx,best.dz)<best.hw+2.5;
+    if(best&&turnHere&&!ring&&!follows){const pp=i>0&&R.fit[i-1]&&!R.fit[i-1].miss?R.fit[i-1]:null;best.dx=pp?pp.dx*0.5:0;best.dz=pp?pp.dz*0.5:0;}
     const pf=i>0&&R.fit[i-1]&&!turnHere&&R.cum[i]-R.cum[i-1]<25?R.fit[i-1]:null;
     R.fit[i]=best?{h:best.h,lane:best.lane,dx:best.dx,dz:best.dz,hw:best.hw,ow:best.ow,w:best.w,miss:false,rg:!!(ring&&turnHere)}:{h:prev!=null?prev:(i>0&&R.fit[i-1]?R.fit[i-1].h:0),lane:pf?pf.lane:0,dx:pf?pf.dx:0,dz:pf?pf.dz:0,miss:true,ver:net.ver};
   }
@@ -716,7 +720,10 @@ TN.Nav.prototype.fitRange=function(i0,i1){
      fitted in batches as you drive, and each batch's first and last 70 m were averaged on one side only, so the line
      and the car stepped sideways at every batch boundary, a weave of about 1 m every few seconds on highways. The
      points just before and after the batch are recomputed too. Averaged over 120 m.) */
-  const SW=120;let a0=i0,a1=i1;while(a0>0&&R.cum[i0]-R.cum[a0-1]<SW) a0--;while(a1<R.pts.length-1&&R.cum[a1+1]-R.cum[i1]<SW) a1++;
+  /* (Nov 25, trip 14:40: the line ran 2-5 m off our road for whole stretches: a 120 m average of the shift doesn't follow
+     the curves of the road. The line now follows OUR road closely: the shift is averaged over 25 m only, so the line
+     lies on the road the car is drawn on, curve by curve) */
+  const SW=25;let a0=i0,a1=i1;while(a0>0&&R.cum[i0]-R.cum[a0-1]<SW) a0--;while(a1<R.pts.length-1&&R.cum[a1+1]-R.cum[i1]<SW) a1++;
   for(let i=a0;i<=a1;i++){if(!R.fit[i]) continue;let ln=0,nl=0,dx=0,dz=0,wt=0;
     /* (in a roundabout the shift points a different way at every point of the ring, so a 120 m average cancels it out:
        averaged over 12 m there) */
