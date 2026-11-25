@@ -78,6 +78,7 @@ TN.Nav.prototype.build=function(){
    '#tn-stopbtn{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 22px;font:600 17px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-joke)}body.tn-routing #tn-stopbtn{display:none}'+
    '#tn-alt{right:16px;bottom:292px;display:none;border:0;border-radius:12px;padding:12px 18px;font:600 16px system-ui,sans-serif;cursor:pointer;background:rgb(var(--tn-panel-rgb) / .88);color:var(--tn-text)}body.tn-routing #tn-alt{display:block}'+
    '@media (max-width:700px){#tn-alt{right:auto;left:16px;bottom:160px}}'+
+   '#tn-alt{display:none!important}'+   /* (Nov 25: the faster way is offered automatically by Rocco; no button) */
    'body.tn-routing #trips{display:none!important}'+   /* (Record stays available while navigating, so a drive can be recorded after starting the route) */
    'body.tn-routing.tn-addstop #tn-search{display:flex}body.tn-routing.tn-addstop #tn-bar{display:none!important}'+
    '#tn-roadname{left:16px;bottom:96px;display:none;font-size:15px;color:var(--tn-sub)}'+
@@ -634,7 +635,9 @@ TN.Nav.prototype.setRoute=function(rt){
     if(la<0.5||lb<0.5){continue;}
     const th=Math.acos(Math.max(-1,Math.min(1,(ax*bx+az*bz)/(la*lb))));
     if(th<0.17){rnd.push(B);continue;}   /* under 10 degrees: keep the point */
-    let tl=12*Math.tan(th/2);tl=Math.min(tl,la*0.45,lb*0.45);const Rr=tl/Math.tan(th/2);
+    /* (Nov 25, trip 07:09: a 12 m arc on a sharp turn pulls ~5 m into the inside corner = onto the sidewalk of a narrow street;
+       sharp turns (over ~55 degrees) get an 8 m arc, gentle bends keep 12 m) */
+    let tl=(th>0.95?8:12)*Math.tan(th/2);tl=Math.min(tl,la*0.45,lb*0.45);const Rr=tl/Math.tan(th/2);
     const s0=[B[0]-ax/la*tl,B[1]-az/la*tl],s1=[B[0]+bx/lb*tl,B[1]+bz/lb*tl];
     /* a true circular arc from s0 to s1 (radius Rr), turning to the side of the corner */
     const ux=ax/la,uz=az/la,side=Math.sign(ux*bz-uz*bx)||1;
@@ -1238,8 +1241,9 @@ TN.Nav.prototype.fasterOffer=function(rt,save){
     else{map.addSource('tn-faster',{type:'geojson',data:data});map.addLayer({id:'tn-faster',type:'line',source:'tn-faster',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#9aa0a6','line-width':8,'line-opacity':0.9}},map.getLayer('tn-route-casing')?'tn-route-casing':undefined);}}catch(e){}
   let el=document.getElementById('tn-faster');if(!el){el=document.createElement('div');el.id='tn-faster';el.className='notr';document.body.appendChild(el);}
   const via=(rt.legs&&rt.legs[0]&&rt.legs[0].summary)||'';const mn=Math.round(save/60);
-  el.innerHTML='<b>'+(fr?'Plus rapide : ':'Faster way: saves ')+mn+' min'+(fr?' de moins':'')+'</b>'+(via?'<div style="opacity:.85">'+(fr?'par ':'via ')+TN.esc(via)+'</div>':'')+
+  el.innerHTML='<div style="display:flex;gap:12px;align-items:center">'+(TN.roccoSVG?TN.roccoSVG(46):'')+'<div><b>'+(fr?'Embouteillage devant. Plus rapide : ':'Traffic ahead. Faster way: saves ')+mn+' min'+(fr?' de moins':'')+'</b>'+(via?'<div style="opacity:.85">'+(fr?'par ':'via ')+TN.esc(via)+'</div>':'')+'</div></div>'+
     '<div class="bt"><button class="go" style="background:#1e9e4a;color:#fff">'+(fr?'Je le prends':'Take it')+'</button><button class="st" style="background:#3a3f47;color:#fff">'+(fr?'Je reste':'Stay')+'</button></div><div class="bar" style="width:100%"></div>';
+  try{if(TN.voice&&TN.voice.say) TN.voice.say(fr?'Il y a un chemin plus rapide, '+mn+' minutes de moins. Tu le prends ?':'There\u2019s a faster way, '+mn+' minutes quicker. Want to take it?');}catch(e){}
   el.style.display='block';const bar=el.querySelector('.bar');requestAnimationFrame(()=>{bar.style.transitionDuration='15s';bar.style.width='0%';});
   const close=(take)=>{clearTimeout(this.offerT);el.style.display='none';this.offer=null;
     try{if(map.getLayer('tn-faster')) map.removeLayer('tn-faster');if(map.getSource('tn-faster')) map.removeSource('tn-faster');}catch(e){}
