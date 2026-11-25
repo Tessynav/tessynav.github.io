@@ -3,7 +3,7 @@
    - while driving on a motorway or trunk, the road ahead (in the direction you're going, about 1.6 km) is followed and
      every exit on it gets its signs: one about 1 km before (with "1 km") and one at the exit, with the exit number,
      the route numbers and the destinations (from the road tiles, OpenStreetMap)
-   - signs stand on the right side of the road at the road's own height (on a bridge they're fixed to its edge)
+   - (Nov 25) signs hang over the road on a gantry, the board over the right-hand lanes, at the road's own height
    - signs for exits on the other side of the highway, or behind you, are never drawn
    - while navigating, the sign for the exit the route takes gets a blue frame */
 var TN=globalThis.TN||{};globalThis.TN=TN;
@@ -129,21 +129,22 @@ TN.Signs.prototype.make=function(e,kind,pt){
   const T=globalThis.THREE,S=this.scene;if(!T||!S.three) return null;
   const cv=this.face(e,kind);if(!cv) return null;
   const tex=new T.CanvasTexture(cv);if(T.SRGBColorSpace) tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4;
-  const PW=7.2,PH=4.2,onBridge=!!pt.w.br,clear=onBridge?2.6:3.2;
+  /* (Nov 25) overhead, like the real highway signs: a gantry across the carriageway (a post beyond each edge, two
+     beams) and the board over the right-hand lanes, about 5.5 m above the road */
+  const PW=7.6,PH=4.4,onBridge=!!pt.w.br,clear=5.5,hw=TN.width(pt.w)/2;
   const grp=new T.Group();
-  const face=new T.Mesh(new T.PlaneGeometry(PW,PH),new T.MeshBasicMaterial({map:tex}));face.position.set(0,clear+PH/2,0);grp.add(face);
-  const back=new T.Mesh(new T.PlaneGeometry(PW,PH),new T.MeshLambertMaterial({color:0x8a9096}));back.position.set(0,clear+PH/2,-0.06);back.rotation.y=Math.PI;grp.add(back);
+  const bx=Math.max(-hw+PW/2,hw-PW/2-0.3);   /* board centre, across the road (+ = right) */
+  const face=new T.Mesh(new T.PlaneGeometry(PW,PH),new T.MeshBasicMaterial({map:tex}));face.position.set(bx,clear+PH/2,0);grp.add(face);
+  const back=new T.Mesh(new T.PlaneGeometry(PW,PH),new T.MeshLambertMaterial({color:0x8a9096}));back.position.set(bx,clear+PH/2,-0.06);back.rotation.y=Math.PI;grp.add(back);
   const frameMat=new T.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:0});
-  const fr=new T.Mesh(new T.PlaneGeometry(PW+0.7,PH+0.7),frameMat);fr.position.set(0,clear+PH/2,-0.03);grp.add(fr);
+  const fr=new T.Mesh(new T.PlaneGeometry(PW+0.7,PH+0.7),frameMat);fr.position.set(bx,clear+PH/2,-0.03);grp.add(fr);
   const postMat=new T.MeshLambertMaterial({color:0x9aa0a6});
-  for(const px of [-PW*0.32,PW*0.32]){const ph=clear+PH*0.85;const p=new T.Mesh(new T.BoxGeometry(0.22,ph,0.22),postMat);p.position.set(px,ph/2,-0.15);grp.add(p);}
-  /* on the right side of the road, facing the drivers coming toward it (turned a little toward the road) */
-  /* (on a bridge: the posts stand just outside the deck's edge and the board overhangs the shoulder by under a metre.
-     Before, the board was centred 0.6 m past the edge, so its left half and one post stood in the lanes: the Champlain
-     Bridge signs looked like they were in the middle of the road) */
-  const off=TN.width(pt.w)/2+(onBridge?PW/2-0.8:3.5),rx=-pt.uz,rz=pt.ux;
-  const x=pt.x+rx*off,z=pt.z+rz*off;
-  grp.position.set(x,pt.h,z);grp.rotation.y=Math.atan2(-pt.ux,-pt.uz)-0.12;
+  const L0=-hw-(onBridge?0.4:1.6),R0=hw+(onBridge?0.4:1.6),top=clear+PH+0.4;
+  for(const px of [L0,R0]){const p=new T.Mesh(new T.BoxGeometry(0.3,top,0.3),postMat);p.position.set(px,top/2,-0.25);grp.add(p);}
+  for(const by of [clear+0.5,clear+PH-0.5]){const b=new T.Mesh(new T.BoxGeometry(R0-L0,0.28,0.28),postMat);b.position.set((L0+R0)/2,by,-0.25);grp.add(b);}
+  /* (turned to face the drivers, the group's x axis points to the right of the driving direction) */
+  const x=pt.x,z=pt.z;
+  grp.position.set(x,pt.h,z);grp.rotation.y=Math.atan2(-pt.ux,-pt.uz);
   grp.renderOrder=2;S.three.scene.add(grp);
   return {g:grp,x:x,z:z,frame:frameMat,hot:false};
 };

@@ -1685,6 +1685,10 @@ TN.Net.prototype.drawSignal=function(L,m,done){
 };
 TN.Net.prototype.drawSign=function(L,m){
   const S=this.signPlace(m);if(!S) return;
+  /* (Nov 25) the sign itself now floats above the roadside (floatsigns.js); only the stop line is painted here */
+  if(TN.FLOATSIGNS!==false){if(m.kind==='s'){const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw,SL=this.stopLineAt(S);
+      const p=(o,a)=>[SL[0]+S.rx*o+S.dx*a,y,SL[1]+S.rz*o+S.dz*a];TN.quad(L.mark,p(o0,-0.2),p(o1,-0.2),p(o1,0.2),p(o0,0.2),TN.C.white);}
+    return;}
   const G=L.road,post=TN.C.post;
   /* post */
   TN.box(G,S.x,S.z,S.dx,S.dz,0.08,0.08,0,m.kind==='s'?1.62:1.5,post);
@@ -1922,7 +1926,7 @@ TN.Net.prototype.drawJC=function(L,w,P,N,hw,H){
    OpenStreetMap's lane directions (turn:lanes). Two sets per approach, about 15 m and 45 m before the end of the road
    (one set on short pieces), in the middle of each lane. Straight-only lanes get no arrow, as on most real streets
    when every lane goes straight. White paint, part of the lane markings, so it shines in the headlights and the rain.
-   Each arrow: a stem, then one branch per direction with a pointed head. */
+   Each arrow: a stem, then one branch per direction with a pointed head. Lanes that only turn can also get "ONLY" (off: Quebec paints no words; TN.LANE_ONLY=true turns it on). */
 TN.LANE_TURN={L:-90,l:-40,T:0,r:40,R:90,U:-180};
 TN.Net.prototype.laneArrows=function(L,w,a,b,P,N,H,hwJ){
   const G=L.mark,col=TN.C.white,net=this;
@@ -1959,6 +1963,12 @@ TN.Net.prototype.laneArrows=function(L,w,a,b,P,N,H,hwJ){
           TN.quad(G,at(bu+pu,bv+pv),at(tu,tv),at(tu,tv),at(bu-pu,bv-pv),col);};
         const turns=[...new Set(code.split(''))].map(c=>TN.LANE_TURN[c]).filter(x=>x!=null);if(!turns.length) continue;
         const hasT=turns.includes(0);
+        /* (Nov 23) "ONLY" behind the arrow in lanes that only turn (no straight ahead), like the real paint: block letters
+           2.4 m tall, read from the driver's seat */
+        if(!hasT&&TN.LANE_ONLY===true&&lw>=2.8){const word=TN.LANE_WORD||'ONLY',ch=2.2,cw=0.6,gap=0.22,tot=word.length*cw+(word.length-1)*gap,u0=-6.2;
+          const F={O:[[0,0,1,0],[1,0,1,1],[1,1,0,1],[0,1,0,0]],N:[[0,0,0,1],[0,1,1,0],[1,0,1,1]],L:[[0,1,0,0],[0,0,1,0]],Y:[[0,1,0.5,0.5],[1,1,0.5,0.5],[0.5,0.5,0.5,0]]};
+          for(let q=0;q<word.length;q++){const st=F[word[q]];if(!st) continue;const v0=-tot/2+q*(cw+gap);
+            for(const [x0,y0,x1,y1] of st) bar(u0+y0*ch,v0+x0*cw,u0+y1*ch,v0+x1*cw,0.065);}}
         /* stem: 3 m long; a straight branch carries on to a head 1.5 m long */
         bar(-2.6,0,hasT?0.9:0.2,0,0.15);
         if(hasT) head(0.9,0,1,0,1.5,0.5);

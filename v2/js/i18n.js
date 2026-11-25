@@ -24,7 +24,7 @@ const D={
   'Highway':'Autoroute','Main street':'Artère','Street':'Rue','Service road':'Voie de service','Road':'Route','off road':'hors route',
   'Finding your car…':'Recherche de votre voiture…','Finding the road…':'Recherche de la route…','outside the map':'hors carte',
   'Location not available':'Position non disponible','Waiting for GPS…':'En attente du GPS…',
-  'Roads: © OpenStreetMap contributors':'Routes : © contributeurs OpenStreetMap',
+  'Roads: © OpenStreetMap contributors':'Routes : © contributeurs OpenStreetMap','Roads: © OpenStreetMap contributors | Signs: Ville de Montréal':'Routes : © contributeurs OpenStreetMap | Panneaux : Ville de Montréal',
   'Preparing the map…':'Préparation de la carte…','Building the streets…':'Construction des rues…','Ready':'Prêt',
   'Navigation for Tesla':'Navigation pour Tesla','MapKoon v2 · test':'MapKoon v2 · test',
   /* search, places, favorites */

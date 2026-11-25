@@ -17,7 +17,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const map=new maplibregl.Map({container:'map',style:TN.MBXMODE?'mapbox://styles/mapbox/standard':'https://tiles.openfreemap.org/styles/liberty',center:start,zoom:17,pitch:60,maxPitch:85,
     ...(TN.MBXMODE?{projection:'mercator',config:{basemap:{showPointOfInterestLabels:false,showTransitLabels:false,show3dObjects:true}}}:{}),
     fadeDuration:0,pixelRatio:1,
-    attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors'}});
+    attributionControl:{customAttribution:'Roads: © OpenStreetMap contributors | Signs: Ville de Montréal'}});
   document.body.classList.add('tn-app');   /* (the buttons can show now) */
   const net=new TN.Net(),track=new TN.Track(net),scene=new TN.Scene(map,net),rec=new TN.Rec();
   /* the background road builder: builds the 3D road areas on its own thread (the screen never waits for it); it gets
@@ -69,7 +69,7 @@ TN.keepQuery=function(add){const q=(location.search||'').replace(/^\?/,'').split
   const incidents=TN.Incidents?new TN.Incidents({map:map,scene:scene,nav:nav,net:net,getCar:()=>track.car,following:()=>follow,roadsBase:'https://app.mapkoon.com/tessynav-roads/',note:(k,d)=>{if(rec&&rec.rec) rec.note(k,d);}}):null;
   /* Superchargers on the map (and other fast chargers, if chosen) */
   /* green highway exit signs along the highway ahead (with or without a route) */
-  const signs=TN.Signs?new TN.Signs({net:net,scene:scene,track:track,nav:nav}):null;TN.signs=signs;
+  const signs=TN.Signs?new TN.Signs({net:net,scene:scene,track:track,nav:nav}):null;TN.signs=signs;const fsigns=TN.FloatSigns?new TN.FloatSigns({net:net,scene:scene,track:track}):null;TN.fsigns=fsigns;
   const chargers=TN.Chargers?new TN.Chargers({map:map,nav:nav,getCar:()=>track.car,following:()=>follow}):null;TN.chargers=chargers;
   TN.incidentsObj=incidents;
   TN.fb=TN.Feedback?new TN.Feedback({map:map,nav:nav,getCar:()=>track.car,gps:()=>track.last}):null;   /* (Send feedback, on the main screen) */
@@ -829,6 +829,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(nav&&follow!==lastFollowT){lastFollowT=follow;try{nav.traffic(!follow);}catch(e){}}
       if(chargers) try{chargers.update();}catch(e){}
       if(signs) try{signs.update();}catch(e){}
+      if(fsigns) try{fsigns.update();fsigns.frame();}catch(e){}
       try{autoRecenter();}catch(e){}
       if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}
       {const cc=track.car,lv=track.last;TN.carOffRoad=!!(cc&&cc.x!=null&&!cc.snapped&&(!lv||(lv.v||0)<2.5));}   /* (not on a road, and slow: the x-ray bubble) */   /* (tunnel mode: the tunnel you're in, and the view dims) */
