@@ -1181,6 +1181,9 @@ TN.Nav.prototype.fasterCheck=async function(){
     for(let i=0;i<C.length;i+=Math.max(1,Math.floor(C.length/40))){tot++;const q=TN.toLocal(C[i][0],C[i][1]);let bd=1e18;
       for(let k=0;k<R.pts.length;k+=3){const d=(R.pts[k][0]-q[0])**2+(R.pts[k][1]-q[1])**2;if(d<bd) bd=d;}if(bd>150*150) off++;}
     try{this.note('faster check',{saveMin:Math.round(save/60),other:+(off/Math.max(1,tot)).toFixed(2)});}catch(e){}
+    /* (Nov 25, trip 11:26: the arrival time was 4-6 min too late) the same way with fresher traffic: keep its time, so the
+       arrival time follows the traffic instead of staying on the estimate made at the start */
+    if(off/Math.max(1,tot)<=0.15&&this.route&&this.leftM>200&&rt.duration>0) this.route.dur=rt.duration*this.route.L/this.leftM;
     if(save>=180&&off/Math.max(1,tot)>0.15) this.fasterOffer(rt,save);}
   catch(e){}finally{this.fasterBusy=false;}
 };
