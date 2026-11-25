@@ -27,7 +27,7 @@ TN.FloatSigns.prototype.load=function(lng,lat){
     if(this.tiles.has(key)||!this.idx.set.has(key)) continue;this.tiles.set(key,null);
     fetch(TN.FLOAT_BASE+'t/'+key+'.json').then(r=>r.ok?r.json():null).then(j=>{
       if(!j||!j.p){this.tiles.delete(key);return;}
-      this.tiles.set(key,j.p.map((p,i)=>{const q=TN.toLocal(p[0],p[1]);return {id:key+':'+i,x:q[0],z:q[1],s:p[2]};}));}).catch(()=>this.tiles.delete(key));}
+      this.tiles.set(key,j.p.map((p,i)=>{const q=TN.toLocal(p[0],p[1]);return {id:key+':'+i,x:q[0],z:q[1],s:p[2],m:p[3]==='m'};}));}).catch(()=>this.tiles.delete(key));}
 };
 
 /* the road ahead of the car up to the next intersection (or 220 m): a line of points with distances */
@@ -71,7 +71,7 @@ TN.FloatSigns.prototype.update=function(){
       const city=[];
       for(const T of this.tiles.values()){if(!T) continue;
         for(const q of T){if(Math.abs(q.x-car.x)>260||Math.abs(q.z-car.z)>260) continue;city.push(q);
-          const p=ok(q.x,q.z);if(p) cand.push({id:q.id,x:q.x,z:q.z,s:q.s,p:p});}}
+          const p=ok(q.x,q.z);if(p) cand.push({id:q.id,x:q.x,z:q.z,s:q.s,p:p,m:q.m});}}
       /* OpenStreetMap stop / yield signs where the city has none nearby, facing your way */
       if(this.net.marks&&this.net.signPlace) for(const m of this.net.marks.values()){
         if((m.kind!=='s'&&m.kind!=='y')||Math.abs(m.x-car.x)>260||Math.abs(m.z-car.z)>260) continue;
@@ -81,8 +81,10 @@ TN.FloatSigns.prototype.update=function(){
         cand.push({id:'osm:'+m.key+':'+m.kind,x:P.x,z:P.z,s:[m.kind],p:p});}
       cand.sort((a,b)=>a.p.along-b.p.along);
       for(const c of cand.slice(0,3)) want.set(c.id,c);
+      this.credit(cand.slice(0,3).some(c=>c.m));
     }
   }
+  if(!want.size) this.credit(false);
   const y0=car&&car.y!=null?car.y:0;
   for(const [id,c] of want){let it=this.items.get(id);
     if(!it){it=this.make(c,y0);if(!it) continue;this.items.set(id,it);}
@@ -90,6 +92,15 @@ TN.FloatSigns.prototype.update=function(){
   for(const [id,it] of this.items){
     if(!want.has(id)){it.gone=(it.gone||0)+1;it.target=0;}else it.target=1;
     if(it.gone>4){S.three.scene.remove(it.g);it.g.traverse(o=>{if(o.geometry) o.geometry.dispose();if(o.material) o.material.dispose();});this.items.delete(id);}}
+};
+/* Mapillary's credit (logo + link, as its terms ask) next to the map's credits, while one of its signs is shown */
+TN.FloatSigns.prototype.credit=function(show){
+  if(show===this.mShown) return;this.mShown=show;
+  try{const el=document.querySelector('.maplibregl-ctrl-attrib-inner');if(!el) return;let s=el.querySelector('.tn-mly');
+    if(show&&!s){s=document.createElement('span');s.className='tn-mly';
+      s.innerHTML=' | <a href="https://www.mapillary.com" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:3px;vertical-align:middle"><svg width="12" height="12" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#05CB63"/><path d="M7 17l3-9 2 5 2-5 3 9" stroke="#fff" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>Mapillary</a>';
+      el.appendChild(s);}
+    else if(!show&&s) s.remove();}catch(e){}
 };
 /* gentle fade (called every frame) */
 TN.FloatSigns.prototype.frame=function(){
