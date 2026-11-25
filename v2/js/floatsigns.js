@@ -55,6 +55,7 @@ TN.FloatSigns.prototype.proj=function(A,x,z){
 };
 
 TN.FloatSigns.prototype.update=function(){
+  if(TN.FLOATSIGNS!==true) return;   /* (Nov 25 pm: off, the small corner signs are back) */
   const now=Date.now();if(now-this.t<400) return;this.t=now;
   const S=this.scene;if(!S||!S.three||!this.track) return;
   const car=this.track.car,cur=this.track.cur;const want=new Map();

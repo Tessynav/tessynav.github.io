@@ -1683,10 +1683,11 @@ TN.Net.prototype.drawSignal=function(L,m,done){
     TN.quad(L.mark,p(o0,-0.2),p(o1,-0.2),p(o1,0.2),p(o0,0.2),TN.C.white);
   }
 };
+/* (Nov 25 pm) the small corner signs are back (the driver preferred them): TN.FLOATSIGNS=true would turn them off again */
 TN.Net.prototype.drawSign=function(L,m){
   const S=this.signPlace(m);if(!S) return;
   /* (Nov 25) the sign itself now floats above the roadside (floatsigns.js); only the stop line is painted here */
-  if(TN.FLOATSIGNS!==false){if(m.kind==='s'){const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw,SL=this.stopLineAt(S);
+  if(TN.FLOATSIGNS===true){if(m.kind==='s'){const y=0.075,o0=S.ow?-S.hw:0,o1=S.hw,SL=this.stopLineAt(S);
       const p=(o,a)=>[SL[0]+S.rx*o+S.dx*a,y,SL[1]+S.rz*o+S.dz*a];TN.quad(L.mark,p(o0,-0.2),p(o1,-0.2),p(o1,0.2),p(o0,0.2),TN.C.white);}
     return;}
   const G=L.road,post=TN.C.post;
