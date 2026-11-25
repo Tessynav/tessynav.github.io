@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v19 Nov 24: badge lower, moon after sunset; v18: street name box stops before the search box; v17: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v20 Nov 25: map credit line above the bottom bar; v19: badge lower, moon after sunset; v18: street name box stops before the search box; v17: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -38,6 +38,7 @@ TN.Layout=function(){
   '#tn-wxa{position:absolute;left:50%;top:150px;transform:translate(-50%,-8px);z-index:40;display:flex;align-items:center;gap:12px;max-width:min(560px,calc(100vw - 140px));padding:12px 18px 12px 12px;border-radius:18px;background:'+P+';color:var(--tn-text);box-shadow:0 8px 28px rgba(0,0,0,.28);font:15px system-ui,sans-serif;line-height:1.3;opacity:0;transition:opacity .35s,transform .35s;pointer-events:none}'+
   '#tn-wxa.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}#tn-wxa b{display:block;font-size:16px}#tn-wxa svg{flex:none}'+
   '#tn-wxc .ar{display:flex;align-items:center;gap:14px;padding:6px 4px}#tn-wxc .ar .t{font-size:40px;font-weight:700}#tn-wxc .ar b{display:block;font-size:17px}#tn-wxc .ar small{color:var(--tn-joke)}#tn-wxc .ar3{display:flex;gap:6px;margin-top:10px}#tn-wxc .ar3 div{flex:1;text-align:center;padding:8px 0;border-radius:12px;background:rgba(127,140,160,.1)}#tn-wxc .ar3 i{display:flex;justify-content:center;margin:4px 0}#tn-wxc .ar3 small{display:block;font-size:12px;color:#3b82f6;min-height:15px}'+
+  '.maplibregl-ctrl-bottom-right{z-index:4}.maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib{background:rgb(var(--tn-panel-rgb) / .6)!important;border-radius:8px 0 0 0;font-size:11px;color:var(--tn-text)}.maplibregl-ctrl-attrib a{color:inherit}'+
   '#tn-wxc{position:absolute;right:18px;bottom:100px;width:min(460px,calc(100vw - 120px));z-index:30;background:'+P+';color:var(--tn-text);border-radius:20px;box-shadow:0 10px 34px rgba(0,0,0,.3);font:14px system-ui,sans-serif;padding:16px 18px 18px;display:none}'+
   '#tn-wxc.on{display:block}#tn-wxc .hd{display:flex;align-items:center;gap:12px}#tn-wxc .big{font-size:44px;font-weight:700;line-height:1}#tn-wxc .ic{font-size:44px}#tn-wxc .cd{flex:1}#tn-wxc .cd b{display:block;font-size:17px}#tn-wxc .cd small{color:var(--tn-joke)}'+
   '#tn-wxc .rk{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 12px 8px 8px;border-radius:14px;background:rgba(245,158,11,.13);font-size:14px;line-height:1.3}#tn-wxc .rk svg{flex:none}'+
@@ -123,6 +124,9 @@ TN.Layout.prototype.tick=function(){
   try{const st=document.getElementById('status'),sb=document.getElementById('tn-search');
     if(st&&sb&&!document.body.classList.contains('tn-routing')){const a=st.getBoundingClientRect(),b=sb.getBoundingClientRect(),k=window.TN_UIK||1;
       if(a.width&&b.width&&b.top<a.bottom&&b.left>a.left){const cs=getComputedStyle(st),pad=cs.boxSizing==='border-box'?0:(parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0)+(parseFloat(cs.borderLeftWidth)||0)+(parseFloat(cs.borderRightWidth)||0),m=Math.max(120,Math.floor((b.left-a.left)/k-12-pad));if(m!==this.stMax){this.stMax=m;st.style.setProperty('max-width',m+'px','important');}}}}catch(e){}
+  /* (Nov 25) the map's credit line (OpenStreetMap, Ville de Montréal, Mapillary) sits just above the bottom bar: it was hidden behind it */
+  try{const cr=document.querySelector('.maplibregl-ctrl-bottom-right'),bb=document.getElementById('tn-bbar'),k=window.TN_UIK||1;
+    if(cr){const r=bb&&bb.getBoundingClientRect(),b=r&&r.height?Math.max(0,(innerHeight-r.top)/k+2):0;if(b!==this.crB){this.crB=b;cr.style.bottom=b+'px';}}}catch(e){}
   if(document.body.classList.contains('tn-routing')) try{this.wxDrive();}catch(e){}
   if(wide&&document.body.classList.contains('tn-routing')) try{this.wxRoute();}catch(e){}else if(this.wxr) this.wxr.classList.remove('ok');
   let y=84+6,n=0;
@@ -286,7 +290,7 @@ TN.Layout.prototype.wxRoute=function(){
   const hr=new Date().getHours(),nt=(TN.wx&&TN.wx.isDay!=null)?!TN.wx.isDay:(hr<7||hr>=17),h=TN.Layout.wxIcon(w.code!=null?w.code:0,nt,26)+'<span>'+Math.round(w.temp)+'\u00b0</span>';
   if(h!==this.lastWr){this.lastWr=h;el.innerHTML=h;}el.classList.add('ok');el.classList.toggle('w',!!this.wxWarn);
   const k=window.TN_UIK||1,bb=document.getElementById('tn-bbar'),r=bb&&bb.getBoundingClientRect();
-  if(r&&r.height){const b=(innerHeight-r.top)/k+20;if(b!==this.wxrB){this.wxrB=b;el.style.bottom=b+'px';}}
+  if(r&&r.height){const b=(innerHeight-r.top)/k+30;if(b!==this.wxrB){this.wxrB=b;el.style.bottom=b+'px';}}
 };
 TN.Layout.prototype.wxDraw=function(){
   const c=document.getElementById('tn-wxc'),j=this.wxData&&this.wxData.j;if(!c||!j) return;
