@@ -175,13 +175,26 @@
       const meas = Math.max(0, Math.min(r.ln - 1, Math.floor(u / g0.lw)));
       const lane = st && !st.free && st.lane < r.ln ? st.lane : meas;
       const lat = st && !st.free ? st.lat : this.laneGeo(r, best.dir, lane).off;
-      this.st = { k: best.k, dir: best.dir, s: best.s, lane, lat, v, t: f.t, acc: 0 };
+      /* (v3, Nov 26 drive: right after turning onto the next road the car raced ~5 m ahead) start on the new road where the
+         car is drawn now, not where the GPS is: the gentle catch-up below closes any gap instead of a sudden slide */
+      let s0 = best.s;
+      if (st && !st.free && this.raw) for (const c of net.near(this.raw.x, this.raw.z, 12)) if (c.k === best.k && Math.abs(c.s - best.s) < 20) s0 = c.s;
+      this.st = { k: best.k, dir: best.dir, s: s0, lane, lat, v, t: f.t, acc: 0 };
     } else {
-      const dt = Math.max(0, f.t - st.t), sPred = st.s + st.dir * ((st.v + v) / 2) * dt;
-      let s = sPred + 0.15 * (best.s - sPred);
-      if (Math.abs(best.s - sPred) > 25) s = best.s;               /* far off: trust the GPS */
+      /* (v3, Nov 26 drive: pulling away from a stop, the car surged ahead at twice your speed for a second) the GPS's
+         own speed lags when you speed up, so the car fell behind and then raced to catch up. Now the speed also comes
+         from how fast the GPS moves along the road over the last second, and catching up is spread out gently */
+      const dt = Math.max(0, f.t - st.t);
+      const HS = st.hs || (st.hs = []); HS.push([f.t, best.s]); while (HS.length > 2 && f.t - HS[0][0] > 1.2) HS.shift();
+      let vAlong = null; if (f.t - HS[0][0] > 0.6) vAlong = Math.max(0, (best.s - HS[0][1]) * st.dir / (f.t - HS[0][0]));
+      const vUse = vAlong != null && vAlong > v && vAlong < v * 1.6 + 3 ? (v + vAlong) / 2 : v;
+      /* (the GPS sends nothing while you're stopped, sometimes for 20 s: the next fix must not move the car all at once) */
+      const sPred = st.s + st.dir * ((st.v + vUse) / 2) * Math.min(dt, 1), gap = best.s - sPred;
+      const cap = (0.2 * vUse + 0.3 + 0.1 * Math.abs(gap)) * Math.min(dt, 0.25);   /* at most ~20% faster or slower than you, a bit more if far off */
+      let s = sPred + Math.max(-cap, Math.min(cap, 0.15 * gap));
+      if (Math.abs(gap) > 25) s = best.s;                          /* far off: trust the GPS */
       else if ((s - st.s) * st.dir < 0) s = st.s;                  /* never backwards */
-      st.s = Math.max(0, Math.min(r.L, s)); st.v = v; st.t = f.t; st.dir = best.dir;
+      st.s = Math.max(0, Math.min(r.L, s)); st.v = vUse; st.t = f.t; st.dir = best.dir;
       /* lane change only when the GPS stays in the other lane for 2.5 s and is clearly in it */
       const g0 = this.laneGeo(r, st.dir, 0), u = st.dir > 0 ? best.d + r.w / 2 : r.w / 2 - best.d;
       const meas = Math.max(0, Math.min(r.ln - 1, Math.floor(u / g0.lw)));
@@ -222,7 +235,8 @@
     /* left of drawing direction is (tz, -tx) */
     return this.blend({ x: p.x + p.tz * lat, z: p.z - p.tx * lat, h: p.h, hd3: Math.atan2(p.tx * dir, p.tz * dir), k, lane: st.lane, road: r }, dt);
   };
-  /* when the answer changes suddenly (a new road chosen at a junction), slide there over half a second instead of jumping */
+  /* when the answer changes suddenly (a new road chosen at a junction), slide there over about a second instead of jumping
+     (v3, Nov 26: was half a second, which looked like a push forward after turns) */
   Track.prototype.blend = function (p, dt) {
     const r0 = this.raw, v = (this.st && this.st.v) || 0; dt = dt || 0.033;
     this.ox = this.ox || 0; this.oz = this.oz || 0; this.oy = this.oy || 0; this.oh = this.oh || 0;
@@ -233,7 +247,7 @@
       let dh = p.hd3 - r0.hd3; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); if (Math.abs(dh) > 0.12) this.oh -= dh;
     }
     this.raw = p;
-    const k = Math.exp(-dt / 0.4);
+    const k = Math.exp(-dt / 0.8);
     this.ox *= k; this.oz *= k; this.oy *= k; this.oh *= k;
     const q = Object.assign({}, p, { x: p.x + this.ox, z: p.z + this.oz, h: p.h + this.oy, hd3: p.hd3 + this.oh });
     /* (step 3) the car steers like a car: it follows its lane with a quarter-second of give, so a sharp corner in the map
