@@ -1,4 +1,4 @@
-/* TessyNav v2 — roads.js (v68 Nov 25: driveways from tiles v13, drawn without parking spaces)
+/* TessyNav v2 — roads.js (v69 Nov 25: driveways left out again until tested; v68 Nov 25: driveways from tiles v13, drawn without parking spaces)
    One road network for everything: drawing, the car's road matching and the car's height all use the same data
    (our own road tiles, from OpenStreetMap). No map-tile roads, no patches.
    - TN.net: roads and bridges with their real width/lanes, joined at every shared point (junctions)
@@ -33,6 +33,9 @@ TN.Net=function(){
 };
 TN.vkey=function(lng,lat){return lng.toFixed(6)+','+lat.toFixed(6);};
 TN.Net.prototype.makeWay=function(r,isBridge){
+  /* (v69 Nov 25, trip 22:19: driveways from the new road tiles pulled the car and the line off the street: left out
+     for now, exactly as before tonight, until they are tested on real trips; TN.DRIVEWAYS=true brings them back) */
+  if(!isBridge&&r[10]===2&&TN.DRIVEWAYS!==true) return null;
   const flat=r[8],pts=[],keys=[];
   for(let i=0;i<flat.length;i+=2){pts.push(TN.toLocal(flat[i],flat[i+1]));keys.push(TN.vkey(flat[i],flat[i+1]));}
   if(pts.length<2) return null;
