@@ -36,7 +36,7 @@ canvas{display:block}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-const PAGEV=7;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=8;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -91,10 +91,22 @@ MAT.bld=new THREE.ShaderMaterial({uniforms:Object.assign({sunDir:{value:new THRE
  void main(){vC=color;vEx=ex;vY=position.y;vec3 n=normalize(normal);vSh=0.72+0.28*max(dot(n,sunDir),0.0)+0.06*abs(n.x);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
  fragmentShader:`uniform float night;varying vec3 vC;varying float vEx;varying float vY;varying float vSh;
  float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+ float box(vec2 f,vec2 a,vec2 b){return step(a.x,f.x)*step(f.x,b.x)*step(a.y,f.y)*step(f.y,b.y);}
+ /* (step 2 buildings) each building has a facade style (from the map builder): 0 apartments, 1 shops on the ground floor,
+    2 office tower (ribbon windows), 3 house, 4 industrial. Windows are drawn here, no textures to download. */
  void main(){vec3 w=vC*vSh*(1.0-0.6*night)*mix(0.7,1.0,smoothstep(0.0,5.0,vY));if(vEx<0.0){gl_FragColor=vec4(w,1.0);return;}
-  vec2 c=vec2(floor(vEx/3.2),floor(vY/3.1));vec2 f=vec2(fract(vEx/3.2),fract(vY/3.1));
-  float win=step(0.2,f.x)*step(f.x,0.8)*step(0.3,f.y)*step(f.y,0.82)*step(1.0,vY);
-  float lit=step(h(c),0.38);vec3 day=mix(vec3(0.27,0.33,0.4),w,0.25);vec3 nt=mix(vec3(0.06,0.07,0.1),vec3(1.0,0.8,0.45),lit);
+  float st=floor(vEx/20000.0);float run=vEx-st*20000.0;
+  vec3 glass=vec3(0.27,0.33,0.4);float win=0.0;vec2 c=vec2(0.0);float lit=0.0;
+  if(st<0.5){vec2 g=vec2(run/3.2,vY/3.1);c=floor(g);win=box(fract(g),vec2(0.2,0.3),vec2(0.8,0.82))*step(1.0,vY);}
+  else if(st<1.5){
+    if(vY<4.2){vec2 g=vec2(run/3.0,0.0);c=vec2(floor(g.x),-1.0);float fx=fract(g.x);win=step(0.06,fx)*step(fx,0.94)*step(0.4,vY)*step(vY,3.6);glass=vec3(0.18,0.23,0.28);}
+    else{vec2 g=vec2(run/3.2,(vY-4.2)/3.1);c=floor(g)+vec2(0.0,2.0);win=box(fract(g),vec2(0.2,0.3),vec2(0.8,0.82));}
+    w*=mix(vec3(0.82),vec3(1.0),step(4.2,vY));}
+  else if(st<2.5){vec2 g=vec2(run/1.6,vY/3.6);c=vec2(floor(run/6.0),floor(g.y));vec2 f=fract(g);
+    win=step(0.06,f.x)*step(0.22,f.y)*step(f.y,0.9);glass=mix(vec3(0.3,0.4,0.5),vec3(0.55,0.68,0.8),smoothstep(0.0,120.0,vY))*0.85;}
+  else if(st<3.5){vec2 g=vec2(run/4.0,vY/2.8);c=floor(g);win=box(fract(g),vec2(0.35,0.35),vec2(0.65,0.78))*step(0.8,vY);}
+  else{vec2 g=vec2(run/6.0,0.0);c=vec2(floor(g.x),0.0);float fx=fract(g.x);win=step(0.15,fx)*step(fx,0.55)*step(4.0,vY)*step(vY,5.4);glass=vec3(0.32,0.36,0.4);}
+  lit=step(h(c),st>1.5&&st<2.5?0.28:0.34);vec3 day=mix(glass,w,0.22);vec3 nt=mix(vec3(0.06,0.07,0.1),vec3(1.0,0.8,0.45)*(st>1.5&&st<2.5?0.8:0.95),lit);
   gl_FragColor=vec4(mix(w,mix(day,nt,night),win),1.0);}`});
 sky();
 
