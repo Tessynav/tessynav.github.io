@@ -1,4 +1,4 @@
-/* TessyNav v2 — incidents.js
+/* TessyNav v2 — incidents.js (v25 Nov 25: speed-radar pill counting down to the next camera on your way)
    Road incidents with Rocco, TessyNav's raccoon mascot.
    - source: TomTom Traffic Incidents (all roads, city streets included): accidents, closures, road works, lane
      closures, broken-down vehicles, ice, fog, flooding... refreshed every 2 minutes around the car
@@ -254,7 +254,7 @@ TN.Incidents.prototype.wayAhead=function(car,maxL){
 };
 /* the closest incident on your way: within 12 m of the way ahead, and (for those that follow a road: traffic,
    closures, works) going in your direction; first alert at about 1.5 km at highway speed, 600 m in the city */
-TN.Incidents.prototype.ahead=function(car,moderate){
+TN.Incidents.prototype.ahead=function(car,moderate,only){
   const now=Date.now();
   if(car.v!=null&&(car.v||0)<2&&!(this.api.nav&&this.api.nav.active)) return null;   /* (no route and parked: no alerts) */
   const maxD=(car.v||0)>19.5?1500:600;
@@ -263,6 +263,7 @@ TN.Incidents.prototype.ahead=function(car,moderate){
   const P=W.pts,C=W.cum;let best=null;
   for(const it of this.list){
     if(it.mine) continue;   /* (your own reports: on the map, but no alert) */
+    if(only&&!only(it)) continue;
     if(it.cam&&it.dir>=0&&Math.abs((((car.hd||0)-it.dir)+540)%360-180)>75) continue;   /* (camera facing the other way) */
     if((it.kind==='jam'&&it.sev<2)!==!!moderate) continue;   /* (moderate traffic is checked on its own: said, not shown) */
     if(it.kind==='jam'&&it.pts.some(p=>Math.hypot(p[0]-car.x,p[1]-car.z)<40)) continue;   /* (already in that jam) */
@@ -340,6 +341,8 @@ TN.Incidents.prototype.update=function(car,lng,lat){
   /* the trip list or the route overview is open: alerts wait until it's closed */
   {const nv=this.api.nav;if(nv&&nv.ov&&nv.ov.style.display!=='none'){if(this.card.style.display!=='none') this.hide();return;}}
   const a=this.ahead(car),am=this.ahead(car,true);
+  /* (v Nov 25) the speed-radar pill: the next camera, radar zone or police report on your way, counting down */
+  if(now-(this.radT||0)>500){this.radT=now;try{this.radarPill(this.ahead(car,false,it=>TN.RADAR_KINDS[it.kind]));}catch(e){}}
   const life=this.life||(this.life=new Map());
   let showIt=false;
   if(a){
@@ -414,4 +417,22 @@ TN.Reports.prototype.fetch=async function(lng,lat){
         pts:[TN.toLocal(rn,rl)],ll:[rn,rl],desc:'',from:'',to:'',road:'',user:true,t:t,up:up,down:down,mine:g('uid')===(this.me||'')});}
     this.list=out;this.err=null;
   }catch(e){this.err='net';}
+};
+
+/* (Nov 25) the speed-radar pill: small, orange, under the turn card; "SPEED CAMERA · 400 m" */
+TN.RADAR_KINDS={camera:'Speed radar',speedred:'Speed radar',mobile:'Mobile radar',redlight:'Red-light camera',police:'Police'};
+TN.Incidents.prototype.radarPill=function(r){
+  if(typeof document==='undefined') return;
+  let p=document.getElementById('tn-radar');
+  if(!p){p=document.createElement('div');p.id='tn-radar';document.body.appendChild(p);
+    const st=document.createElement('style');st.textContent='#tn-radar{position:absolute;left:16px;top:76px;z-index:6;display:none;align-items:center;gap:10px;padding:9px 18px 9px 14px;border-radius:40px;background:rgb(var(--tn-panel-rgb) / .94);border:2px solid #f59e0b;color:#fcd34d;font:800 17px system-ui,sans-serif;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;box-shadow:0 0 16px rgba(245,158,11,.35),0 3px 10px rgba(0,0,0,.35);pointer-events:none}'+
+      '#tn-radar svg{width:24px;height:24px;flex:none}#tn-radar.near{background:#f59e0b;color:#2b1a08;animation:tnRad 1s ease-in-out infinite}@keyframes tnRad{50%{box-shadow:0 0 26px rgba(245,158,11,.8),0 3px 10px rgba(0,0,0,.35)}}'+
+      'body.tn-film.tnh-ui #tn-radar,body.tn-reporting #tn-radar{visibility:hidden}';
+    document.head.appendChild(st);}
+  if(!r||r.d==null){if(p.style.display!=='none') p.style.display='none';this.radH='';return;}
+  const tr=x=>TN.tr?TN.tr(x):x,d=r.d,dist=d<950?Math.max(50,Math.round(d/50)*50)+' m':(d/1000).toFixed(1)+' km';
+  const h='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><rect x="2.5" y="7" width="13" height="10" rx="2"/><path d="M15.5 10.5l6-3.5v10l-6-3.5"/></svg><span>'+TN.esc(tr(TN.RADAR_KINDS[r.it.kind]||'Speed camera'))+' \u00b7 <i style="font-style:normal;text-transform:none">'+dist+'</i></span>';
+  if(this.radH!==h){this.radH=h;p.innerHTML=h;}
+  p.classList.toggle('near',d<250);
+  if(p.style.display!=='flex'){p.style.display='flex';try{if(TN.layout) TN.layout.radarPos();}catch(e){}}
 };

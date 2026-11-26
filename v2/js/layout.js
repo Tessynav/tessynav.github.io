@@ -1,4 +1,4 @@
-/* MapKoon v2 — layout.js (v21 Nov 25: calmer screen (Record/Trips/GPS only in Developer mode, short credits, lighter buttons); v20: map credit line above the bottom bar; v19: badge lower, moon after sunset; v18: street name box stops before the search box; v17: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
+/* MapKoon v2 — layout.js (v22 Nov 25: round map buttons, End in the column, Rerouting card, speed-radar pill; v21 Nov 25: calmer screen (Record/Trips/GPS only in Developer mode, short credits, lighter buttons); v20: map credit line above the bottom bar; v19: badge lower, moon after sunset; v18: street name box stops before the search box; v17: weather as a see-through badge on the map while navigating; v16: weather inside the arrival box while navigating; v15: weather while navigating (button, Arrival tab, Rocco rain/snow warnings); v14: 7-day bars coloured by the real temperature; v13: coloured weather icons; v12: tighter fit in the normal (not full-screen) view; v11: Rocco weather tip, smaller Set Work; v10: weather card (today / 7 days), music shrinks for Home/Work/weather; v9: weather without GPS; v8: weather no longer hidden by the music's empty space; v7: Home/Work/weather when idle, scrolling song names; v1, Nov 22 2026: the cleaner main screen, "style 1")
    Everything you need while driving in clear places, in the same look as the settings:
    - one bar across the bottom: your speed and the limit on the left, the music in the middle, and while navigating
      the arrival time, "Faster?" and "End" on the right;
@@ -68,6 +68,14 @@ TN.Layout=function(){
   '#tn-rcol{position:absolute;right:16px;top:84px;width:68px;border-radius:18px;background:'+P+';z-index:4;display:none;box-shadow:0 2px 10px rgba(0,0,0,.25);pointer-events:none}'+
   'body.tn-intro #tn-rcol{opacity:0}'+
   'body.tn-l1 .tn-incol{right:22px!important;left:auto!important;bottom:auto!important;width:56px!important;height:56px!important;min-width:0!important;padding:0!important;border-radius:14px!important;background:transparent!important;box-shadow:none!important;border:0!important;margin:0!important;transform:none!important}'+
+  'body.tn-l1 :is(#tn-viewbtn,#tn-compass,#btn,#tn-mute,#tn-report,#tn-fbbtn,#tn-end).tn-incol{width:60px!important;height:60px!important;border-radius:50%!important;background:rgb(var(--tn-panel-rgb) / var(--tn-gA,.94))!important;border:1px solid rgba(255,255,255,.14)!important;box-shadow:0 4px 14px rgba(0,0,0,.4)!important;right:20px!important}'+
+  'html[data-theme="teslaDay"] body.tn-l1 :is(#tn-viewbtn,#tn-compass,#btn,#tn-mute,#tn-report,#tn-fbbtn,#tn-end).tn-incol{border-color:rgba(0,0,0,.1)!important;box-shadow:0 3px 10px rgba(0,0,0,.18)!important}'+
+  'body.tn-l1 #tn-end.tn-incol{bottom:auto!important;padding:0!important;font-size:0!important;color:transparent!important;text-shadow:none!important;background:#d64545 url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 6l12 12M18 6L6 18%27 stroke=%27white%27 stroke-width=%273%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") center/26px no-repeat!important;border-color:#d64545!important}'+
+  'body.tn-l1 #tn-end.tn-incol::after{content:"End";position:absolute;left:0;right:0;bottom:-15px;text-align:center;font:700 10px system-ui,sans-serif;color:var(--tn-text);text-shadow:0 1px 3px rgba(0,0,0,.8)}'+
+  /* the Rerouting card (over the turn card) and the speed-radar pill */
+  '#tn-rrt{position:absolute;z-index:9;display:none;align-items:center;gap:16px;padding:14px 18px;box-sizing:border-box;border-radius:18px;background:rgb(var(--tn-panel-rgb) / .97);color:var(--tn-text);font-family:system-ui,sans-serif;box-shadow:0 6px 22px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.12)}'+
+  '#tn-rrt .i{width:58px;height:58px;border-radius:15px;background:var(--tn-accent);display:flex;align-items:center;justify-content:center;flex:none}#tn-rrt .i svg{width:34px;height:34px}#tn-rrt.spin .i svg{animation:tnRr 1.1s linear infinite}@keyframes tnRr{to{transform:rotate(360deg)}}'+
+  '#tn-rrt b{display:block;font-size:26px;font-weight:800;line-height:1.1}#tn-rrt small{display:block;font-size:15px;color:var(--tn-sub);margin-top:3px}#tn-rrt.ok .i{background:#22a05a}'+
   'body.tn-l1 .tn-incol[data-lbl]{padding-bottom:12px!important;box-sizing:border-box}'+
   'body.tn-l1 .tn-incol[data-lbl]::after{content:attr(data-lbl);position:absolute;left:0;right:0;bottom:3px;text-align:center;font:600 10px system-ui,sans-serif;color:var(--tn-sub);text-shadow:none;letter-spacing:0}'+
   'body.tn-l1 #tn-fbbtn.tn-incol{font-size:10px!important;gap:0!important}'+
@@ -87,7 +95,7 @@ TN.Layout=function(){
   this.tick();setInterval(()=>this.tick(),700);
 };
 /* the right column: the map buttons that are showing right now, one under the other */
-TN.Layout.COL=[['tn-viewbtn',''],['tn-compass',''],['btn','Me'],['tn-mute',''],['tn-report','Alert'],['tn-fbbtn','']];
+TN.Layout.COL=[['tn-viewbtn',''],['tn-compass',''],['btn','Me'],['tn-mute',''],['tn-report','Alert'],['tn-fbbtn',''],['tn-end','']];
 TN.Layout.prototype.tick=function(){
   if(!this.on) return;
   const wide=innerWidth>=760;
@@ -144,8 +152,9 @@ TN.Layout.prototype.tick=function(){
     const cs=getComputedStyle(b),shown=cs.display!=='none'&&cs.visibility!=='hidden'&&!b.hidden;
     if(!wide){if(b.classList.contains('tn-incol')){b.classList.remove('tn-incol');b.style.top='';b.removeAttribute('data-lbl');}continue;}
     if(!shown){continue;}
-    b.classList.add('tn-incol');if(lbl) b.setAttribute('data-lbl',lbl);b.style.top=y+'px';y+=60;n++;}
-  this.rcol.style.display=wide&&n?'block':'none';this.rcol.style.height=(n*60+12)+'px';
+    b.classList.add('tn-incol');if(lbl) b.setAttribute('data-lbl',lbl);b.style.top=(y+(id==='tn-end'?6:0))+'px';y+=70;n++;}
+  this.rcol.style.display='none';   /* (v22: round buttons, no panel behind them) */
+  try{this.radarPos();}catch(e){}
   this.bbar.style.display=wide?'block':'none';
 };
 TN.Layout.prototype.quickFill=function(){
@@ -330,3 +339,30 @@ TN.Layout.prototype.wxDraw=function(){
 };
 /* starts once the app has set itself up (its buttons exist) */
 (function(){if(typeof document==='undefined') return;let n=0;const go=()=>{if(document.body&&document.body.classList.contains('tn-app')){if(!TN.layout) TN.layout=new TN.Layout();return;}if(++n<200) setTimeout(go,150);};go();})();
+
+/* (v22) Rerouting: a big card over the turn card while a new route is being found, then "New route" for a moment */
+TN.rrCard=function(st){
+  if(typeof document==='undefined') return;
+  let c=document.getElementById('tn-rrt');const tr=x=>TN.tr?TN.tr(x):x;
+  if(!c){c=document.createElement('div');c.id='tn-rrt';document.body.appendChild(c);}
+  clearTimeout(TN.rrT);
+  if(!st){c.style.display='none';return;}
+  const ic=st===2?'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+    :'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/></svg>';
+  c.className=st===2?'ok':'spin';
+  c.innerHTML='<div class="i">'+ic+'</div><div><b>'+tr(st===2?'New route':'Rerouting')+'</b><small>'+tr(st===2?'Arrival time updated':'Finding a new route \u00b7 arrival time updating')+'</small></div>';
+  /* same place and width as the turn card (top left); on its own at the top when that card isn't there */
+  const k=window.TN_UIK||1,b=document.getElementById('tn-bar'),r=b&&getComputedStyle(b).display!=='none'?b.getBoundingClientRect():null;
+  if(r&&r.width){c.style.left=r.left/k+'px';c.style.top=r.top/k+'px';c.style.width=r.width/k+'px';c.style.minHeight=r.height/k+'px';}
+  else{c.style.left='16px';c.style.top='16px';c.style.width='min(430px,calc(100vw - 150px))';c.style.minHeight='';}
+  c.style.display='flex';
+  TN.rrT=setTimeout(()=>{c.style.display='none';},st===2?2200:20000);
+};
+/* (v22) the speed-radar pill sits under the turn card while navigating, under the street name otherwise */
+TN.Layout.prototype.radarPos=function(){
+  const p=document.getElementById('tn-radar');if(!p||p.style.display==='none') return;
+  const k=window.TN_UIK||1,B=document.body;
+  let el=null;for(const id of (B.classList.contains('tn-routing')?['tn-bar','status']:['status'])){const e=document.getElementById(id);if(e&&getComputedStyle(e).display!=='none'&&e.getBoundingClientRect().width){el=e;break;}}
+  const r=el?el.getBoundingClientRect():null;
+  p.style.left=(r?r.left/k:16)+'px';p.style.top=(r?r.bottom/k+12:76)+'px';
+};

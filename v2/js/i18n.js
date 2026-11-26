@@ -1,4 +1,4 @@
-/* MapKoon v2 — i18n.js (v1; v14: French as spoken in Québec, the default for French)
+/* MapKoon v2 — i18n.js (v36: Rerouting card, speed radar; v1; v14: French as spoken in Québec, the default for French)
    French for the whole app. The app is written in English; when the language setting is French, every text the app
    puts on screen is swapped for its French version as it appears (a watcher on the page), and spoken instructions go
    through the same translation with a French voice. Texts with numbers or names inside ("In 300 metres, turn right
@@ -109,7 +109,7 @@ const D={
   'Thanks! Rocco passed it on.':'Merci! Rocco l’a transmis.','Could not send right now':'Envoi impossible pour le moment',
   'Language':'Langue','this car':'cette voiture','rainbow road':'route arc-en-ciel','Fun mode off':'Mode amusant désactivé',
   /* alerts */
-  'School zone':'Zone scolaire','Railway crossing':'Passage à niveau','Speed camera':'Radar photo','Speed and red-light camera':'Radar photo et feu rouge',
+  'School zone':'Zone scolaire','Railway crossing':'Passage à niveau','Speed camera':'Radar photo','Mobile radar':'Radar mobile','Speed radar':'Radar photo','Rerouting':'Recalcul','Finding a new route \u00b7 arrival time updating':'Nouvel itinéraire en cours \u00b7 heure d’arrivée à jour bientôt','New route':'Nouvel itinéraire','Arrival time updated':'Heure d’arrivée mise à jour','Speed and red-light camera':'Radar photo et feu rouge',
   'Red-light camera':'Caméra de feu rouge','Mobile radar zone':'Zone de radar mobile','Standstill':'Circulation arrêtée','Heavy traffic':'Circulation dense',
   'Moderate traffic':'Circulation ralentie','Pothole':'Nid-de-poule','Accident':'Accident','Fog':'Brouillard','Danger on the road':'Danger sur la route',
   'Heavy rain':'Forte pluie','Ice':'Glace','Lane closed':'Voie fermée','Road closed':'Route fermée','Road works':'Travaux','Strong wind':'Vents forts',

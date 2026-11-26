@@ -1,4 +1,4 @@
-/* MapKoon v2 — nav.js  (navigation, part 1) — v124, Nov 21: smooth direction in corners; car height on slopes
+/* MapKoon v2 — nav.js  (navigation, part 1) — v151 Nov 25: big Rerouting card; v124, Nov 21: smooth direction in corners; car height on slopes
    - search: results as you type (Photon, nearest first), recent destinations when the box is empty
    - route: OSRM (fastest by car), overview with time / distance / arrival, then Go or Cancel
    - the route as a blue line laid on the 3D roads (bridges included), trimmed behind the car
@@ -1513,7 +1513,7 @@ TN.Nav.prototype.routeDist=function(x,z){
 };
 TN.Nav.prototype.end=function(why){
   if(why==='arrived') TN.arrivedAt=Date.now();   /* (the parking rules show right after arriving) */
-  TN.navActive=false;TN.routeNear=null;TN.blink=0;this.blk=null;try{this.wx=null;this.wxSaid={};this.wxChip(null);this.bar.classList.remove('slim');}catch(e){}try{this.clearAlts();}catch(e){}this.alts=null;
+  TN.navActive=false;TN.routeNear=null;TN.blink=0;try{if(TN.rrCard) TN.rrCard(0);}catch(e){}this.blk=null;try{this.wx=null;this.wxSaid={};this.wxChip(null);this.bar.classList.remove('slim');}catch(e){}try{this.clearAlts();}catch(e){}this.alts=null;
   /* moments flagged on the way: Rocco offers to add details, after his arrival animation */
   if(TN.fb) setTimeout(()=>{try{TN.fb.afterTrip();}catch(e){}},why==='arrived'?10500:2500);
   this.note('end',{why:typeof why==='string'?why:'button',at:this.route?Math.round(this.route.cum[this.idx]||0):null,left:this.route?Math.round(this.route.L-(this.route.cum[this.idx]||0)):null},true);
@@ -1764,8 +1764,11 @@ TN.Nav.prototype.reroute=async function(){
   if(this.mat) this.mat.opacity=0.25;
   this.note('reroute',{off:Math.round(this.lastOff||0)},true);
   if(TN.voice) TN.voice.say('Recalculating',true);
-  const L0=this.route?this.route.L:0;
+  try{if(TN.rrCard) TN.rrCard(1);}catch(e){}
+  const L0=this.route?this.route.L:0,t0=Date.now();
   try{await this.plan(true);}catch(e){}
+  /* (the card stays at least 1.5 s so it can be read, then "New route" for 2 s, or goes away if none was found) */
+  {const ok=!!this.route&&this.active;setTimeout(()=>{try{if(TN.rrCard) TN.rrCard(ok&&this.active?2:0);}catch(e){}},Math.max(0,1500-(Date.now()-t0)));}
   this.note('rerouted',{ok:!!this.route&&this.route.L!==L0,km:this.route?+(this.route.L/1000).toFixed(2):null});
   if(this.mat) this.mat.opacity=0.85;
   this.rerouting=false;this.pi=0;this.ps=null;this.idx=0;this.latS=null;this.latD=null;this.latGo=false;this.gdH=[];
