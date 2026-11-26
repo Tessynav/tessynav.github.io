@@ -1,4 +1,4 @@
-/* TessyNav v2 — buildings.js
+/* TessyNav v2 — buildings.js (v36 Nov 25: fix, buildings were not drawn at all in v35)
    Detailed buildings around the car (about 1.1 km each way; steps back to 600 m if the screen gets slow), on top of the map's
    plain buildings further away. A building cut in pieces by the map tiles is styled as the whole building:
    - houses and small buildings get a pitched (hip) roof; larger buildings a flat roof with a low parapet
@@ -218,7 +218,7 @@ TN.Buildings.prototype.addBuilding=function(G,b,J){
      windows and a roof) a footprint under 40 m2 is a shed, kiosk or electrical box: low, flat, plain */
   /* (Nov 25, trip 17:10 in a DIX30 parking lot: the car was drawn inside the shops, GPS bouncing off the walls) the
      ground floor of each building is remembered on a 25 m grid, so the car can be kept outside it (TN.outOfBuilding) */
-  if(bot<1&&area>=40){const F=TN.FOOT||(TN.FOOT=new Map());let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
+  if(b.B<1&&area>=40){const F=TN.FOOT||(TN.FOOT=new Map());let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of ring){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
     const e={r:ring,x0:x0,x1:x1,z0:z0,z1:z1};for(let gx=Math.floor(x0/25);gx<=Math.floor(x1/25);gx++) for(let gz=Math.floor(z0/25);gz<=Math.floor(z1/25);gz++){const k=gx+','+gz;let L=F.get(k);if(!L){L=[];F.set(k,L);}if(L.length<40&&!L.some(q=>q.r===ring)) L.push(e);}
     if(F.size>60000){let n=0;for(const k of F.keys()){F.delete(k);if(++n>15000) break;}}}
   const tiny=area<40&&!(b.m&&b.m.roof>0);
