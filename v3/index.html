@@ -137,7 +137,7 @@ TN.Rec.prototype.saved=function(){try{const s=localStorage.getItem(RKEY);return 
 const v2name=TN.up.name;TN.up.name=t=>v2name(t).replace(/-v2$/,'-v3');
 let msgT=0;function msg(t,ms){const m=document.getElementById('msg');m.textContent=t;m.hidden=!t;msgT=ms?performance.now()+ms:0;}
 async function uploadTrip(trip){msg('Uploading your drive…');
-  try{const n=await TN.up.upload(trip);try{localStorage.removeItem(RKEY);}catch(e){}msg('Drive uploaded ✓ ('+n.replace('trip-','')+')',6000);}
+  try{const n=await TN.up.upload(trip);try{localStorage.removeItem(RKEY);}catch(e){}msg('Drive uploaded ✓ '+n,20000);}
   catch(e){msg('Not uploaded: '+e.message+' It is kept in this browser; tap Record → Upload later.',9000);}}
 document.getElementById('bRec').onclick=e=>{const b=e.target;
   if(rec.rec){const trip=rec.stop();b.classList.remove('rec');b.textContent='● Record';if(trip&&trip.g.length>20) uploadTrip(trip);else msg('Drive too short, not uploaded.',4000);return;}
