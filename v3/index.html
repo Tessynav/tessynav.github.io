@@ -27,7 +27,7 @@ canvas{display:block}
 <div id="msg" class="hud" hidden></div>
 <div id="load" class="hud">Loading the map…</div>
 <div id="cr">© OpenStreetMap contributors · Overture Maps Foundation · Ville de Montréal (CC BY 4.0)</div>
-<script src="lanes.js?v=4"></script>   <!-- (raise the number each time lanes.js changes, so the car never keeps an old copy) -->
+<script src="lanes.js?v=5"></script>   <!-- (raise the number each time lanes.js changes, so the car never keeps an old copy) -->
 <script src="../v2/js/rec.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
 <script type="module">
@@ -36,7 +36,7 @@ canvas{display:block}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-const PAGEV=8;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=9;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -221,11 +221,13 @@ async function start(){
   try{const g=await new GLTFLoader().loadAsync('../model3.glb');car=g.scene;const b=new THREE.Box3().setFromObject(car),s=b.getSize(new THREE.Vector3());const k=4.7/Math.max(s.x,s.z);car.scale.setScalar(k);
     const b2=new THREE.Box3().setFromObject(car);car.position.y=-b2.min.y;const w=new THREE.Group();w.add(car);car=w;}
   catch(e){car=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.4,4.6),new THREE.MeshLambertMaterial({color:0xeeeeee}));car.geometry.translate(0,0.7,0);}
-  const beamG=new THREE.PlaneGeometry(9,30);beamG.rotateX(-Math.PI/2);beamG.translate(0,0.25,-17.5);
+  const beamG=new THREE.PlaneGeometry(9,30);beamG.rotateX(-Math.PI/2);beamG.translate(0,0.5,-17.5);
   const beamM=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:U,
     vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`uniform float night;varying vec2 vU;void main(){float along=vU.y;float w=0.18+0.32*along;float x=abs(vU.x-0.5);
       float a=smoothstep(w,w*0.4,x)*smoothstep(0.0,0.12,along)*smoothstep(1.0,0.5,along);gl_FragColor=vec4(vec3(1.0,0.95,0.82)*a*0.42*night,1.0);}`});
+  /* (the road layers are nudged toward the camera so they don't flicker; the beam is nudged further, so it's never hidden) */
+  beamM.polygonOffset=true;beamM.polygonOffsetFactor=-10;beamM.polygonOffsetUnits=-20;
   const beam=new THREE.Mesh(beamG,beamM);beam.renderOrder=7;car.add(beam);
   const tailM=new THREE.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:0});
   for(const sx of [-0.62,0.62]){const t=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.12,0.05),tailM);t.position.set(sx,0.95,2.36);car.add(t);}
@@ -237,13 +239,17 @@ async function start(){
   blob.renderOrder=6;car.add(blob);S.add(car);
   document.getElementById('load').remove();startGps();loop();
   const old=rec.saved();if(old&&old.g&&old.g.length>50) msg('A recorded drive isn’t uploaded yet: tap Record to upload it.',9000);}
-let last=performance.now(),fpsT=0,frames=0,fps=0,camHd=0,rawHd=0,showStats=false;const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
+let last=performance.now(),fpsT=0,frames=0,fps=0,camHd=0,rawHd=0,showStats=false,pitch=0,pitchT=0,lastPH=null;const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
 function rawPose(){/* plain GPS: the last fix, moved on at its speed for up to 1.5 s */
   const f=lastFix,dt=Math.min(1.5,now()-f.t);if(f.hd!=null&&f.v>1) rawHd=Math.PI-f.hd*Math.PI/180;
   const h=f.hd!=null?f.hd*Math.PI/180:0,m=f.hd!=null?f.v*dt:0;return {x:f.x+Math.sin(h)*m,z:f.z-Math.cos(h)*m,h:0,hd3:rawHd};}
 function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.min(0.1,(t-last)/1000);last=t;
   const pl=lock&&TR.st?TR.pose(now(),dt):null;const p=pl||rawPose();
-  if(car){car.position.set(p.x,(p.h||0)+0.06,p.z);car.rotation.y=p.hd3+Math.PI;if(car.userData.tail) car.userData.tail.opacity=night?1:0;}
+  /* (page 9, Nov 26 17:06 drive: on the bridge's slopes the headlights vanished into the road) the car tilts with the road:
+     the slope comes from how its height changes as it moves, smoothed so small steps don't shake it */
+  if(lastPH){const d=Math.hypot(p.x-lastPH.x,p.z-lastPH.z);if(d>0.4){const sl=((p.h||0)-lastPH.h)/d;pitchT=Math.atan(Math.max(-0.15,Math.min(0.15,sl)));lastPH={x:p.x,z:p.z,h:p.h||0};}}else lastPH={x:p.x,z:p.z,h:p.h||0};
+  pitch+=(pitchT-pitch)*Math.min(1,dt*3);
+  if(car){car.position.set(p.x,(p.h||0)+0.06,p.z);car.rotation.order='YXZ';car.rotation.y=p.hd3+Math.PI;car.rotation.x=pitch;if(car.userData.tail) car.userData.tail.opacity=night?1:0;}
   document.getElementById('spd').firstChild.nodeValue=Math.round((lastFix.v||0)*3.6);
   let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
   if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
