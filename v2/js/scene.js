@@ -1,4 +1,4 @@
-/* TessyNav v2 — scene.js (v71 Nov 25: grey city ground, green only for real grass and parks; v70: parked or slow, a wider see-through cone so a building next to the car never fills the screen)
+/* TessyNav v2 — scene.js (v72 Nov 25: back to the v70 ground (grass), the grey ground hid the roads at night; v70 Nov 25: parked or slow, a wider see-through cone so a building next to the car never fills the screen)
    The map (OpenFreeMap) for ground, water, parks and buildings; our own 3D layer for roads, bridges and the car.
    Road areas are built once and kept (one area at a time so nothing freezes); areas far behind are deleted.
    Roads have no lighting to compute: their colors are baked in, with a gentle darkening at night. */
@@ -483,9 +483,8 @@ TN.Scene.prototype.styleMap=function(){
     try{
       /* the land the map has nothing on (beside highways and ramps, empty lots, the space between roads): grass, with
          the same natural texture as the parks, like Codriver; city blocks keep their light ground (the map marks those) */
-      /* (Nov 25, like Codriver: plain grey city ground everywhere; green only where the map really has grass, a park or a
-         field. Before, every bit of land with nothing on it was grass, so parking lots and shop areas sat in lawns) */
-      if(l.type==='background'){const G='#c8c7bb',gc=TN.seasonC(G);map.setPaintProperty(l.id,'background-color',gc);this.dayPaint.push([l.id,'background-color',gc,TN.NIGHTCOL[G]||TN.mix(G,'#1a2030',0.8)]);}
+      if(l.type==='background'){const gc=TN.seasonC('#6cc24a');map.setPaintProperty(l.id,'background-color',gc);this.dayPaint.push([l.id,'background-color',gc,TN.NIGHTCOL['#6cc24a']||TN.mix('#6cc24a','#1a2030',0.8)]);
+        try{const gname=this.grassImg('#6cc24a',gc);if(gname){map.setPaintProperty(l.id,'background-pattern',gname);this.texLayers=this.texLayers||[];if(!this.texLayers.some(t=>t[1]==='#6cc24a'&&t[0]===l.id)) this.texLayers.push([l.id,'#6cc24a']);}}catch(e){}}
       else if(l.type==='fill'){
         let c=null;
         if(/water|ocean|river|lake|basin|reservoir/.test(id)) c='#2f9fd6';
@@ -493,6 +492,7 @@ TN.Scene.prototype.styleMap=function(){
         else if(/park|garden|playground|nature|cemetery/.test(id)) c='#5dbb44';
         else if(/grass|meadow|scrub|farmland|landcover|pitch|golf|village_green|recreation/.test(id)) c='#6cc24a';
         else if(/sand|beach/.test(id)) c='#e6d39b';
+        else if(/commercial|retail/.test(id)) c='#6cc24a';   /* (Nov 24: shop and office land is mostly lawns between the lots; see tn-city) */
         else if(/residential|commercial|industrial|retail|school|hospital|railway|airport|parking|landuse/.test(id)) c='#c8c7bb';
         if(c){const sc=TN.seasonC(c);map.setPaintProperty(l.id,'fill-color',sc);solid(l.id,'fill-opacity');try{map.setPaintProperty(l.id,'fill-outline-color',sc);}catch(e){}
           this.dayPaint.push([l.id,'fill-color',sc,TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);
@@ -511,7 +511,7 @@ TN.Scene.prototype.styleMap=function(){
      roads are drawn on top in their own colours anyway, so the rest now shows as grass, like the lawns it mostly is) */
   try{if(!map.getLayer('tn-city')&&map.getSource('openmaptiles')){const c='#c8c7bb',before=map.getLayer('park')?'park':(map.getLayer('landcover_wood')?'landcover_wood':undefined);
     map.addLayer({id:'tn-city',type:'fill',source:'openmaptiles','source-layer':'landuse',minzoom:12,
-      filter:['match',['get','class'],['residential','industrial','garages','railway','commercial','retail'],true,false],
+      filter:['match',['get','class'],['residential','industrial','garages','railway'],true,false],
       paint:{'fill-color':TN.seasonC(c),'fill-opacity':['interpolate',['linear'],['zoom'],12,0,13,1],'fill-antialias':false}},before);
     this.dayPaint.push(['tn-city','fill-color',TN.seasonC(c),TN.NIGHTCOL[c]||TN.mix(c,'#1a2030',0.8)]);}}catch(e){}
   /* (Nov 21, a test: real aerial photos on the ground instead of the painted grass and city ground, from Mapbox
@@ -664,7 +664,7 @@ TN.Scene.prototype.applyNight=function(nt){
   this.setNight(nt);
 };
 /* buildings further away (the map's own): coloured by height like the detailed ones, instead of plain cement */
-TN.NIGHTCOL={'#c2c3b6':'#3a3f48','#c8c7bb':'#5c6068','#2f9fd6':'#0e2a44','#3f9a3a':'#173320','#5dbb44':'#1e3d25',
+TN.NIGHTCOL={'#c2c3b6':'#3a3f48','#c8c7bb':'#3d424b','#2f9fd6':'#0e2a44','#3f9a3a':'#173320','#5dbb44':'#1e3d25',
   '#6cc24a':'#21412a','#e6d39b':'#45433a'};
 /* (Nov 24) the soft night: instead of near-black, the city at night is a calm blue-violet, like Mapbox's night light:
    the sky deep indigo with a soft violet glow over the city on the horizon, the ground, grass and water in cool blue
