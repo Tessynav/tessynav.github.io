@@ -14,6 +14,8 @@ canvas{display:block}
 #ctl button.on{background:var(--accent);color:#2b1a08}
 #spd{left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));font:800 34px system-ui}
 #spd small{font:600 14px system-ui;color:var(--sub);margin-left:4px}
+#ctl button.rec{background:#c62828;color:#fff}
+#msg{left:50%;top:calc(16px + env(safe-area-inset-top,0px));transform:translateX(-50%);font-weight:600;font-size:14px;max-width:min(520px,calc(100% - 300px))}
 #cr{right:8px;bottom:6px;font-size:11px;color:#cfd3da;background:rgba(0,0,0,.45);padding:3px 8px;border-radius:6px;position:absolute}
 #load{left:50%;top:45%;transform:translate(-50%,-50%);font-weight:600}
 @media (max-width:560px){#ctl{bottom:70px;flex-wrap:wrap;justify-content:center;width:calc(100% - 32px)}#stats{display:none}}
@@ -21,10 +23,12 @@ canvas{display:block}
 <div id="top" class="hud">MapKoon v3 <span style="color:var(--accent)">test</span><small id="gps">Waiting for GPS…</small></div>
 <div id="stats" class="hud">…</div>
 <div id="spd" class="hud">0<small>km/h</small></div>
-<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bStats">Info</button></div>
+<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bRec">● Record</button><button id="bStats">Info</button></div>
+<div id="msg" class="hud" hidden></div>
 <div id="load" class="hud">Loading the map…</div>
 <div id="cr">© OpenStreetMap contributors · Overture Maps Foundation · Ville de Montréal (CC BY 4.0)</div>
 <script src="lanes.js"></script>
+<script src="../v2/js/rec.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
 <script type="module">
 /* MapKoon v3 test page: the ready-made map from ../mapkoon-map/ (built on GitHub from OpenStreetMap, Overture and the
@@ -123,6 +127,27 @@ function want(x,z){if(!IDX) return;const T=IDX.T,tx=Math.floor(x/T),tz=Math.floo
   for(let a=tx-1;a<=tx+1;a++) for(let b=tz-1;b<=tz+1;b++) loadNet(a+'_'+b);
   for(const [k,g] of loaded){if(!g) continue;const [a,b]=k.split('_').map(Number);
     if(Math.hypot((a+0.5)*T-x,(b+0.5)*T-z)>r+600){S.remove(g);g.traverse(o=>{if(o.geometry&&!o.isInstancedMesh&&![pole,lampG,boxG,stopG,thin,trunkG,crownG,pineG,poolG].includes(o.geometry)) o.geometry.dispose();});loaded.delete(k);}}}
+/* ------------------------------------------------------------------ recording: the same trip format, encryption and
+   upload as v2 (uses the upload setup already saved in this browser). Kept in this browser every 20 s until uploaded. */
+const rec=new TN.Rec();const RKEY='tn3_rec';
+TN.Rec.prototype.save=function(){if(!this.rec) return;this.rec.dur=this.t();
+  try{localStorage.setItem(RKEY,JSON.stringify(Object.assign({},this.rec,{shots:undefined})));}
+  catch(e){try{localStorage.setItem(RKEY,JSON.stringify(Object.assign({},this.rec,{shots:undefined,g:this.rec.g.slice(-20000),f:this.rec.f.slice(-6000)})));}catch(e2){}}};
+TN.Rec.prototype.saved=function(){try{const s=localStorage.getItem(RKEY);return s?JSON.parse(s):null;}catch(e){return null;}};
+const v2name=TN.up.name;TN.up.name=t=>v2name(t).replace(/-v2$/,'-v3');
+let msgT=0;function msg(t,ms){const m=document.getElementById('msg');m.textContent=t;m.hidden=!t;msgT=ms?performance.now()+ms:0;}
+async function uploadTrip(trip){msg('Uploading your drive…');
+  try{const n=await TN.up.upload(trip);try{localStorage.removeItem(RKEY);}catch(e){}msg('Drive uploaded ✓ ('+n.replace('trip-','')+')',6000);}
+  catch(e){msg('Not uploaded: '+e.message+' It is kept in this browser; tap Record → Upload later.',9000);}}
+document.getElementById('bRec').onclick=e=>{const b=e.target;
+  if(rec.rec){const trip=rec.stop();b.classList.remove('rec');b.textContent='● Record';if(trip&&trip.g.length>20) uploadTrip(trip);else msg('Drive too short, not uploaded.',4000);return;}
+  const old=rec.saved();if(old&&old.g&&old.g.length>50){uploadTrip(old);return;}   /* (a drive left from before: upload it first) */
+  rec.start();rec.rec.app='v3';rec.rec.info.view='v3';rec.rec.info.map=IDX.built;b.classList.add('rec');b.textContent='■ Stop';msg('Recording ●',2500);};
+let recLast=0,worst=0;
+function recFrame(p,pl){if(!rec.rec) return;const t=performance.now();if(t-recLast<200) return;recLast=t;
+  const lon=p.x/IDX.kx+IDX.lon0,lat=IDX.lat0-p.z/IDX.ky,r=v=>Math.round(v*10)/10;
+  const hd=((Math.PI-p.hd3)*180/Math.PI%360+360)%360,road=pl&&pl.road;
+  rec.rec.f.push([rec.t(),+lat.toFixed(7),+lon.toFixed(7),r(hd),pl?1:0,road?road.c+(road.s?'/'+road.s:''):'',pl?pl.lane||0:0,follow?1:0,0,(p.h||0)>0.5?1:0,r(p.h||0),'v3',road?road.w:0]);}
 /* ------------------------------------------------------------------ live GPS -> lane lock */
 const toL=(lon,lat)=>[(lon-IDX.lon0)*IDX.kx,-(lat-IDX.lat0)*IDX.ky];
 let car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,acc=null,gpsT=0;
@@ -132,7 +157,7 @@ const now=()=>performance.now()/1000;
 function onFix(c){const q=toL(c.longitude,c.latitude);acc=c.accuracy;gpsT=now();
   const f={t:now(),x:q[0],z:q[1],v:c.speed==null||isNaN(c.speed)?(lastFix?lastFix.v:0):c.speed,hd:c.heading==null||isNaN(c.heading)?null:c.heading};
   want(f.x,f.z);
-  if(acc<80) TR.fix(f);lastFix=f;
+  rec.gps(c);if(acc<80) TR.fix(f);lastFix=f;
   try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
 function startGps(){
   if(!navigator.geolocation){document.getElementById('gps').textContent='No GPS in this browser';return;}
@@ -157,7 +182,8 @@ async function start(){
   const tailM=new THREE.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:0});
   for(const sx of [-0.62,0.62]){const t=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.12,0.05),tailM);t.position.set(sx,0.95,2.36);car.add(t);}
   car.userData.tail=tailM;S.add(car);
-  document.getElementById('load').remove();startGps();loop();}
+  document.getElementById('load').remove();startGps();loop();
+  const old=rec.saved();if(old&&old.g&&old.g.length>50) msg('A recorded drive isn’t uploaded yet: tap Record to upload it.',9000);}
 let last=performance.now(),fpsT=0,frames=0,fps=0,camHd=0,rawHd=0,showStats=false;const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
 function rawPose(){/* plain GPS: the last fix, moved on at its speed for up to 1.5 s */
   const f=lastFix,dt=Math.min(1.5,now()-f.t);if(f.hd!=null&&f.v>1) rawHd=Math.PI-f.hd*Math.PI/180;
@@ -169,8 +195,8 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
   let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
   if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
   else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
-  R.render(S,cam);
-  frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);frames=0;fpsT=t;const i=R.info.render;
+  R.render(S,cam);recFrame(p,pl);if(rec.rec) rec.shoot(R.domElement,null);worst=Math.max(worst,dt*1000);if(msgT&&t>msgT){msg('');msgT=0;}
+  frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);rec.second(Math.round(fps),worst);worst=0;frames=0;fpsT=t;const i=R.info.render;
     const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
     document.getElementById('gps').textContent=!gpsT?'Waiting for GPS…':(now()-gpsT>10?'GPS lost':'GPS '+Math.round(acc)+' m')+(HAS.has(k)?'':' · outside the map')+(lock&&!pl&&gpsT?' · finding the road':'');
     const st=document.getElementById('stats');st.style.display=showStats?'':'none';
@@ -182,4 +208,3 @@ document.getElementById('bFollow').onclick=e=>{follow=!follow;e.target.classList
 window.V3={S,R,cam,onFix,look:(cx,cy,cz,tx,tz)=>{follow=false;ctrl.enabled=true;ctrl.target.set(tx,0,tz);cam.position.set(cx,cy,cz);},info:()=>R.info.render,net:()=>NET};
 start();
 </script></body></html>
-
