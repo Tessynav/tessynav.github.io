@@ -1,1 +1,185 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MapKoon v3</title>
+<style>
+:root{--panel:rgba(28,30,34,.9);--text:#f3f1ec;--sub:#b9b6ae;--accent:#e8913a;--bg:#1b2233;color-scheme:dark}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text)}
+canvas{display:block}
+.hud{position:absolute;background:var(--panel);border-radius:14px;padding:10px 14px;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+#top{left:calc(16px + env(safe-area-inset-left,0px));top:calc(16px + env(safe-area-inset-top,0px));font-weight:700;font-size:17px}
+#top small{display:block;font-weight:500;font-size:13px;color:var(--sub);margin-top:2px}
+#stats{right:calc(16px + env(safe-area-inset-right,0px));top:calc(16px + env(safe-area-inset-top,0px));font:600 12px ui-monospace,monospace;color:var(--sub);text-align:right;line-height:1.5}
+#ctl{left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:8px;padding:8px}
+#ctl button{border:0;border-radius:10px;padding:12px 16px;background:#3a3d44;color:var(--text);font:600 15px system-ui;cursor:pointer}
+#ctl button.on{background:var(--accent);color:#2b1a08}
+#spd{left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));font:800 34px system-ui}
+#spd small{font:600 14px system-ui;color:var(--sub);margin-left:4px}
+#cr{right:8px;bottom:6px;font-size:11px;color:#cfd3da;background:rgba(0,0,0,.45);padding:3px 8px;border-radius:6px;position:absolute}
+#load{left:50%;top:45%;transform:translate(-50%,-50%);font-weight:600}
+@media (max-width:560px){#ctl{bottom:70px;flex-wrap:wrap;justify-content:center;width:calc(100% - 32px)}#stats{display:none}}
+</style></head><body>
+<div id="top" class="hud">MapKoon v3 <span style="color:var(--accent)">test</span><small id="gps">Waiting for GPS…</small></div>
+<div id="stats" class="hud">…</div>
+<div id="spd" class="hud">0<small>km/h</small></div>
+<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bStats">Info</button></div>
+<div id="load" class="hud">Loading the map…</div>
+<div id="cr">© OpenStreetMap contributors · Overture Maps Foundation · Ville de Montréal (CC BY 4.0)</div>
+<script src="lanes.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
+<script type="module">
+/* MapKoon v3 test page: the ready-made map from ../mapkoon-map/ (built on GitHub from OpenStreetMap, Overture and the
+   City of Montréal), the live GPS of the car, and lane lock. Only the tiles near the car are downloaded. */
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+const Q=new URLSearchParams(location.search);
+const base=Q.get('data')||'../mapkoon-map/';
+const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+R.setPixelRatio(Math.min(devicePixelRatio,1.5));R.setSize(innerWidth,innerHeight);document.body.prepend(R.domElement);
+const S=new THREE.Scene();const cam=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,2.5,4000);
+addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();});
+const hemi=new THREE.HemisphereLight(0xdfe8ff,0x4a5a3a,0.85);S.add(hemi);const sun=new THREE.DirectionalLight(0xfff2dd,1.25);sun.position.set(-300,500,200);S.add(sun);
+/* night: from the clock (dark before 7 am and after 4:30 pm in late autumn), or the button */
+const hr=new Date().getHours()+new Date().getMinutes()/60;let night=Q.get('night')?Q.get('night')==='1':(hr<7||hr>16.5);
+const sky=()=>{const c=night?0x141c33:0x9cc4ec;R.setClearColor(c);S.fog=new THREE.Fog(c,600,1900);hemi.intensity=night?0.38:0.85;sun.intensity=night?0.15:1.0;U.night.value=night?1:0;document.getElementById('bNight').classList.toggle('on',night);};
+/* the ground under everything (the land the map has nothing on) */
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshLambertMaterial({color:0x6f8f5a}));ground.rotation.x=-Math.PI/2;S.add(ground);
+const U={night:{value:0}};
+const lam=c=>{const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});return m;};
+const MAT={ground:lam(),water:new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}),paved:lam(),road:lam(),drive:lam(),walk:lam(),paint:new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}),deck:lam()};
+/* flat layers sit a few cm apart; far away that's too little for the depth buffer, so each layer is also nudged
+   toward the camera in order (grass < parking < roads < sidewalks < paint): no more flickering stripes in the distance */
+[['water',-1],['ground',-2],['paved',-3],['road',-4],['walk',-5],['paint',-6]].forEach(([k,f])=>{MAT[k].polygonOffset=true;MAT[k].polygonOffsetFactor=f;MAT[k].polygonOffsetUnits=f*2;});
+/* buildings: lit walls with windows (lit at night), plain roofs */
+MAT.bld=new THREE.ShaderMaterial({uniforms:Object.assign({sunDir:{value:new THREE.Vector3(-0.4,0.8,0.3).normalize()}},U),vertexColors:true,side:THREE.DoubleSide,
+ vertexShader:`attribute float ex;varying vec3 vC;varying float vEx;varying float vY;varying float vSh;uniform vec3 sunDir;
+ void main(){vC=color;vEx=ex;vY=position.y;vec3 n=normalize(normal);vSh=0.72+0.28*max(dot(n,sunDir),0.0)+0.06*abs(n.x);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+ fragmentShader:`uniform float night;varying vec3 vC;varying float vEx;varying float vY;varying float vSh;
+ float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+ void main(){vec3 w=vC*vSh*(1.0-0.6*night);if(vEx<0.0){gl_FragColor=vec4(w,1.0);return;}
+  vec2 c=vec2(floor(vEx/3.2),floor(vY/3.1));vec2 f=vec2(fract(vEx/3.2),fract(vY/3.1));
+  float win=step(0.2,f.x)*step(f.x,0.8)*step(0.3,f.y)*step(f.y,0.82)*step(1.0,vY);
+  float lit=step(h(c),0.38);vec3 day=mix(vec3(0.27,0.33,0.4),w,0.25);vec3 nt=mix(vec3(0.06,0.07,0.1),vec3(1.0,0.8,0.45),lit);
+  gl_FragColor=vec4(mix(w,mix(day,nt,night),win),1.0);}`});
+sky();
+
+/* ------------------------------------------------------------------ tiles: only those near the car, unzipped by the browser */
+let IDX=null,HAS=new Set(),NETHAS=new Set();const loaded=new Map(),netDone=new Set(),retryAt=new Map();
+async function gunzip(url){
+  for(let a=0;a<3;a++){
+    try{const r=await fetch(url);if(r.status===404) return null;if(!r.ok) throw new Error(r.status);
+      return await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();}
+    catch(e){await new Promise(z=>setTimeout(z,800*(a+1)));}}
+  throw new Error('could not load '+url);}
+async function loadTile(tx,tz){const k=tx+'_'+tz;if(loaded.has(k)||(retryAt.get(k)||0)>performance.now()) return;loaded.set(k,null);
+  let buf;try{buf=await gunzip(base+'t/'+k+'.bin.gz');}catch(e){loaded.delete(k);retryAt.set(k,performance.now()+5000);return;}
+  if(!buf) return;
+  const dv=new DataView(buf);const hl=dv.getUint32(4,true);const hdr=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,8,hl)));
+  let o=8+hl;const pad=n=>n+((4-n%4)%4);const grp=new THREE.Group();
+  for(const L of hdr.layers){/* positions: 2 cm steps around the tile centre */
+    const q=hdr.q,ox=hdr.o[0],oz=hdr.o[1],S16=new Int16Array(buf,o,L.nv*3);o+=pad(L.nv*6);
+    const P=new Float32Array(L.nv*3);for(let i=0;i<L.nv*3;i+=3){P[i]=S16[i]*q+ox;P[i+1]=S16[i+1]*q;P[i+2]=S16[i+2]*q+oz;}
+    const C=new Uint8Array(buf,o,L.nv*3);o+=pad(L.nv*3);
+    let E;if(L.e){E=new Float32Array(buf,o,L.nv);o+=L.nv*4;}else E=new Float32Array(L.nv);
+    let I;if(L.i16){I=new Uint16Array(buf,o,L.ni);o+=pad(L.ni*2);}else{I=new Uint32Array(buf,o,L.ni);o+=L.ni*4;}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(P,3));g.setAttribute('color',new THREE.BufferAttribute(C,3,true));
+    if(L.name==='bld') g.setAttribute('ex',new THREE.BufferAttribute(E,1));g.setIndex(new THREE.BufferAttribute(I,1));g.computeVertexNormals();
+    const m=new THREE.Mesh(g,MAT[L.name]||MAT.road);m.renderOrder={ground:1,water:1,paved:2,road:3,walk:3,paint:4}[L.name]||5;grp.add(m);}
+  props(hdr.props,grp);
+  if(loaded.has(k)){S.add(grp);loaded.set(k,grp);}}
+/* the road network for lane lock comes in tiles too; they are added as the car gets near (each road once) */
+async function loadNet(k){if(netDone.has(k)||!NETHAS.has(k)) return;netDone.add(k);
+  try{const b=await gunzip(base+'n/'+k+'.json.gz');if(b) NET.add(JSON.parse(new TextDecoder().decode(b)).roads);}
+  catch(e){netDone.delete(k);}}
+/* street furniture, shared shapes */
+const pole=new THREE.CylinderGeometry(0.12,0.15,8,6);pole.translate(0,4,0);const poleM=new THREE.MeshLambertMaterial({color:0x40444a});
+const lampG=new THREE.SphereGeometry(0.45,8,6);const lampM=new THREE.MeshBasicMaterial({color:0xffe2a0});
+const boxG=new THREE.BoxGeometry(0.45,1.1,0.4);boxG.translate(0,4.6,0);const boxM=new THREE.MeshLambertMaterial({color:0x202226});
+const stopG=new THREE.CylinderGeometry(0.42,0.42,0.06,8);stopG.rotateX(Math.PI/2);stopG.translate(0,2.3,0);const stopM=new THREE.MeshBasicMaterial({color:0xc8202a});
+const thin=new THREE.CylinderGeometry(0.05,0.05,2.3,5);thin.translate(0,1.15,0);
+/* trees: a trunk and a low-poly crown, each tree a little different (size, lean of colour); pines as cones */
+const trunkG=new THREE.CylinderGeometry(0.16,0.24,2.6,5);trunkG.translate(0,1.3,0);const trunkM=new THREE.MeshLambertMaterial({color:0x5a4434});
+const crownG=new THREE.IcosahedronGeometry(2.4,0);crownG.scale(1,1.15,1);crownG.translate(0,4.6,0);const crownM=new THREE.MeshLambertMaterial({flatShading:true});
+const pineG=new THREE.ConeGeometry(1.9,6.5,7);pineG.translate(0,4.9,0);
+/* a pool of warm light under each street lamp, only at night */
+const poolG=new THREE.PlaneGeometry(16,16);poolG.rotateX(-Math.PI/2);poolG.translate(0,0.2,0);
+const poolM=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:U,
+  vertexShader:`varying vec2 vU;void main(){vU=uv*2.0-1.0;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.0);}`,
+  fragmentShader:`uniform float night;varying vec2 vU;void main(){float d=length(vU);float a=smoothstep(1.0,0.0,d);gl_FragColor=vec4(vec3(1.0,0.78,0.45)*a*a*0.55*night,1.0);}`});
+function props(list,grp){const by={lamp:[],light:[],stop:[],tree:[],pine:[]};for(const p of list) by[p[0]]&&by[p[0]].push(p);
+  const trees=by.tree.concat(by.pine);
+  if(trees.length){const M=new THREE.Matrix4(),Sc=new THREE.Vector3(),Qn=new THREE.Quaternion(),Ps=new THREE.Vector3(),C=new THREE.Color();
+    const tr=new THREE.InstancedMesh(trunkG,trunkM,trees.length);trees.forEach((p,i)=>{const k=0.8+(p[3]%40)/100;Sc.set(k,k,k);Ps.set(p[1],0,p[2]);M.compose(Ps,Qn,Sc);tr.setMatrixAt(i,M);});grp.add(tr);
+    for(const [arr,geo] of [[by.tree,crownG],[by.pine,pineG]]){if(!arr.length) continue;const cr=new THREE.InstancedMesh(geo,crownM,arr.length);
+      arr.forEach((p,i)=>{const k=0.75+(p[3]%45)/100;Sc.set(k,k,k);Qn.setFromAxisAngle(new THREE.Vector3(0,1,0),p[3]*0.37);Ps.set(p[1],0,p[2]);M.compose(Ps,Qn,Sc);cr.setMatrixAt(i,M);
+        const v=p[3]/99;C.setRGB(arr===by.pine?0.16+0.05*v:0.26+0.18*v,arr===by.pine?0.34+0.08*v:0.36+0.1*v,arr===by.pine?0.18:0.16+0.06*v);cr.setColorAt(i,C);});
+      Qn.identity();grp.add(cr);}}
+  if(by.lamp.length){const m=new THREE.InstancedMesh(poolG,poolM,by.lamp.length);const M=new THREE.Matrix4();by.lamp.forEach((p,i)=>{M.makeTranslation(p[1],0,p[2]);m.setMatrixAt(i,M);});m.renderOrder=5;grp.add(m);}
+  const inst=(geo,mat,arr,dy)=>{if(!arr.length) return;const m=new THREE.InstancedMesh(geo,mat,arr.length);const M=new THREE.Matrix4();arr.forEach((p,i)=>{M.makeTranslation(p[1],dy||0,p[2]);m.setMatrixAt(i,M);});grp.add(m);};
+  inst(pole,poleM,by.lamp);inst(lampG,lampM,by.lamp,8);inst(pole,poleM,by.light);inst(boxG,boxM,by.light);inst(thin,poleM,by.stop);inst(stopG,stopM,by.stop);}
+function want(x,z){if(!IDX) return;const T=IDX.T,tx=Math.floor(x/T),tz=Math.floor(z/T),r=1400;
+  for(let a=tx-3;a<=tx+3;a++) for(let b=tz-3;b<=tz+3;b++){const k=a+'_'+b;if(!HAS.has(k)) continue;
+    if(Math.hypot((a+0.5)*T-x,(b+0.5)*T-z)<r) loadTile(a,b);}
+  for(let a=tx-1;a<=tx+1;a++) for(let b=tz-1;b<=tz+1;b++) loadNet(a+'_'+b);
+  for(const [k,g] of loaded){if(!g) continue;const [a,b]=k.split('_').map(Number);
+    if(Math.hypot((a+0.5)*T-x,(b+0.5)*T-z)>r+600){S.remove(g);g.traverse(o=>{if(o.geometry&&!o.isInstancedMesh&&![pole,lampG,boxG,stopG,thin,trunkG,crownG,pineG,poolG].includes(o.geometry)) o.geometry.dispose();});loaded.delete(k);}}}
+/* ------------------------------------------------------------------ live GPS -> lane lock */
+const toL=(lon,lat)=>[(lon-IDX.lon0)*IDX.kx,-(lat-IDX.lat0)*IDX.ky];
+let car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,acc=null,gpsT=0;
+const ctrl=new OrbitControls(cam,R.domElement);ctrl.enabled=false;ctrl.maxPolarAngle=1.45;ctrl.screenSpacePanning=false;ctrl.maxDistance=2500;ctrl.minDistance=15;
+ctrl.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};ctrl.mouseButtons={LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
+const now=()=>performance.now()/1000;
+function onFix(c){const q=toL(c.longitude,c.latitude);acc=c.accuracy;gpsT=now();
+  const f={t:now(),x:q[0],z:q[1],v:c.speed==null||isNaN(c.speed)?(lastFix?lastFix.v:0):c.speed,hd:c.heading==null||isNaN(c.heading)?null:c.heading};
+  want(f.x,f.z);
+  if(acc<80) TR.fix(f);lastFix=f;
+  try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
+function startGps(){
+  if(!navigator.geolocation){document.getElementById('gps').textContent='No GPS in this browser';return;}
+  navigator.geolocation.watchPosition(p=>onFix(p.coords),e=>{document.getElementById('gps').textContent='GPS: '+(e.code===1?'permission refused':'not available');},
+    {enableHighAccuracy:true,maximumAge:0,timeout:20000});}
+async function start(){
+  IDX=await (await fetch(base+'index.json',{cache:'no-cache'})).json();
+  HAS=new Set(IDX.tiles.map(t=>t[0]+'_'+t[1]));NETHAS=new Set(IDX.net);
+  NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
+  /* until the first GPS fix: where the app last saw the car, or downtown */
+  let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
+  const q=toL(p0[0],p0[1]);lastFix={t:now(),x:q[0],z:q[1],v:0,hd:null};want(q[0],q[1]);
+  try{const g=await new GLTFLoader().loadAsync('../model3.glb');car=g.scene;const b=new THREE.Box3().setFromObject(car),s=b.getSize(new THREE.Vector3());const k=4.7/Math.max(s.x,s.z);car.scale.setScalar(k);
+    const b2=new THREE.Box3().setFromObject(car);car.position.y=-b2.min.y;const w=new THREE.Group();w.add(car);car=w;}
+  catch(e){car=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.4,4.6),new THREE.MeshLambertMaterial({color:0xeeeeee}));car.geometry.translate(0,0.7,0);}
+  const beamG=new THREE.PlaneGeometry(9,30);beamG.rotateX(-Math.PI/2);beamG.translate(0,0.25,-17.5);
+  const beamM=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:U,
+    vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`uniform float night;varying vec2 vU;void main(){float along=vU.y;float w=0.18+0.32*along;float x=abs(vU.x-0.5);
+      float a=smoothstep(w,w*0.4,x)*smoothstep(0.0,0.12,along)*smoothstep(1.0,0.5,along);gl_FragColor=vec4(vec3(1.0,0.95,0.82)*a*0.42*night,1.0);}`});
+  const beam=new THREE.Mesh(beamG,beamM);beam.renderOrder=7;car.add(beam);
+  const tailM=new THREE.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:0});
+  for(const sx of [-0.62,0.62]){const t=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.12,0.05),tailM);t.position.set(sx,0.95,2.36);car.add(t);}
+  car.userData.tail=tailM;S.add(car);
+  document.getElementById('load').remove();startGps();loop();}
+let last=performance.now(),fpsT=0,frames=0,fps=0,camHd=0,rawHd=0,showStats=false;const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
+function rawPose(){/* plain GPS: the last fix, moved on at its speed for up to 1.5 s */
+  const f=lastFix,dt=Math.min(1.5,now()-f.t);if(f.hd!=null&&f.v>1) rawHd=Math.PI-f.hd*Math.PI/180;
+  const h=f.hd!=null?f.hd*Math.PI/180:0,m=f.hd!=null?f.v*dt:0;return {x:f.x+Math.sin(h)*m,z:f.z-Math.cos(h)*m,h:0,hd3:rawHd};}
+function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.min(0.1,(t-last)/1000);last=t;
+  const pl=lock&&TR.st?TR.pose(now(),dt):null;const p=pl||rawPose();
+  if(car){car.position.set(p.x,(p.h||0)+0.06,p.z);car.rotation.y=p.hd3+Math.PI;if(car.userData.tail) car.userData.tail.opacity=night?1:0;}
+  document.getElementById('spd').firstChild.nodeValue=Math.round((lastFix.v||0)*3.6);
+  let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
+  if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
+  else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
+  R.render(S,cam);
+  frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);frames=0;fpsT=t;const i=R.info.render;
+    const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
+    document.getElementById('gps').textContent=!gpsT?'Waiting for GPS…':(now()-gpsT>10?'GPS lost':'GPS '+Math.round(acc)+' m')+(HAS.has(k)?'':' · outside the map')+(lock&&!pl&&gpsT?' · finding the road':'');
+    const st=document.getElementById('stats');st.style.display=showStats?'':'none';
+    if(showStats) st.innerHTML=Math.round(fps)+' fps<br>'+i.calls+' draw calls<br>'+(i.triangles/1000).toFixed(0)+'k triangles<br>'+[...loaded.values()].filter(Boolean).length+' tiles · '+NET.roads.length+' roads<br>map '+IDX.built;}}
+document.getElementById('bLock').onclick=e=>{lock=!lock;e.target.classList.toggle('on',lock);e.target.textContent=lock?'Lane lock':'Raw GPS';};
+document.getElementById('bNight').onclick=()=>{night=!night;sky();};
+document.getElementById('bStats').onclick=e=>{showStats=!showStats;e.target.classList.toggle('on',showStats);};
+document.getElementById('bFollow').onclick=e=>{follow=!follow;e.target.classList.toggle('on',follow);e.target.textContent=follow?'Follow car':'Move map';ctrl.enabled=!follow;if(!follow) ctrl.target.copy(car.position);};
+window.V3={S,R,cam,onFix,look:(cx,cy,cz,tx,tz)=>{follow=false;ctrl.enabled=true;ctrl.target.set(tx,0,tz);cam.position.set(cx,cy,cz);},info:()=>R.info.render,net:()=>NET};
+start();
+</script></body></html>
 
