@@ -36,7 +36,7 @@ canvas{display:block}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-const PAGEV=4;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=6;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -46,22 +46,52 @@ addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=inne
 const hemi=new THREE.HemisphereLight(0xdfe8ff,0x4a5a3a,0.85);S.add(hemi);const sun=new THREE.DirectionalLight(0xfff2dd,1.25);sun.position.set(-300,500,200);S.add(sun);
 /* night: from the clock (dark before 7 am and after 4:30 pm in late autumn), or the button */
 const hr=new Date().getHours()+new Date().getMinutes()/60;let night=Q.get('night')?Q.get('night')==='1':(hr<7||hr>16.5);
-const sky=()=>{const c=night?0x141c33:0x9cc4ec;R.setClearColor(c);S.fog=new THREE.Fog(c,600,1900);hemi.intensity=night?0.38:0.85;sun.intensity=night?0.15:1.0;U.night.value=night?1:0;document.getElementById('bNight').classList.toggle('on',night);};
+/* (step 2) the sky: deep blue overhead fading to a pale haze at the horizon; the distance fades into the same haze */
+const skyU={top:{value:new THREE.Color(0x4f8fd8)},hor:{value:new THREE.Color(0xcfe2f2)}};
+const skyM=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,uniforms:skyU,
+  vertexShader:`varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`uniform vec3 top,hor;varying vec3 vP;void main(){float h=normalize(vP).y;gl_FragColor=vec4(mix(hor,top,smoothstep(0.0,0.45,h)),1.0);}`});
+const skyDome=new THREE.Mesh(new THREE.SphereGeometry(3600,24,12),skyM);skyDome.renderOrder=-1;skyDome.frustumCulled=false;S.add(skyDome);
+const sky=()=>{const c=night?0x141c33:0xcfe2f2;skyU.top.value.set(night?0x0e1736:0x4f8fd8);skyU.hor.value.set(c);R.setClearColor(c);S.fog=new THREE.Fog(c,600,1900);hemi.intensity=night?0.38:0.85;sun.intensity=night?0.15:1.0;U.night.value=night?1:0;document.getElementById('bNight').classList.toggle('on',night);};
 /* the ground under everything (the land the map has nothing on) */
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshLambertMaterial({color:0x6f8f5a}));ground.rotation.x=-Math.PI/2;S.add(ground);
 const U={night:{value:0}};
 const lam=c=>{const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});return m;};
-const MAT={ground:lam(),water:new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}),paved:lam(),road:lam(),drive:lam(),walk:lam(),paint:new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}),deck:lam()};
+const MAT={ground:lam(),paved:lam(),road:lam(),drive:lam(),walk:lam(),paint:new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}),deck:lam()};
 /* flat layers sit a few cm apart; far away that's too little for the depth buffer, so each layer is also nudged
    toward the camera in order (grass < parking < roads < sidewalks < paint): no more flickering stripes in the distance */
-[['water',-1],['ground',-2],['paved',-3],['road',-4],['walk',-5],['paint',-6]].forEach(([k,f])=>{MAT[k].polygonOffset=true;MAT[k].polygonOffsetFactor=f;MAT[k].polygonOffsetUnits=f*2;});
+[['ground',-2],['paved',-3],['road',-4],['walk',-5],['paint',-6]].forEach(([k,f])=>{MAT[k].polygonOffset=true;MAT[k].polygonOffsetFactor=f;MAT[k].polygonOffsetUnits=f*2;});
 /* buildings: lit walls with windows (lit at night), plain roofs */
+/* landmarks (the Champlain Bridge's pylon and cables): plain lit shapes */
+MAT.lm=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+/* (step 2) water: the map's blue with small moving ripples, drawn by the graphics chip (no texture to download) */
+U.time={value:0};
+MAT.water=new THREE.ShaderMaterial({vertexColors:true,side:THREE.DoubleSide,uniforms:Object.assign(THREE.UniformsUtils.clone(THREE.UniformsLib.fog),U),fog:true,
+  vertexShader:`#include <fog_pars_vertex>
+  varying vec3 vC;varying vec2 vW;varying float vD;void main(){vC=color;vec4 wp=modelMatrix*vec4(position,1.0);vW=wp.xz;vec4 mvPosition=viewMatrix*wp;vD=-mvPosition.z;gl_Position=projectionMatrix*mvPosition;
+  #include <fog_vertex>
+  }`,
+  fragmentShader:`#include <fog_pars_fragment>
+  uniform float time,night;varying vec3 vC;varying vec2 vW;varying float vD;
+  float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+  float dashes(vec2 w,float ang,vec2 cs,float t){float c=cos(ang),s=sin(ang);vec2 p=vec2(c*w.x-s*w.y,s*w.x+c*w.y)/cs+vec2(t,0.0);
+    vec2 id=floor(p),f=fract(p);float r=h(id);float on=step(0.72,r);float x0=0.15+0.4*h(id+7.0);
+    return on*smoothstep(x0,x0+0.06,f.x)*smoothstep(x0+0.4,x0+0.34,f.x)*smoothstep(0.35,0.45,f.y)*smoothstep(0.65,0.55,f.y);}
+  void main(){float near=smoothstep(520.0,120.0,vD);
+    float d=max(dashes(vW,0.45,vec2(6.0,1.6),time*0.08),dashes(vW+31.0,0.62,vec2(4.5,1.3),-time*0.06)*0.8)*near;
+    vec3 c=vC*0.86+vec3(0.65,0.8,0.92)*d*0.3;
+    gl_FragColor=vec4(c*(1.0-0.55*night),1.0);
+  #include <fog_fragment>
+  }`});
+MAT.water.polygonOffset=true;MAT.water.polygonOffsetFactor=-1;MAT.water.polygonOffsetUnits=-2;
+/* (step 2) building shadows on the ground: a soft see-through dark layer, lighter at night */
+MAT.shade=new THREE.MeshBasicMaterial({color:0x10141c,transparent:true,opacity:0.28,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-7,polygonOffsetUnits:-14});
 MAT.bld=new THREE.ShaderMaterial({uniforms:Object.assign({sunDir:{value:new THREE.Vector3(-0.4,0.8,0.3).normalize()}},U),vertexColors:true,side:THREE.DoubleSide,
  vertexShader:`attribute float ex;varying vec3 vC;varying float vEx;varying float vY;varying float vSh;uniform vec3 sunDir;
  void main(){vC=color;vEx=ex;vY=position.y;vec3 n=normalize(normal);vSh=0.72+0.28*max(dot(n,sunDir),0.0)+0.06*abs(n.x);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
  fragmentShader:`uniform float night;varying vec3 vC;varying float vEx;varying float vY;varying float vSh;
  float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
- void main(){vec3 w=vC*vSh*(1.0-0.6*night);if(vEx<0.0){gl_FragColor=vec4(w,1.0);return;}
+ void main(){vec3 w=vC*vSh*(1.0-0.6*night)*mix(0.7,1.0,smoothstep(0.0,5.0,vY));if(vEx<0.0){gl_FragColor=vec4(w,1.0);return;}
   vec2 c=vec2(floor(vEx/3.2),floor(vY/3.1));vec2 f=vec2(fract(vEx/3.2),fract(vY/3.1));
   float win=step(0.2,f.x)*step(f.x,0.8)*step(0.3,f.y)*step(f.y,0.82)*step(1.0,vY);
   float lit=step(h(c),0.38);vec3 day=mix(vec3(0.27,0.33,0.4),w,0.25);vec3 nt=mix(vec3(0.06,0.07,0.1),vec3(1.0,0.8,0.45),lit);
@@ -89,7 +119,7 @@ async function loadTile(tx,tz){const k=tx+'_'+tz;if(loaded.has(k)||(retryAt.get(
     let I;if(L.i16){I=new Uint16Array(buf,o,L.ni);o+=pad(L.ni*2);}else{I=new Uint32Array(buf,o,L.ni);o+=L.ni*4;}
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(P,3));g.setAttribute('color',new THREE.BufferAttribute(C,3,true));
     if(L.name==='bld') g.setAttribute('ex',new THREE.BufferAttribute(E,1));g.setIndex(new THREE.BufferAttribute(I,1));g.computeVertexNormals();
-    const m=new THREE.Mesh(g,MAT[L.name]||MAT.road);m.renderOrder={ground:1,water:1,paved:2,road:3,walk:3,paint:4}[L.name]||5;grp.add(m);}
+    const m=new THREE.Mesh(g,MAT[L.name]||MAT.road);m.renderOrder={ground:1,water:1,paved:2,road:3,walk:3,paint:4,shade:4.5}[L.name]||5;grp.add(m);}
   props(hdr.props,grp);
   if(loaded.has(k)){S.add(grp);loaded.set(k,grp);}}
 /* the road network for lane lock comes in tiles too; they are added as the car gets near (each road once) */
@@ -182,7 +212,12 @@ async function start(){
   const beam=new THREE.Mesh(beamG,beamM);beam.renderOrder=7;car.add(beam);
   const tailM=new THREE.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:0});
   for(const sx of [-0.62,0.62]){const t=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.12,0.05),tailM);t.position.set(sx,0.95,2.36);car.add(t);}
-  car.userData.tail=tailM;S.add(car);
+  car.userData.tail=tailM;
+  const blobG=new THREE.PlaneGeometry(3.2,6.0);blobG.rotateX(-Math.PI/2);blobG.translate(0,0.08,0);
+  const blob=new THREE.Mesh(blobG,new THREE.ShaderMaterial({transparent:true,depthWrite:false,
+    vertexShader:`varying vec2 vU;void main(){vU=uv*2.0-1.0;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`varying vec2 vU;void main(){float d=length(vU*vec2(1.0,0.9));gl_FragColor=vec4(0.0,0.0,0.0,0.45*smoothstep(1.0,0.35,d));}`}));
+  blob.renderOrder=6;car.add(blob);S.add(car);
   document.getElementById('load').remove();startGps();loop();
   const old=rec.saved();if(old&&old.g&&old.g.length>50) msg('A recorded drive isn’t uploaded yet: tap Record to upload it.',9000);}
 let last=performance.now(),fpsT=0,frames=0,fps=0,camHd=0,rawHd=0,showStats=false;const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
@@ -196,6 +231,7 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
   let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
   if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
   else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
+  U.time.value=t/1000;skyDome.position.copy(cam.position);
   R.render(S,cam);recFrame(p,pl);if(rec.rec) rec.shoot(R.domElement,null);worst=Math.max(worst,dt*1000);if(msgT&&t>msgT){msg('');msgT=0;}
   frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);rec.second(Math.round(fps),worst);worst=0;frames=0;fpsT=t;const i=R.info.render;
     const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
