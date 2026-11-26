@@ -248,7 +248,11 @@
     }
     this.raw = p;
     const k = Math.exp(-dt / 0.8);
-    this.ox *= k; this.oz *= k; this.oy *= k; this.oh *= k;
+    /* (v3, Nov 26, 9:49 drive: after slow turns the car still swung forward at twice your speed) the slide is also limited
+       in speed: never more than about half your speed on top of your own, so the car never looks like it's racing */
+    const o = Math.hypot(this.ox, this.oz), shrink = o * (1 - k), maxStep = (0.5 * v + 1.0) * dt;
+    const ko = o > 0 && shrink > maxStep ? (o - maxStep) / o : k;
+    this.ox *= ko; this.oz *= ko; this.oy *= k; this.oh *= k;
     const q = Object.assign({}, p, { x: p.x + this.ox, z: p.z + this.oz, h: p.h + this.oy, hd3: p.hd3 + this.oh });
     /* (step 3) the car steers like a car: it follows its lane with a quarter-second of give, so a sharp corner in the map
        (two roads meeting at a junction) becomes a smooth arc instead of a snap; on straight roads nothing changes */
