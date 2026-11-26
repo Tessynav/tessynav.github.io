@@ -351,7 +351,13 @@ TN.Track.prototype.frame=function(now,dt){
      moved over into the highway's lanes, 8-11 m beside the ramp's line; the car stays on the road instead of letting
      go for a second and jumping across: the A-10 onto the Champlain Bridge, Nov 17) */
   const mergeTol=h&&h.w.ramp&&this.mergeAhead?this.mergeAhead(h):0;
-  const snapped=!!h&&(h.side!=null?h.side:h.r.d)<=TN.width(h.w)/2+(inTun?30:6)+mergeTol;
+  /* (Nov 25: turning into a driveway or a lot entrance that isn't on the map, about 6 m off the street, the car flipped
+     between the street and the real position several times a second: it shook. Once off the roads, the car comes back
+     onto one only when really on it (within 2 m of its edge, or 4 m above 30 km/h); on a road it lets go at 6 m as before) */
+  const dRoad=h?(h.side!=null?h.side:h.r.d)-TN.width(h.w)/2:1e9;
+  const tolOn=inTun?30:(this.offRoad?(L.v>8?4:2):6)+mergeTol;
+  const snapped=!!h&&dRoad<=tolOn;
+  this.offRoad=!snapped;
   let car=this.car;
   /* turning at an intersection: when the car is near a junction and its real direction (filtered GPS) differs
      from the street's by more than 15 degrees, follow the actual path through the corner instead of the street;

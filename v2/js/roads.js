@@ -88,7 +88,7 @@ TN.Net.prototype.addPackJob=function*(key,P){
     if(pts.length<3) continue;
     let cx=0,cz=0;for(const q of pts){cx+=q[0];cz+=q[1];}
     let bx0=1e9,bx1=-1e9,bz0=1e9,bz1=-1e9;for(const q of pts){if(q[0]<bx0)bx0=q[0];if(q[0]>bx1)bx1=q[0];if(q[1]<bz0)bz0=q[1];if(q[1]>bz1)bz1=q[1];}
-    this.parkings.set(r[0],{pts:pts,c:[cx/pts.length,cz/pts.length],bb:[bx0,bx1,bz0,bz1]});
+    this.parkings.set(r[0],{pts:pts,c:[cx/pts.length,cz/pts.length],bb:[bx0,bx1,bz0,bz1],fuel:r[2]==='f'});   /* (fuel: a gas station's grounds, paved, no painted spaces) */
   }
   /* the REM at ground level (road tiles v5): same line as the elevated parts, drawn on the ground */
   for(const r of P.rg||[]){
@@ -1238,7 +1238,7 @@ TN.Net.prototype.drawWalks=function(L,w,runs){
 TN.Net.prototype.drawStalls=function(L,w,runs){
   if(!this.parkings||w.br||w.hs) return;
   const P=w.pts,hw=TN.width(w)/2,lots=[];
-  for(const pk of this.parkings.values()){const b=pk.bb;if(b[1]<w.bb[0]||b[0]>w.bb[1]||b[3]<w.bb[2]||b[2]>w.bb[3]) continue;lots.push(pk);}
+  for(const pk of this.parkings.values()){if(pk.fuel) continue;const b=pk.bb;if(b[1]<w.bb[0]||b[0]>w.bb[1]||b[3]<w.bb[2]||b[2]>w.bb[3]) continue;lots.push(pk);}
   if(!lots.length) return;
   const inLot=(x,z)=>lots.some(pk=>x>=pk.bb[0]&&x<=pk.bb[1]&&z>=pk.bb[2]&&z<=pk.bb[3]&&TN.pip(x,z,pk.pts));
   const step=2.7,depth=5,half=0.06,y=0.05;
@@ -1518,7 +1518,7 @@ TN.Net.prototype.stallNear=function(x,z,hd){
   const step=2.7,depth=5;let best=null;
   for(const w of aisles){
     const P=w.pts,hw=TN.width(w)/2;
-    const lots=[];for(const pk of this.parkings.values()){const b=pk.bb;if(x<b[0]-15||x>b[1]+15||z<b[2]-15||z>b[3]+15) continue;lots.push(pk);}
+    const lots=[];for(const pk of this.parkings.values()){if(pk.fuel) continue;const b=pk.bb;if(x<b[0]-15||x>b[1]+15||z<b[2]-15||z>b[3]+15) continue;lots.push(pk);}
     for(let i=0;i<P.length-1;i++){
       const A=P[i],B=P[i+1],len=Math.hypot(B[0]-A[0],B[1]-A[1]);if(len<step*2) continue;
       const ux=(B[0]-A[0])/len,uz=(B[1]-A[1])/len,nx=uz,nz=-ux;
