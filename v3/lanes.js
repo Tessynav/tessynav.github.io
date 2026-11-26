@@ -173,8 +173,16 @@
       /* lane: keep the same lane number across a junction when it still exists, else the measured one */
       const g0 = this.laneGeo(r, best.dir, 0), u = best.dir > 0 ? best.d + r.w / 2 : r.w / 2 - best.d;
       const meas = Math.max(0, Math.min(r.ln - 1, Math.floor(u / g0.lw)));
-      const lane = st && !st.free && st.lane < r.ln ? st.lane : meas;
-      const lat = st && !st.free ? st.lat : this.laneGeo(r, best.dir, lane).off;
+      /* (v3, Nov 26 17:06 drive: where lanes are added or merge, keeping the lane NUMBER moved the car sideways) keep the
+         car where it is drawn across the road instead, and pick the lane under it on the new road */
+      let lane = meas, lat = this.laneGeo(r, best.dir, meas).off;
+      if (st && !st.free) {
+        const here = this.raw && net.near(this.raw.x, this.raw.z, 12).find(c => c.k === best.k);
+        if (here) {
+          const uh = best.dir > 0 ? here.d + r.w / 2 : r.w / 2 - here.d;
+          lane = Math.max(0, Math.min(r.ln - 1, Math.floor(uh / g0.lw))); lat = Math.max(-r.w / 2, Math.min(r.w / 2, here.d));
+        } else if (st.lane < r.ln) { lane = st.lane; lat = st.lat; }
+      }
       /* (v3, Nov 26 drive: right after turning onto the next road the car raced ~5 m ahead) start on the new road where the
          car is drawn now, not where the GPS is: the gentle catch-up below closes any gap instead of a sudden slide */
       let s0 = best.s;
@@ -198,8 +206,16 @@
       /* lane change only when the GPS stays in the other lane for 2.5 s and is clearly in it */
       const g0 = this.laneGeo(r, st.dir, 0), u = st.dir > 0 ? best.d + r.w / 2 : r.w / 2 - best.d;
       const meas = Math.max(0, Math.min(r.ln - 1, Math.floor(u / g0.lw)));
-      if (meas !== st.lane && Math.abs(u - (st.lane + 0.5) * g0.lw) > 0.8 * g0.lw) st.acc += dt; else st.acc = 0;
-      if (st.acc > 2.5) { st.lane = meas; st.acc = 0; this.stats.laneChanges++; }
+      /* (v3, Nov 26 15:27 drive: the car changed lanes on the Champlain Bridge while you didn't) the GPS slowly drifts
+         sideways, a couple of metres over a minute; that alone moved the car to another lane. A real lane change is a
+         quick sideways move (about a lane in a few seconds): now the car changes lane only after one; a slow drift
+         changes it only if it stays in the other lane for half a minute (to correct a wrong start) */
+      const LH = st.lh || (st.lh = []); LH.push([f.t, u]); while (LH.length > 2 && f.t - LH[0][0] > 8) LH.shift();
+      const moved = u - LH[0][1], want = (st.lane + 0.5) * g0.lw, off = u - want;
+      const out = meas !== st.lane && Math.abs(off) > 0.8 * g0.lw;
+      const quick = out && Math.sign(moved) === Math.sign(off) && Math.abs(moved) > 0.55 * g0.lw;
+      if (out) { st.acc = quick ? st.acc + dt : st.acc; st.slow = (st.slow || 0) + dt; } else { st.acc = 0; st.slow = 0; }
+      if (st.acc > 2.0 || st.slow > 30) { st.lane = meas; st.acc = 0; st.slow = 0; st.lh = [[f.t, u]]; this.stats.laneChanges++; }
       st.lane = Math.min(st.lane, r.ln - 1);
     }
     this.lastFix = f;
