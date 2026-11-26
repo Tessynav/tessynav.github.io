@@ -1,4 +1,4 @@
-/* TessyNav v2 — scene.js
+/* TessyNav v2 — scene.js (v70 Nov 25: parked or slow, a wider see-through cone so a building next to the car never fills the screen)
    The map (OpenFreeMap) for ground, water, parks and buildings; our own 3D layer for roads, bridges and the car.
    Road areas are built once and kept (one area at a time so nothing freezes); areas far behind are deleted.
    Roads have no lighting to compute: their colors are baked in, with a gentle darkening at night. */
@@ -38,6 +38,7 @@ TN.Scene.prototype.layer=function(){
         const c=S.car3d;
         if(c&&TN.LIFTCAR) TN.LIFTCAR.value.set(c.position.x,c.position.y,c.position.z);   /* (the blue line keeps off the car: nav.js liftPatch) */
         if(c&&c.visible!==false&&S.cutOn!==false){TN.CUTU.cutCar.value.set(c.position.x,c.position.y+1.2,c.position.z);TN.CUTU.cutR.value=4.5;
+          TN.CUTU.cutW.value+=((TN.carSlow?11:0)-TN.CUTU.cutW.value)*0.05;
           TN.CUTU.cutBub.value+=((TN.carOffRoad?24:(TN.tunnel&&TN.tunnel.k>0.3?60:0))-TN.CUTU.cutBub.value)*0.06;}   /* (in a tunnel: the buildings above fade away, 60 m around) */   /* (the bubble grows and shrinks smoothly) */
         else TN.CUTU.cutR.value=0;
       }catch(e){}
@@ -292,9 +293,9 @@ TN.Scene.prototype.addSilhouette=function(body){ /* replaced by the see-through 
 /* ---------- see-through circle around the car (like Codriver) ----------
    Buildings and trees between the camera and the car fade out (fine dither) inside a cone from the camera to the car,
    so Tessy always stays solid and clear; outside the circle everything looks normal. */
-TN.CUTU={cutCam:{value:new THREE.Vector3()},cutCar:{value:new THREE.Vector3(0,-1e6,0)},cutR:{value:0},cutBub:{value:0}};
+TN.CUTU={cutCam:{value:new THREE.Vector3()},cutCar:{value:new THREE.Vector3(0,-1e6,0)},cutR:{value:0},cutBub:{value:0},cutW:{value:0}};
 TN.CUTGLSL=[
-  'uniform vec3 cutCam;uniform vec3 cutCar;uniform float cutR;uniform float cutBub;varying vec3 vCutW;',
+  'uniform vec3 cutCam;uniform vec3 cutCar;uniform float cutR;uniform float cutBub;uniform float cutW;varying vec3 vCutW;',
   /* how much of this point to fade (0 = keep, 1 = gone): a soft cone from the camera to the car */
   'float tnCutK(){',
   '  if(cutR<=0.0) return 0.0;',
@@ -311,7 +312,8 @@ TN.CUTGLSL=[
   '  float t=dot(vCutW-cutCam,d)/dd;',
   '  if(t<=0.0||t>1.0-2.5/sqrt(dd)) return 0.0;',
   '  float r=length(vCutW-(cutCam+d*t));',
-  '  float rad=cutR*t;',
+  /* (Nov 25, trip 20:46: parked beside a building, its wall filled the whole screen) slow or parked: a much wider see-through cone */
+  '  float rad=(cutR+cutW)*t;',
   '  return 1.0-smoothstep(rad*0.35,rad*1.15,r);',
   '}',
   'bool tnCut(){return tnCutK()>0.5;}'].join('\n');

@@ -1,4 +1,4 @@
-/* MapKoon v2 — app.js: buttons, GPS, road loading and the main loop */
+/* MapKoon v2 — app.js (v168 Nov 25: TN.carSlow for the see-through cone): buttons, GPS, road loading and the main loop */
 var TN=globalThis.TN||{};globalThis.TN=TN;
 TN.VERSION='v2 step 1';
 /* the build number written inside this file: the Version button shows it, so a wrong upload is easy to spot */
@@ -835,7 +835,7 @@ panel('Uploaded! Trip name:<br><b style="font-size:22px">'+name+'</b><br><small>
       if(fsigns) try{fsigns.update();fsigns.frame();}catch(e){}
       try{autoRecenter();}catch(e){}
       if(TN.tunnel) try{TN.tunnel.update(dt);}catch(e){}
-      {const cc=track.car,lv=track.last;TN.carOffRoad=!!(cc&&cc.x!=null&&!cc.snapped&&(!lv||(lv.v||0)<2.5));}   /* (not on a road, and slow: the x-ray bubble) */   /* (tunnel mode: the tunnel you're in, and the view dims) */
+      {const cc=track.car,lv=track.last;TN.carSlow=!lv||(lv.v||0)<3;TN.carOffRoad=!!(cc&&cc.x!=null&&!cc.snapped&&(!lv||(lv.v||0)<2.5));}   /* (not on a road, and slow: the x-ray bubble) */   /* (tunnel mode: the tunnel you're in, and the view dims) */
       if(incidents&&pnow-(incT||0)>250){incT=pnow;try{const il=TN.fromLocal(car.x,car.z);incidents.update(car,il[0],il[1]);}catch(e){}}
       if(weather){try{weather.carV=track.last?track.last.v:0;weather.carHd=dispHd;const wl=TN.fromLocal(car.x,car.z);weather.update(dt,wl[1],wl[0],car.x,car.y||0,car.z);}catch(e){}}
       const ll=TN.fromLocal(car.x,car.z);

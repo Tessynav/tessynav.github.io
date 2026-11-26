@@ -1,4 +1,4 @@
-/* MapKoon v2 — nav.js  (navigation, part 1) — v151 Nov 25: big Rerouting card; v124, Nov 21: smooth direction in corners; car height on slopes
+/* MapKoon v2 — nav.js  (navigation, part 1) — v152 Nov 25: only slowdowns on the traffic layer (no green lines); v151: big Rerouting card; v124, Nov 21: smooth direction in corners; car height on slopes
    - search: results as you type (Photon, nearest first), recent destinations when the box is empty
    - route: OSRM (fastest by car), overview with time / distance / arrival, then Go or Cancel
    - the route as a blue line laid on the 3D roads (bridges included), trimmed behind the car
@@ -435,7 +435,9 @@ TN.Nav.prototype.traffic=function(show){
       if(TN.tnTrafficProto) url=url.replace('https://','tntraffic://');
       map.addSource('tn-traffic',{type:'vector',tiles:[url],maxzoom:16});
       map.addLayer({id:'tn-traffic',type:'line',source:'tn-traffic','source-layer':'traffic',minzoom:9,
-        filter:['in',['get','congestion'],['literal',['low','moderate','heavy','severe']]],
+        /* (Nov 25, trip 20:46: green lines across the grass and through buildings: Mapbox's own roads, which don't always
+           match ours; free-flowing roads are no longer drawn, only slowdowns) */
+        filter:['in',['get','congestion'],['literal',['moderate','heavy','severe']]],
         layout:{'line-join':'round','line-cap':'round'},
         paint:{'line-color':['match',['get','congestion'],'low','#22c55e','moderate',TN.TRAFFIC_COL.moderate,'heavy',TN.TRAFFIC_COL.heavy,'severe',TN.TRAFFIC_COL.severe,'#999'],
           'line-width':['interpolate',['linear'],['zoom'],10,['match',['get','congestion'],'low',1,1.8],16,['match',['get','congestion'],'low',3,5]],'line-opacity':0.9}});
