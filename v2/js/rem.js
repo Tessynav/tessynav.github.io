@@ -3,7 +3,8 @@
    along the line, stop now and then like at a station, and continue; lit windows and headlights at night.
    Stations: found from the map's railway stations that sit right beside the REM line: platforms, a white canopy on
    columns, a stair tower, and a floating name label (always facing you, readable from about 1.5 km).
-   Trains stop 10 seconds at each station. The trains themselves run on a made-up rhythm near you.
+   Trains run on the REM's real timetable (Nov 25: rem_schedule.py in tessynav-transit), at their real speed between
+   stations; without that file, on a made-up rhythm near you (stopping 10 seconds at each station).
    Built to stay light: at most 3 trains, only within about 2 km. ?rem=0 switches the trains off.
    v12: trains far away aren't drawn and are placed less often; the work is measured in parts in recordings. */
 var TN=globalThis.TN||{};globalThis.TN=TN;
@@ -163,6 +164,76 @@ TN.Rem.prototype.updateLabels=function(cx,cz){
     const nt=this.night>0.45;if(el._n!==nt){el._n=nt;el.classList.toggle('n',nt);}
   }
 };
+
+/* ---------- the real timetable (Nov 25) ----------
+   The REM's own schedule, turned into small files every day by tessynav-transit/rem_schedule.py: every trip of the
+   day with its time and distance at each station. Each train is drawn where the timetable puts it right now, moving
+   at its real speed (speeding up at 1 m/s2 out of a station, cruising, slowing down into the next one) and waiting at
+   each station for its scheduled time. Until the files arrive (or without them) the made-up trains below are used. */
+TN.REM_BASE=TN.REM_BASE||'https://app.mapkoon.com/tessynav-transit/rem/';
+TN.Rem.prototype.loadSched=function(){
+  const now=Date.now();if(this.schBusy||now-(this.schT||0)<(this.sch?3600000:300000)) return;
+  this.schBusy=true;this.schT=now;
+  const ds=k=>{const d=new Date(now+k*86400000);return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');};
+  const J=u=>fetch(TN.REM_BASE+u).then(r=>r.ok?r.json():null).catch(()=>null);
+  Promise.all([J('net.json'),J('day/'+ds(-1)+'.json'),J('day/'+ds(0)+'.json')]).then(([net,y,t])=>{
+    this.schBusy=false;if(!net||!net.shapes||(!y&&!t)) return;
+    const shapes={};for(const sid in net.shapes){const f=net.shapes[sid],pts=[],cum=[0];
+      for(let i=0;i<f.length;i+=2){const q=TN.toLocal(f[i],f[i+1]);if(pts.length) cum.push(cum[cum.length-1]+Math.hypot(q[0]-pts[pts.length-1][0],q[1]-pts[pts.length-1][1]));pts.push(q);}
+      if(pts.length>1) shapes[sid]={pts:pts,cum:cum};}
+    const trips=[];const add=(D,off)=>{for(const tr of (D&&D.t)||[]){const sh=shapes[tr[0]];if(!sh||tr[1].length<2) continue;
+      const L=sh.cum[sh.cum.length-1],mx=tr[1][tr[1].length-1][0]||1,k=mx>L*1.5||mx<L*0.5?L/mx:1;
+      trips.push({sh:sh,st:tr[1].map(p=>[p[0]*k,p[1]+off,p[2]+off]),id:tr[0]+':'+tr[1][0][1]+':'+off});}};
+    add(y,-86400);add(t,0);
+    this.sch={trips:trips,day:ds(0)};
+  });
+};
+/* where a trip is at a given time (seconds after midnight): distance along its path, or null when not running */
+TN.Rem.prototype.schedAt=function(tr,ts){
+  const S=tr.st;if(ts<S[0][1]-1||ts>S[S.length-1][2]+1) return null;
+  for(let k=0;k<S.length;k++){
+    if(ts<=S[k][2]) return ts>=S[k][1]?{d:S[k][0],v:0}:null;
+    if(k<S.length-1&&ts<S[k+1][1]){
+      const D=S[k+1][0]-S[k][0],T=Math.max(1,S[k+1][1]-S[k][2]),u=ts-S[k][2],a=1.0;
+      /* a trapezoid: speed up at a, cruise at v, slow down at a (a triangle if the hop is too short to cruise) */
+      const disc=a*a*T*T-4*a*Math.abs(D);let v,t1;
+      if(disc>=0){v=(a*T-Math.sqrt(disc))/2;t1=v/a;}else{v=Math.abs(D)/T*2;t1=T/2;}
+      const aa=t1>0?v/t1:0;let s;
+      if(u<t1) s=0.5*aa*u*u;else if(u>T-t1){const r=T-u;s=Math.abs(D)-0.5*aa*r*r;}else s=0.5*aa*t1*t1+v*(u-t1);
+      return {d:S[k][0]+Math.sign(D)*Math.max(0,Math.min(Math.abs(D),s)),v:u<t1?aa*u:u>T-t1?aa*(T-u):v};}
+  }
+  return null;
+};
+/* a point on a path at a distance: position and direction */
+TN.Rem.pathAt=function(sh,d){const P=sh.pts,C=sh.cum;let i=0;while(i<P.length-2&&C[i+1]<d) i++;
+  const sg=C[i+1]-C[i]||1,t=Math.max(0,Math.min(1,(d-C[i])/sg)),a=P[i],b=P[i+1];let ux=b[0]-a[0],uz=b[1]-a[1];const l=Math.hypot(ux,uz)||1;
+  return {x:a[0]+(b[0]-a[0])*t,z:a[1]+(b[1]-a[1])*t,ux:ux/l,uz:uz/l};};
+/* the scheduled trains near you, each on our drawn track (the one on its right-hand side when there are two) */
+TN.Rem.prototype.schedUpdate=function(cx,cz){
+  const net=this.net,d=new Date(),ts=d.getHours()*3600+d.getMinutes()*60+d.getSeconds()+d.getMilliseconds()/1000;
+  const want=new Map();
+  /* (all of the day's trips are checked once a second; in between only the few running near you) */
+  if(performance.now()-(this.scanT||0)>1000||!this.nearTrips){this.scanT=performance.now();this.nearTrips=[];
+    for(const tr of this.sch.trips){const p=this.schedAt(tr,ts);if(!p) continue;const q=TN.Rem.pathAt(tr.sh,p.d);
+      if(Math.abs(q.x-cx)<3200&&Math.abs(q.z-cz)<3200) this.nearTrips.push(tr);}}
+  for(const tr of this.nearTrips){const p=this.schedAt(tr,ts);if(!p) continue;
+    const q=TN.Rem.pathAt(tr.sh,p.d);if(Math.abs(q.x-cx)>2500||Math.abs(q.z-cz)>2500) continue;want.set(tr.id,q);}
+  for(const [id,q] of want){let t=this.sTrains.get(id);
+    if(!t){if(this.sTrains.size>=8) continue;const g=new THREE.Group();g.add(new THREE.Mesh(this.geo.body,this.matBody));g.add(new THREE.Mesh(this.geo.win,this.matWin));
+      g.children.forEach(m=>{m.frustumCulled=false;});this.scene.three.scene.add(g);t={g:g};this.sTrains.set(id,t);}
+    /* onto our track: the nearest REM piece within 15 m, the right-hand one of two side by side */
+    let best=null;
+    for(const w of net.rem.values()){const b=w.bb;if(q.x<b[0]-20||q.x>b[1]+20||q.z<b[2]-20||q.z>b[3]+20) continue;
+      for(let i=0;i<w.pts.length-1;i++){const a=w.pts[i],c=w.pts[i+1],dx=c[0]-a[0],dz=c[1]-a[1],L2=dx*dx+dz*dz||1;
+        const u=Math.max(0,Math.min(1,((q.x-a[0])*dx+(q.z-a[1])*dz)/L2)),px=a[0]+dx*u,pz=a[1]+dz*u,dd=Math.hypot(q.x-px,q.z-pz);if(dd>15) continue;
+        const side=(px-q.x)*(-q.uz)+(pz-q.z)*q.ux;   /* (+: to the right of the direction of travel) */
+        const sc=dd-(side>0.5?4:0);if(!best||sc<best.sc) best={sc:sc,w:w,s:w.cum[i]+u*(w.cum[i+1]-w.cum[i])};}}
+    if(!best){t.g.visible=false;continue;}
+    const r=TN.remAt(best.w,net.remHeights(best.w),best.s);
+    t.g.visible=Math.abs(r.x-cx)<1300&&Math.abs(r.z-cz)<1300;
+    t.g.position.set(r.x,r.y+0.1,r.z);t.g.rotation.y=-Math.atan2(q.ux,-q.uz);}
+  for(const [id,t] of this.sTrains) if(!want.has(id)){this.scene.three.scene.remove(t.g);this.sTrains.delete(id);}
+};
 TN.Rem.prototype.update=function(dt,cx,cz){
   if(!this.on){if(this.labels) for(const el of this.labels.values()) el.style.display='none';return;}
   /* looking for stations scans all the map's points of interest (slow): only every 15 s, and only after moving
@@ -175,6 +246,10 @@ TN.Rem.prototype.update=function(dt,cx,cz){
   const net=this.net;
   if(!this.on||!this.scene.three||!net.rem||!net.rem.size){for(const t of this.trains) this.free(t);this.trains=[];return;}
   this.build();
+  /* the real timetable when it's there: no made-up trains then */
+  this.loadSched();this.sTrains=this.sTrains||new Map();
+  if(this.sch&&this.sch.trips.length){for(const t of this.trains) this.free(t);this.trains=[];
+    const t0=performance.now();try{this.schedUpdate(cx,cz);}catch(e){}TN.prof&&TN.prof('rem:sched',performance.now()-t0);return;}
   /* keep up to 3 trains around you */
   this.spawnT-=dt;
   if(this.trains.length<4&&this.spawnT<=0){this.spawnT=1.5;this.spawn(cx,cz);}
