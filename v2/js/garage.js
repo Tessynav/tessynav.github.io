@@ -1,4 +1,4 @@
-/* TessyNav v2 — garage.js (v5: needs 8 s of driving after the GPS weakens, not parked; v4: no false alarms parked outside or stopped under an overpass; v3: also notices a garage from the Tesla's weaker position estimate underground, or from its "unknown" accuracy)
+/* TessyNav v2 — garage.js (v6: driveways are not garages; v5: needs 8 s of driving after the GPS weakens, not parked; v4: no false alarms parked outside or stopped under an overpass; v3: also notices a garage from the Tesla's weaker position estimate underground, or from its "unknown" accuracy)
    Underground parking. GPS stops working underground, so when you drive down into a garage TessyNav:
    - notices it: you were on a garage ramp or parking lane (a service road the map marks as a tunnel or parking
      aisle) at parking speed, then the GPS went quiet or very rough for 6 s
@@ -58,7 +58,7 @@ TN.Garage.prototype.frame=function(car,v){
   /* on a garage ramp or parking lane, slowly: remember it (for 20 s) and the last good spot */
   const w=car.w;
   if(w&&/^(motorway|primary|secondary|tertiary)$/.test(w.cls)) this.mainT=now;
-  if(w&&w.cls==='service'&&(w.tun||w.pa||(w.layer||0)<0)&&(v||0)<9) this.candT=now;
+  if(w&&w.cls==='service'&&(w.tun||(w.pa&&!w.dw)||(w.layer||0)<0)&&(v||0)<9) this.candT=now;
   if(!this.roughSince&&now-this.lastFixT<2500) this.good={x:car.x,z:car.z,y:car.y||0,hd:car.hd,w:car.w,cls:car.cls,snapped:car.snapped};
   /* (v4: "quiet" only counts if you were still moving when the GPS stopped. The Tesla stops sending positions
      when the car stands still, so parked in an outdoor lot it looked like a garage: Nov 17, end of the drive.) */

@@ -1,4 +1,4 @@
-/* TessyNav v2 — roads.js
+/* TessyNav v2 — roads.js (v68 Nov 25: driveways from tiles v13, drawn without parking spaces)
    One road network for everything: drawing, the car's road matching and the car's height all use the same data
    (our own road tiles, from OpenStreetMap). No map-tile roads, no patches.
    - TN.net: roads and bridges with their real width/lanes, joined at every shared point (junctions)
@@ -51,7 +51,7 @@ TN.Net.prototype.makeWay=function(r,isBridge){
   const w={id:r[0],cls:r[1],ow:r[2]||0,w:r[3]||7,lanes:r[7]||0,name:r[4]||'',pts:pts,keys:keys,cum:cum,L:cum[cum.length-1],
     br:false,tun:false,layer:0,H:0,hs:null};
   if(isBridge){w.layer=r[9]||0;w.ramp=!!r[10];if(r[12]==='t') w.tun=true;else w.br=true;w.lim=r[13]||0;}
-  else{w.ramp=!!r[9];w.pa=!!r[10];w.lim=r[11]||0;}
+  else{w.ramp=!!r[9];w.pa=!!r[10];w.dw=r[10]===2;w.lim=r[11]||0;}   /* (dw: a driveway, tiles v13+) */
   w.tl=(isBridge?r[14]:r[12])||'';   /* lane arrows (tiles v11+): see TN.Net.prototype.laneArrows */   /* lim: posted speed limit in km/h (0 = not recorded; tiles v6+) */
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of pts){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<z0)z0=p[1];if(p[1]>z1)z1=p[1];}
   const pad=w.w/2+3;w.bb=[x0-pad,x1+pad,z0-pad,z1+pad];
@@ -1150,7 +1150,7 @@ TN.Net.prototype.buildCellJob=function*(tx,ty){
     /* each piece of the road, and each drawing step, in its own slice (a long road no longer stalls a frame) */
     for(const r of runs){const one=[r];
       this.drawWay(L,w,one);yield* pause();
-      this.drawWalks(L,w,one);if(w.pa) this.drawStalls(L,w,one);yield* pause();
+      this.drawWalks(L,w,one);if(w.pa&&!w.dw) this.drawStalls(L,w,one);yield* pause();
       this.drawLights(L,w,one);yield* pause();}
   }
   {const T=TN.toLocal(TN.CHAMPLAIN.lng,TN.CHAMPLAIN.lat);if(inCell(T[0],T[1])) this.champlainTower(L);}
@@ -1513,7 +1513,7 @@ TN.Net.prototype.champlainTower=function(L){
    parked in it (nose in or backed in, whichever is closer to the car's current heading) */
 TN.Net.prototype.stallNear=function(x,z,hd){
   if(!this.parkings) return null;
-  const aisles=new Set();this.near(x,z,12,(w,i)=>{if(w.pa&&!w.br&&!w.hs) aisles.add(w);});
+  const aisles=new Set();this.near(x,z,12,(w,i)=>{if(w.pa&&!w.dw&&!w.br&&!w.hs) aisles.add(w);});
   if(!aisles.size) return null;
   const step=2.7,depth=5;let best=null;
   for(const w of aisles){
