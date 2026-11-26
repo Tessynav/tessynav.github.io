@@ -36,7 +36,7 @@ canvas{display:block}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-const PAGEV=6;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=7;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -181,14 +181,19 @@ function recFrame(p,pl){if(!rec.rec) return;const t=performance.now();if(t-recLa
   rec.rec.f.push([rec.t(),+lat.toFixed(7),+lon.toFixed(7),r(hd),pl?1:0,road?road.c+(road.s?'/'+road.s:''):'',pl?pl.lane||0:0,follow?1:0,0,(p.h||0)>0.5?1:0,r(p.h||0),'v3',road?road.w:0]);}
 /* ------------------------------------------------------------------ live GPS -> lane lock */
 const toL=(lon,lat)=>[(lon-IDX.lon0)*IDX.kx,-(lat-IDX.lat0)*IDX.ky];
-let car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,acc=null,gpsT=0;
+let car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,goodFix=null,acc=null,gpsT=0;
 const ctrl=new OrbitControls(cam,R.domElement);ctrl.enabled=false;ctrl.maxPolarAngle=1.45;ctrl.screenSpacePanning=false;ctrl.maxDistance=2500;ctrl.minDistance=15;
 ctrl.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};ctrl.mouseButtons={LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
 const now=()=>performance.now()/1000;
 function onFix(c){const q=toL(c.longitude,c.latitude);acc=c.accuracy;gpsT=now();
   const f={t:now(),x:q[0],z:q[1],v:c.speed==null||isNaN(c.speed)?(lastFix?lastFix.v:0):c.speed,hd:c.heading==null||isNaN(c.heading)?null:c.heading};
   want(f.x,f.z);
-  rec.gps(c);if(acc<80) TR.fix(f);lastFix=f;
+  /* (page 7, Nov 26 13:35 drive on Nuns' Island: for a few seconds the car's GPS said 'accuracy 10 km' while its points
+     stayed smooth and right; ignoring them froze the car, which then raced to catch up) a point with no accuracy is still
+     used when it fits where the car was going */
+  let ok=acc<80;
+  if(!ok&&goodFix){const dt=f.t-goodFix.t,ex=Math.hypot(f.x-goodFix.x,f.z-goodFix.z);ok=dt<3&&ex<(goodFix.v||0)*dt+6;}
+  rec.gps(c);if(ok){TR.fix(f);goodFix=f;}lastFix=f;
   try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
 function startGps(){
   if(!navigator.geolocation){document.getElementById('gps').textContent='No GPS in this browser';return;}
