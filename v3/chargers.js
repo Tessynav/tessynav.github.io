@@ -48,7 +48,7 @@
     x.beginPath(); if (x.roundRect) x.roundRect(14, 14, 100, 100, 22); else x.rect(14, 14, 100, 100); x.fill(); x.stroke();
     x.fillStyle = '#fff'; x.beginPath(); x.moveTo(72, 26); x.lineTo(40, 70); x.lineTo(60, 70); x.lineTo(54, 102); x.lineTo(88, 56); x.lineTo(68, 56); x.closePath(); x.fill();
     if (s.stalls) { x.font = 'bold 30px sans-serif'; x.textAlign = 'right'; x.textBaseline = 'top'; x.fillText(String(s.stalls), 108, 20); }
-    const m = new T.SpriteMaterial({ map: new T.CanvasTexture(cv), depthTest: false, sizeAttenuation: false });
+    const m = new T.SpriteMaterial({ map: new T.CanvasTexture(cv), depthTest: false, sizeAttenuation: false, fog: false });
     this.tex.set(key, m); return m;
   };
   /* the nearest road's direction, so the row of stalls faces it */
@@ -115,13 +115,18 @@
   Chargers.prototype.update = function (dt, cx, cz, following) {
     if (!this.on || !this.list.length) return;
     this.t -= dt; if (this.t > 0) return; this.t = 2;
-    const pinR = following ? 2000 : 6000, near = [];
+    /* (Nov 27, 18:18: "zoomed all the way out and couldn't find a Supercharger") pins are seen through the haze and from
+       far away when browsing the map (15 km), and the closest 3 are always shown, even outside that */
+    const pinR = following ? 2000 : 15000, near = [], all = [];
+    for (const s of this.list) all.push([Math.hypot(s.x - cx, s.z - cz), s]);
+    all.sort((a, b) => a[0] - b[0]);
     for (const s of this.list) { const d = Math.hypot(s.x - cx, s.z - cz); if (d < pinR) near.push([d, s]); }
     near.sort((a, b) => a[0] - b[0]);
-    /* pins (the closest 40) */
-    const keepP = new Set(near.slice(0, 40).map(n => n[1].id));
+    /* pins (the closest 40, and always the closest 3 when browsing) */
+    const pinList = near.slice(0, 40); if (!following) for (const n of all.slice(0, 3)) if (!pinList.includes(n)) pinList.push(n);
+    const keepP = new Set(pinList.map(n => n[1].id));
     for (const id of [...this.pins.keys()]) if (!keepP.has(id)) { this.scene.remove(this.pins.get(id)); this.pins.delete(id); }
-    for (const [d, s] of near.slice(0, 40)) if (!this.pins.has(s.id)) {
+    for (const [d, s] of pinList) if (!this.pins.has(s.id)) {
       const sp = new this.THREE.Sprite(this.pinTex(s)); sp.center.set(0.5, 0); sp.scale.set(0.055, 0.055, 1); sp.position.set(s.x, 14, s.z);
       sp.renderOrder = 20; sp.userData.site = s; this.scene.add(sp); this.pins.set(s.id, sp);
     }
@@ -129,6 +134,16 @@
     const keepS = new Set(near.filter(n => n[0] < 700).slice(0, 6).map(n => n[1].id));
     for (const id of [...this.sites.keys()]) if (!keepS.has(id)) this.drop(this.sites, id);
     for (const [d, s] of near) if (keepS.has(s.id) && !this.sites.has(s.id)) { const g = this.site(s); this.sites.set(s.id, g || 'none'); }
+  };
+  /* every frame: a pin farther than the camera can see is drawn closer along the same line of sight, so it stays on screen
+     at the right spot (pins keep the same size on screen at any distance) */
+  Chargers.prototype.place = function () {
+    if (!this.pins.size) return;
+    const c = this.camera.position, far = this.camera.far * 0.8;
+    for (const sp of this.pins.values()) {
+      const s = sp.userData.site, dx = s.x - c.x, dy = 14 - c.y, dz = s.z - c.z, d = Math.hypot(dx, dy, dz);
+      if (d < far) sp.position.set(s.x, 14, s.z); else { const k = far / d; sp.position.set(c.x + dx * k, c.y + dy * k, c.z + dz * k); }
+    }
   };
   /* tap a pin: its card */
   Chargers.prototype.tap = function (e) {
