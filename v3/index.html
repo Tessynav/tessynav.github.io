@@ -58,6 +58,7 @@ globalThis.THREE=THREE;await fresh('lanes.js');await fresh('../v2/js/rec.js');
 /* (Nov 27 18:23: a wrong file uploaded as chargers.js stopped the whole page at "Loading the map…") extra features load
    safely: if one is missing or broken, the map and the car still work, only that feature is left out */
 try{await fresh('chargers.js');}catch(e){console.error('chargers.js',e);}
+try{await fresh('../v2/js/tesla.js');}catch(e){console.error('tesla.js',e);}   /* (step 6) the Tesla connection, the same as v2's */
 const PAGE_T=Date.parse(document.lastModified)||0;let MAP_T=0;let upStart=true;
 async function newerPage(){try{const r=await fetch(location.pathname,{method:'HEAD',cache:'reload'});
   const t=Date.parse(r.headers.get('last-modified')||'');return t&&PAGE_T&&t>PAGE_T+2000;}catch(e){return false;}}
@@ -66,7 +67,7 @@ async function checkUpdate(){if(!(await newerPage())){upStart=false;return;}
   if(upStart||(parked&&!recOn)){await fetch(location.href,{cache:'reload'}).catch(()=>{});location.reload();}
   upStart=false;}
 checkUpdate();setInterval(checkUpdate,120000);
-const PAGEV=14;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=15;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -290,6 +291,8 @@ async function start(){
   if(atOk) p0=[AT[1],AT[0]];
   const q=toL(p0[0],p0[1]);lastFix={t:now(),x:q[0],z:q[1],v:0,hd:null};want(q[0],q[1]);
   try{const g=await new GLTFLoader().loadAsync('../model3.glb');car=g.scene;const b=new THREE.Box3().setFromObject(car),s=b.getSize(new THREE.Vector3());const k=4.7/Math.max(s.x,s.z);car.scale.setScalar(k);
+    /* (step 6) the connected Tesla's real colour on the 3D car (read from the car once a week, as in v2) */
+    car.traverse(o=>{if(o.material&&o.material.name==='paint') globalThis.TN.paintMat=o.material;});try{TN.applyCar&&TN.applyCar();if(TN.tesla&&TN.tesla.connected()) TN.tesla.config();}catch(e){}
     const b2=new THREE.Box3().setFromObject(car);car.position.y=-b2.min.y;const w=new THREE.Group();w.add(car);car=w;}
   catch(e){car=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.4,4.6),new THREE.MeshLambertMaterial({color:0xeeeeee}));car.geometry.translate(0,0.7,0);}
   const beamG=new THREE.PlaneGeometry(9,30);beamG.rotateX(-Math.PI/2);beamG.translate(0,0.5,-17.5);
@@ -351,10 +354,19 @@ function setPanel(){
     '<h3>Charging</h3>'+
     '<div class="row"><div>Superchargers on the map</div>'+tg('chargers')+'</div>'+
     '<div class="row"><div>Other fast chargers<small>Blue pins, from other networks</small></div>'+tg('fastdc')+'</div>'+
+    '<h3>Tesla</h3>'+teslaRow()+
     '<h3>Drives</h3>'+
     '<div class="row"><div>Record button<small>Record your drives to send them for checking</small></div>'+tg('record')+'</div>';
-  rows.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;SET[k]=b.dataset.t?!SET[k]:b.dataset.v;saveSet();applySet(k);setPanel();});
+  const tin=document.getElementById('tsIn'),tout=document.getElementById('tsOut');
+  if(tin) tin.onclick=()=>{try{localStorage.setItem('tn2_tesla_return',location.pathname);}catch(e){}TN.tesla.signIn();};
+  if(tout) tout.onclick=()=>{TN.tesla.signOut();setPanel();};
+  rows.querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>{const k=b.dataset.k;SET[k]=b.dataset.t?!SET[k]:b.dataset.v;saveSet();applySet(k);setPanel();});
   document.getElementById('setVer').textContent='MapKoon v3 · page '+PAGEV+(MAP_T?' · map '+new Date(MAP_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'');}
+function teslaRow(){
+  const T=globalThis.TN&&TN.tesla;if(!T) return '<div class="row"><div>Tesla connection<small>Not available right now</small></div></div>';
+  if(!T.connected()) return '<div class="row"><div>Connect your Tesla<small>Your car\'s real colour now; trips from your Tesla and Send to Tesla come with navigation</small></div><button class="tg" id="tsIn">Connect</button></div>';
+  const a=T.load()||{},ci=TN.carInfo||{};
+  return '<div class="row"><div>Connected'+(a.name?': '+a.name.replace(/[<>&]/g,''):'')+'<small>'+[ci.model,ci.color].filter(Boolean).join(' · ').replace(/[<>&]/g,'')+'</small></div><button class="tg" id="tsOut">Disconnect</button></div>';}
 function applySet(k){
   if(k==='time'){const n=SET.time==='night'?true:SET.time==='day'?false:autoNight();if(n!==night){night=n;sky();}}
   if((k==='chargers'||k==='fastdc')&&CHG) CHG.set(SET.chargers,SET.fastdc);
