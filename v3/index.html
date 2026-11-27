@@ -27,7 +27,7 @@ canvas{display:block}
 <div id="msg" class="hud" hidden></div>
 <div id="load" class="hud">Loading the map…</div>
 <div id="cr">© OpenStreetMap contributors · Overture Maps Foundation · Ville de Montréal (CC BY 4.0)</div>
-<script src="lanes.js?v=5"></script>   <!-- (raise the number each time lanes.js changes, so the car never keeps an old copy) -->
+<script src="lanes.js?v=6"></script>   <!-- (raise the number each time lanes.js changes, so the car never keeps an old copy) -->
 <script src="../v2/js/rec.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
 <script type="module">
@@ -36,7 +36,7 @@ canvas{display:block}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-const PAGEV=9;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=11;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -255,6 +255,9 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
   if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
   else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
   U.time.value=t/1000;skyDome.position.copy(cam.position);
+  /* (Nov 26 21:15 drive: past 10 km from the map's centre - DIX30 in Brossard - the ground was black: the ground plane
+     ended there) the ground follows the camera, in 1 km steps */
+  ground.position.set(Math.round(cam.position.x/1000)*1000,0,Math.round(cam.position.z/1000)*1000);
   R.render(S,cam);recFrame(p,pl);if(rec.rec) rec.shoot(R.domElement,null);worst=Math.max(worst,dt*1000);if(msgT&&t>msgT){msg('');msgT=0;}
   frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);rec.second(Math.round(fps),worst);worst=0;frames=0;fpsT=t;const i=R.info.render;
     const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
