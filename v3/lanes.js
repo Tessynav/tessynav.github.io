@@ -85,7 +85,7 @@
             const ln = Math.sqrt(L2), tx = dx / ln, tz = dz / ln;
             /* signed side: + = left of the road's drawing direction (x east, z south: left of (tx,tz) is (tz,-tx)) */
             const d = (x - px) * tz - (z - pz) * tx;
-            best.set(k, { k, i, u, s: r.cs[i] + ln * u, dist, d, tx, tz });
+            best.set(k, { k, i, u, s: r.cs[i] + ln * u, dist, d, tx, tz, px, pz });
           }
         }
       }
@@ -141,12 +141,23 @@
         else cost += 2.5;
       }
       if (r.s === 'link') cost += 0.2;
-      /* (Nov 26 21:15 drive, Nuns' Island: in the roundabout the car turned into the Bell campus entrance for a second,
-         the GPS being 1.5 m to the inside; this afternoon, same roundabout, it didn't) a service road (an entrance, a
-         lane behind buildings) only wins over a street when you're clearly on it, not on a 1-2 m GPS wobble */
-      if (r.c === 'service' && v > 3 && !(st && !st.free && net.roads[st.k] && net.roads[st.k].c === 'service')) cost += 1.5;
-      const cand = Object.assign({ cost, dir }, c); now.set(c.k, cand);
+      /* (split: see below) */
+      let split = false;
+      if (st && !st.free && c.k !== st.k && net.roads[st.k] && net.joined(st.k, c.k)) {
+        const rs = net.roads[st.k], cs = C.find(x => x.k === st.k);
+        split = !!cs && (st.dir > 0 ? rs.L - cs.s : cs.s) < 40;
+      }
+      const cand = Object.assign({ cost, dir, out, split }, c); now.set(c.k, cand);
       if (!best || cost < best.cost) best = cand;
+    }
+    /* (Nov 27 9:33 drive, end of the Champlain Bridge: the GPS was fully on the Nuns' Island ramp, but for 1.5 s the
+       car took the branch going straight, 2.4 m away, then cut across the hatched tip to the ramp) where the road you
+       are on ends in a split and the GPS is really on one of the branches, the branches it is not on count as worse
+       (only then: it never pushes the car to some other road) */
+    const br = [...now.values()].filter(c => c.split);
+    if (br.length >= 2 && br.some(c => c.out < 0.5)) {
+      for (const c of br) c.cost += Math.max(0, c.out - 0.8) * 0.6;
+      best = null; for (const c of now.values()) if (!best || c.cost < best.cost) best = c;
     }
     /* (step 3) judge each road over the last ~1.2 s, not one fix: one odd GPS point near a junction can't flip the car
        onto the wrong branch and back */
@@ -184,7 +195,10 @@
         const here = this.raw && net.near(this.raw.x, this.raw.z, 12).find(c => c.k === best.k);
         if (here) {
           const uh = best.dir > 0 ? here.d + r.w / 2 : r.w / 2 - here.d;
-          lane = Math.max(0, Math.min(r.ln - 1, Math.floor(uh / g0.lw))); lat = Math.max(-r.w / 2, Math.min(r.w / 2, here.d));
+          lane = Math.max(0, Math.min(r.ln - 1, Math.floor(uh / g0.lw)));
+          /* (Nov 27 9:33 drive, end of the Champlain Bridge: switching onto the narrower ramp, the car was kept at the road's
+             very edge, half of it over the side) the car's centre stays at least half a car inside the edge */
+          const lim = Math.max(0, r.w / 2 - Math.max(1.0, g0.lw / 2)); lat = Math.max(-lim, Math.min(lim, here.d));
         } else if (st.lane < r.ln) { lane = st.lane; lat = st.lat; }
       }
       /* (v3, Nov 26 drive: right after turning onto the next road the car raced ~5 m ahead) start on the new road where the
@@ -253,7 +267,7 @@
     const lat = k === st.k ? st.lat : want;
     const p = net.at(k, s);
     /* left of drawing direction is (tz, -tx) */
-    return this.blend({ x: p.x + p.tz * lat, z: p.z - p.tx * lat, h: p.h, hd3: Math.atan2(p.tx * dir, p.tz * dir), k, lane: st.lane, road: r }, dt);
+    return this.blend({ x: p.x + p.tz * lat, z: p.z - p.tx * lat, h: p.h, hd3: Math.atan2(p.tx * dir, p.tz * dir), k, lane: st.lane, road: r, cx: p.x, cz: p.z, nx: p.tz, nz: -p.tx }, dt);
   };
   /* when the answer changes suddenly (a new road chosen at a junction), slide there over about a second instead of jumping
      (v3, Nov 26: was half a second, which looked like a push forward after turns) */
@@ -282,6 +296,27 @@
       let dh = q.hd3 - lp.hd3; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
       this.lp = { x: nx, z: nz, h: lp.h + (q.h - lp.h) * a, hd3: lp.hd3 + dh * (1 - Math.exp(-dt / 0.3)) };
     } else this.lp = { x: q.x, z: q.z, h: q.h, hd3: q.hd3 };
+    /* (Nov 27 9:33 drive, end of the Champlain Bridge: where the ramp splits off, the slide from the old road kept the car
+       going straight for a second, into the gap between the two roads, then it came back) the car is never drawn past the
+       edge of the asphalt: when it would stick out of every road around it, it is moved sideways back onto its own
+       road (only sideways, so it never jumps forward or back). Inside a junction, where another road's surface is under
+       it, nothing changes */
+    if (p.road && p.cx != null) {
+      const lp2 = this.lp, cw = 0.95;
+      let o = Infinity, mine = null;
+      for (const c of this.net.near(lp2.x, lp2.z, 15)) {
+        const r = this.net.roads[c.k]; if (c.k === p.k) mine = c;
+        if (SLOW_ONLY[r.s]) continue; o = Math.min(o, c.dist - r.w / 2);
+      }
+      const over = o + cw;
+      if (over > 0.05 && over < 3 && mine && mine.dist > 1e-3 && mine.dist < p.road.w / 2 + 3) {
+        /* toward the nearest point of its own road, just enough to be back on the asphalt, and gently (at most about
+           half a metre a frame), so it is a glide, never a jump. Far from any road (a lot, a garage) it is left alone */
+        const lim = Math.max(0, p.road.w / 2 - cw), mv = Math.min(over, Math.max(0, mine.dist - lim), 15 * (dt || 0.033));
+        const ux = (mine.px - lp2.x) / mine.dist, uz = (mine.pz - lp2.z) / mine.dist;
+        if (mv > 0) { lp2.x += ux * mv; lp2.z += uz * mv; this.ox += ux * mv; this.oz += uz * mv; this.edgeFix = (this.edgeFix || 0) + 1; }
+      }
+    }
     return Object.assign(q, this.lp);
   };
   const api = { Net, Track };
