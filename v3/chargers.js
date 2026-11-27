@@ -1,163 +1,334 @@
-/* MapKoon v3 — chargers.js (v1, Nov 27 2026): Tesla Superchargers on the map (step 6, the first v2 feature moved to v3).
-   Same list as v2: OpenStreetMap, refreshed weekly by the "Chargers" job in tessynav-roads.
-   - a red pin with a lightning bolt and the number of stalls floats above each Supercharger (within 2 km while
-     following the car, everywhere loaded in Move map); tap it for a card: name, stalls, power, distance
-   - close by (700 m, at most 6): a small 3D site, a row of charging posts at painted stalls and a tall sign, turned to
-     face the nearest road. Simple shapes, no logos.
-   - ?fastdc=1 also shows other fast chargers (blue); ?chg=0 turns all of it off
-   Light on the car's computer: the list is filtered every 2 s, pins are sprites, each 3D site is 6 merged meshes. */
-(function (root) {
-  const URL_ = 'https://raw.githubusercontent.com/Tessynav/tessynav-roads/chargers/chargers.json';
-  const esc = t => String(t == null ? '' : t).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MapKoon v3</title>
+<style>
+:root{--panel:rgba(28,30,34,.9);--text:#f3f1ec;--sub:#b9b6ae;--accent:#e8913a;--bg:#1b2233;color-scheme:dark}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text)}
+canvas{display:block}
+.hud{position:absolute;background:var(--panel);border-radius:14px;padding:10px 14px;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+#top{left:calc(16px + env(safe-area-inset-left,0px));top:calc(16px + env(safe-area-inset-top,0px));font-weight:700;font-size:17px}
+#top small{display:block;font-weight:500;font-size:13px;color:var(--sub);margin-top:2px}
+#stats{right:calc(16px + env(safe-area-inset-right,0px));top:calc(16px + env(safe-area-inset-top,0px));font:600 12px ui-monospace,monospace;color:var(--sub);text-align:right;line-height:1.5}
+#ctl{left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:8px;padding:8px}
+#ctl button{border:0;border-radius:10px;padding:12px 16px;background:#3a3d44;color:var(--text);font:600 15px system-ui;cursor:pointer}
+#ctl button.on{background:var(--accent);color:#2b1a08}
+#spd{left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));font:800 34px system-ui}
+#spd small{font:600 14px system-ui;color:var(--sub);margin-left:4px}
+#ctl button.rec{background:#c62828;color:#fff}
+#msg{left:50%;top:calc(16px + env(safe-area-inset-top,0px));transform:translateX(-50%);font-weight:600;font-size:14px;max-width:min(520px,calc(100% - 300px))}
+#cr{right:8px;bottom:6px;font-size:11px;color:#cfd3da;background:rgba(0,0,0,.45);padding:3px 8px;border-radius:6px;position:absolute}
+#load{left:50%;top:45%;transform:translate(-50%,-50%);font-weight:600}
+@media (max-width:560px){#ctl{bottom:70px;flex-wrap:wrap;justify-content:center;width:calc(100% - 32px)}#stats{display:none}}
+</style></head><body>
+<div id="top" class="hud">MapKoon v3 <span style="color:var(--accent)">test</span><small id="gps">Waiting for GPS…</small></div>
+<div id="stats" class="hud">…</div>
+<div id="spd" class="hud">0<small>km/h</small></div>
+<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bRec">● Record</button><button id="bStats">Info</button></div>
+<div id="msg" class="hud" hidden></div>
+<div id="load" class="hud">Loading the map…</div>
+<div id="cr">© OpenStreetMap contributors · Overture Maps Foundation · Ville de Montréal (CC BY 4.0)</div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
+<script type="module">
+/* MapKoon v3 test page: the ready-made map from ../mapkoon-map/ (built on GitHub from OpenStreetMap, Overture and the
+   City of Montréal), the live GPS of the car, and lane lock. Only the tiles near the car are downloaded. */
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+/* (Nov 27: "one website that always gets updated rather than adding v=") always the newest version, no ?v= numbers:
+   the scripts are asked fresh from the server each time (a quick "not changed" answer when they are the same), and the
+   page checks every 2 minutes whether a newer one was uploaded: it reloads at once while starting, later only when the
+   car is stopped and nothing is recording, so a drive is never cut */
+async function fresh(src){const r=await fetch(src,{cache:'no-cache'});if(!r.ok) throw new Error(src+' '+r.status);
+  const txt=await r.text();if(/^\s*</.test(txt)) throw new Error(src+' is not a script (a page was uploaded under this name)');
+  /* (a script with an error only stops itself: the error is caught here instead of stopping the page) */
+  let err=null;const onErr=e=>{err=e.error||e.message;};window.addEventListener('error',onErr);
+  const el=document.createElement('script');el.textContent=txt+'\n//# sourceURL='+new URL(src,location.href).href;document.head.appendChild(el);
+  window.removeEventListener('error',onErr);if(err) throw new Error(src+': '+err);}
+globalThis.THREE=THREE;await fresh('lanes.js');await fresh('../v2/js/rec.js');
+/* (Nov 27 18:23: a wrong file uploaded as chargers.js stopped the whole page at "Loading the map…") extra features load
+   safely: if one is missing or broken, the map and the car still work, only that feature is left out */
+try{await fresh('chargers.js');}catch(e){console.error('chargers.js',e);}
+const PAGE_T=Date.parse(document.lastModified)||0;let MAP_T=0;let upStart=true;
+async function newerPage(){try{const r=await fetch(location.pathname,{method:'HEAD',cache:'reload'});
+  const t=Date.parse(r.headers.get('last-modified')||'');return t&&PAGE_T&&t>PAGE_T+2000;}catch(e){return false;}}
+async function checkUpdate(){if(!(await newerPage())){upStart=false;return;}
+  let parked=true,recOn=false;try{parked=!lastFix||!(lastFix.v>1.5);recOn=!!rec.rec;}catch(e){}   /* (still starting) */
+  if(upStart||(parked&&!recOn)){await fetch(location.href,{cache:'reload'}).catch(()=>{});location.reload();}
+  upStart=false;}
+checkUpdate();setInterval(checkUpdate,120000);
+const PAGEV=13;   /* (shown under Info, so you can see which version the car has) */
+const Q=new URLSearchParams(location.search);
+const base=Q.get('data')||'../mapkoon-map/';
+const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+R.setPixelRatio(Math.min(devicePixelRatio,1.5));R.setSize(innerWidth,innerHeight);document.body.prepend(R.domElement);
+const S=new THREE.Scene();const cam=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,2.5,4000);
+addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();});
+const hemi=new THREE.HemisphereLight(0xdfe8ff,0x4a5a3a,0.85);S.add(hemi);const sun=new THREE.DirectionalLight(0xfff2dd,1.25);sun.position.set(-300,500,200);S.add(sun);
+/* night: from the clock (dark before 7 am and after 4:30 pm in late autumn), or the button */
+const hr=new Date().getHours()+new Date().getMinutes()/60;let night=Q.get('night')?Q.get('night')==='1':(hr<7||hr>16.5);
+/* (step 2) the sky: deep blue overhead fading to a pale haze at the horizon; the distance fades into the same haze */
+const skyU={top:{value:new THREE.Color(0x4f8fd8)},hor:{value:new THREE.Color(0xcfe2f2)}};
+const skyM=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,uniforms:skyU,
+  vertexShader:`varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`uniform vec3 top,hor;varying vec3 vP;void main(){float h=normalize(vP).y;gl_FragColor=vec4(mix(hor,top,smoothstep(0.0,0.45,h)),1.0);}`});
+const skyDome=new THREE.Mesh(new THREE.SphereGeometry(3600,24,12),skyM);skyDome.renderOrder=-1;skyDome.frustumCulled=false;S.add(skyDome);
+const sky=()=>{const c=night?0x141c33:0xcfe2f2;skyU.top.value.set(night?0x0e1736:0x4f8fd8);skyU.hor.value.set(c);R.setClearColor(c);S.fog=new THREE.Fog(c,600,1900);hemi.intensity=night?0.38:0.85;sun.intensity=night?0.15:1.0;U.night.value=night?1:0;document.getElementById('bNight').classList.toggle('on',night);};
+/* the ground under everything (the land the map has nothing on) */
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshLambertMaterial({color:0x6f8f5a}));ground.rotation.x=-Math.PI/2;S.add(ground);
+const U={night:{value:0}};
+const lam=c=>{const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});return m;};
+const MAT={ground:lam(),paved:lam(),road:lam(),drive:lam(),walk:lam(),paint:new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}),deck:lam()};
+/* flat layers sit a few cm apart; far away that's too little for the depth buffer, so each layer is also nudged
+   toward the camera in order (grass < parking < roads < sidewalks < paint): no more flickering stripes in the distance */
+[['ground',-2],['paved',-3],['road',-4],['walk',-5],['paint',-6]].forEach(([k,f])=>{MAT[k].polygonOffset=true;MAT[k].polygonOffsetFactor=f;MAT[k].polygonOffsetUnits=f*2;});
+/* (step 2, Nov 26) far-away lane lines fade out: thinner than a pixel past ~150 m, they only shimmer and crawl. They
+   fade smoothly between 110 m and 240 m from the camera (close ones stay crisp) */
+MAT.paint.transparent=true;MAT.paint.depthWrite=false;
+MAT.paint.onBeforeCompile=sh=>{
+  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying float vPd;').replace('#include <project_vertex>','#include <project_vertex>\nvPd=-mvPosition.z;');
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vPd;').replace('#include <dithering_fragment>','#include <dithering_fragment>\ngl_FragColor.a*=1.0-smoothstep(110.0,240.0,vPd);');};
+/* buildings: lit walls with windows (lit at night), plain roofs */
+/* landmarks (the Champlain Bridge's pylon and cables): plain lit shapes */
+MAT.lm=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+/* (step 2) water: the map's blue with small moving ripples, drawn by the graphics chip (no texture to download) */
+U.time={value:0};
+MAT.water=new THREE.ShaderMaterial({vertexColors:true,side:THREE.DoubleSide,uniforms:Object.assign(THREE.UniformsUtils.clone(THREE.UniformsLib.fog),U),fog:true,
+  vertexShader:`#include <fog_pars_vertex>
+  varying vec3 vC;varying vec2 vW;varying float vD;void main(){vC=color;vec4 wp=modelMatrix*vec4(position,1.0);vW=wp.xz;vec4 mvPosition=viewMatrix*wp;vD=-mvPosition.z;gl_Position=projectionMatrix*mvPosition;
+  #include <fog_vertex>
+  }`,
+  fragmentShader:`#include <fog_pars_fragment>
+  uniform float time,night;varying vec3 vC;varying vec2 vW;varying float vD;
+  float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+  float dashes(vec2 w,float ang,vec2 cs,float t){float c=cos(ang),s=sin(ang);vec2 p=vec2(c*w.x-s*w.y,s*w.x+c*w.y)/cs+vec2(t,0.0);
+    vec2 id=floor(p),f=fract(p);float r=h(id);float on=step(0.72,r);float x0=0.15+0.4*h(id+7.0);
+    return on*smoothstep(x0,x0+0.06,f.x)*smoothstep(x0+0.4,x0+0.34,f.x)*smoothstep(0.35,0.45,f.y)*smoothstep(0.65,0.55,f.y);}
+  void main(){float near=smoothstep(520.0,120.0,vD);
+    float d=max(dashes(vW,0.45,vec2(6.0,1.6),time*0.08),dashes(vW+31.0,0.62,vec2(4.5,1.3),-time*0.06)*0.8)*near;
+    vec3 c=vC*0.86+vec3(0.65,0.8,0.92)*d*0.3;
+    gl_FragColor=vec4(c*(1.0-0.55*night),1.0);
+  #include <fog_fragment>
+  }`});
+MAT.water.polygonOffset=true;MAT.water.polygonOffsetFactor=-1;MAT.water.polygonOffsetUnits=-2;
+/* (step 2) building shadows on the ground: a soft see-through dark layer, lighter at night */
+MAT.shade=new THREE.MeshBasicMaterial({color:0x10141c,transparent:true,opacity:0.28,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-7,polygonOffsetUnits:-14});
+MAT.bld=new THREE.ShaderMaterial({uniforms:Object.assign({sunDir:{value:new THREE.Vector3(-0.4,0.8,0.3).normalize()}},U),vertexColors:true,side:THREE.DoubleSide,
+ vertexShader:`attribute float ex;varying vec3 vC;varying float vEx;varying float vY;varying float vSh;uniform vec3 sunDir;
+ void main(){vC=color;vEx=ex;vY=position.y;vec3 n=normalize(normal);vSh=0.72+0.28*max(dot(n,sunDir),0.0)+0.06*abs(n.x);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+ fragmentShader:`uniform float night;varying vec3 vC;varying float vEx;varying float vY;varying float vSh;
+ float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+ float box(vec2 f,vec2 a,vec2 b){return step(a.x,f.x)*step(f.x,b.x)*step(a.y,f.y)*step(f.y,b.y);}
+ /* (step 2 buildings) each building has a facade style (from the map builder): 0 apartments, 1 shops on the ground floor,
+    2 office tower (ribbon windows), 3 house, 4 industrial. Windows are drawn here, no textures to download. */
+ void main(){vec3 w=vC*vSh*(1.0-0.6*night)*mix(0.7,1.0,smoothstep(0.0,5.0,vY));if(vEx<0.0){gl_FragColor=vec4(w,1.0);return;}
+  float st=floor(vEx/20000.0);float run=vEx-st*20000.0;
+  vec3 glass=vec3(0.27,0.33,0.4);float win=0.0;vec2 c=vec2(0.0);float lit=0.0;
+  if(st<0.5){vec2 g=vec2(run/3.2,vY/3.1);c=floor(g);win=box(fract(g),vec2(0.2,0.3),vec2(0.8,0.82))*step(1.0,vY);}
+  else if(st<1.5){
+    if(vY<4.2){vec2 g=vec2(run/3.0,0.0);c=vec2(floor(g.x),-1.0);float fx=fract(g.x);win=step(0.06,fx)*step(fx,0.94)*step(0.4,vY)*step(vY,3.6);glass=vec3(0.18,0.23,0.28);}
+    else{vec2 g=vec2(run/3.2,(vY-4.2)/3.1);c=floor(g)+vec2(0.0,2.0);win=box(fract(g),vec2(0.2,0.3),vec2(0.8,0.82));}
+    w*=mix(vec3(0.82),vec3(1.0),step(4.2,vY));}
+  else if(st<2.5){vec2 g=vec2(run/1.6,vY/3.6);c=vec2(floor(run/6.0),floor(g.y));vec2 f=fract(g);
+    win=step(0.06,f.x)*step(0.22,f.y)*step(f.y,0.9);glass=mix(vec3(0.3,0.4,0.5),vec3(0.55,0.68,0.8),smoothstep(0.0,120.0,vY))*0.85;}
+  else if(st<3.5){vec2 g=vec2(run/4.0,vY/2.8);c=floor(g);win=box(fract(g),vec2(0.35,0.35),vec2(0.65,0.78))*step(0.8,vY);}
+  else{vec2 g=vec2(run/6.0,0.0);c=vec2(floor(g.x),0.0);float fx=fract(g.x);win=step(0.15,fx)*step(fx,0.55)*step(4.0,vY)*step(vY,5.4);glass=vec3(0.32,0.36,0.4);}
+  lit=step(h(c),st>1.5&&st<2.5?0.28:0.34);vec3 day=mix(glass,w,0.22);vec3 nt=mix(vec3(0.06,0.07,0.1),vec3(1.0,0.8,0.45)*(st>1.5&&st<2.5?0.8:0.95),lit);
+  gl_FragColor=vec4(mix(w,mix(day,nt,night),win),1.0);}`});
+sky();
 
-  function Chargers(o) {
-    /* o: {THREE, scene, camera, canvas, toL (lon,lat)->[x,z], net (MKLanes.Net), car () -> {x,z} } */
-    Object.assign(this, o); this.list = []; this.pins = new Map(); this.sites = new Map(); this.t = 0;
-    const q = new URLSearchParams(location.search); this.on = q.get('chg') !== '0'; this.dc = q.get('fastdc') === '1';
-    this.ray = new o.THREE.Raycaster(); this.tex = new Map();
-    if (this.on) { this.load(); this.css(); o.canvas.addEventListener('pointerup', e => this.tap(e)); }
-  }
-  Chargers.prototype.css = function () {
-    const st = document.createElement('style');
-    st.textContent = '#chgcard{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:30;min-width:260px;max-width:92vw;' +
-      'background:rgba(28,30,34,.95);color:#f3f1ec;border-radius:16px;padding:14px 16px;box-shadow:0 6px 24px rgba(0,0,0,.45);font:15px system-ui,sans-serif;display:none}' +
-      '#chgcard .n{font-weight:700;font-size:17px;margin-bottom:2px}#chgcard .s{color:#b9b6ae;font-size:13px}' +
-      '#chgcard button{margin-top:12px;width:100%;border:0;border-radius:10px;padding:10px;font:600 15px system-ui,sans-serif;background:#45474d;color:#f3f1ec}';
-    document.head.appendChild(st);
-  };
-  Chargers.prototype.load = async function () {
-    let j = null;
-    try { const c = JSON.parse(localStorage.getItem('tn3_chargers') || 'null'); if (c && c.at && Date.now() - c.at < 24 * 3600e3) j = c.j; } catch (e) {}
-    if (!j) {
-      try {
-        const r = await fetch(URL_ + '?t=' + Math.floor(Date.now() / 3600e3));
-        if (r.ok) { j = await r.json(); try { localStorage.setItem('tn3_chargers', JSON.stringify({ at: Date.now(), j })); } catch (e) {} }
-      } catch (e) {}
-    }
-    if (!j || !j.s) return;
-    this.list = j.s.map(s => ({ id: s[0], lat: s[1], lon: s[2], name: s[3], stalls: s[4], kw: s[5], kind: s[6], net: s[7] }))
-      .filter(s => s.kind === 'sc' || this.dc);
-    for (const s of this.list) { const p = this.toL(s.lon, s.lat); s.x = p[0]; s.z = p[1]; }
-    this.t = 0;
-  };
-  /* the pin picture: a rounded square, red (Supercharger) or blue, a white bolt and the number of stalls */
-  Chargers.prototype.pinTex = function (s) {
-    const key = s.kind + (s.stalls || 0); if (this.tex.has(key)) return this.tex.get(key);
-    const T = this.THREE, cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d');
-    x.fillStyle = s.kind === 'sc' ? '#e31937' : '#2f6fd6'; x.strokeStyle = '#fff'; x.lineWidth = 8;
-    x.beginPath(); if (x.roundRect) x.roundRect(14, 14, 100, 100, 22); else x.rect(14, 14, 100, 100); x.fill(); x.stroke();
-    x.fillStyle = '#fff'; x.beginPath(); x.moveTo(72, 26); x.lineTo(40, 70); x.lineTo(60, 70); x.lineTo(54, 102); x.lineTo(88, 56); x.lineTo(68, 56); x.closePath(); x.fill();
-    if (s.stalls) { x.font = 'bold 30px sans-serif'; x.textAlign = 'right'; x.textBaseline = 'top'; x.fillText(String(s.stalls), 108, 20); }
-    const m = new T.SpriteMaterial({ map: new T.CanvasTexture(cv), depthTest: false, sizeAttenuation: false, fog: false });
-    this.tex.set(key, m); return m;
-  };
-  /* the nearest road's direction, so the row of stalls faces it */
-  Chargers.prototype.face = function (x, z) {
-    let best = null;
-    for (const c of this.net.near(x, z, 60)) { const r = this.net.roads[c.k]; if (r.h && Math.max(...r.h) > 0.5) continue; if (!best || c.dist < best.dist) best = c; }
-    if (!best || best.dist < 0.5) return 0;
-    const px = best.px - x, pz = best.pz - z;            /* toward the road */
-    return Math.atan2(px, pz);                           /* the stalls' open side (+z) points that way */
-  };
-  /* a spot for the site, turned by a (stalls facing +z), moved back (away from the road) until clear of every road */
-  Chargers.prototype.clear = function (x, z, a, L, D) {
-    const ca = Math.cos(a), sa = Math.sin(a), corners = [];
-    for (const lx of [-L - 1, 0, L + 1]) for (const lz of [-0.6, D / 2, D]) corners.push([lx, lz]);
-    for (let back = 0; back <= 25; back += 1) {
-      const ox = x - sa * back, oz = z - ca * back;          /* back = away from the road (the stalls face it) */
-      let ok = true;
-      for (const [lx, lz] of corners) {
-        const wx = ox + lx * ca + lz * sa, wz = oz - lx * sa + lz * ca;
-        for (const c of this.net.near(wx, wz, 20)) { const r = this.net.roads[c.k]; if (r.s === 'parking_aisle') continue; if (c.dist < r.w / 2 + 0.5) { ok = false; break; } }
-        if (!ok) break;
-      }
-      if (ok) return [ox, oz];
-    }
-    return null;
-  };
-  Chargers.prototype.site = function (s) {
-    const T = this.THREE, n = Math.max(2, Math.min(12, s.stalls || 8)), SW = 2.8, D = 5.5, L = n * SW / 2;
-    const box = (x0, x1, y0, y1, z0, z1) => { const g = new T.BoxGeometry(x1 - x0, y1 - y0, z1 - z0); g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); return g.toNonIndexed(); };
-    const merge = list => {
-      let k = 0; for (const g of list) k += g.attributes.position.count;
-      const P = new Float32Array(k * 3), N = new Float32Array(k * 3); let o = 0;
-      for (const g of list) { P.set(g.attributes.position.array, o * 3); N.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; g.dispose(); }
-      const m = new T.BufferGeometry(); m.setAttribute('position', new T.BufferAttribute(P, 3)); m.setAttribute('normal', new T.BufferAttribute(N, 3)); return m;
-    };
-    const M = this.M || (this.M = {
-      pad: new T.MeshLambertMaterial({ color: 0x3b3f45 }), line: new T.MeshBasicMaterial({ color: 0xe9ecef }),
-      post: new T.MeshLambertMaterial({ color: 0xf3f4f6 }), sc: new T.MeshLambertMaterial({ color: 0xd8213b }),
-      dc: new T.MeshLambertMaterial({ color: 0x2f6fd6 }), pole: new T.MeshLambertMaterial({ color: 0x8e959d }), screen: new T.MeshBasicMaterial({ color: 0x1b2733 })
-    });
-    const lines = [], posts = [], caps = [], scr = [];
-    for (let i = 0; i <= n; i++) { const lx = -L + i * SW; lines.push(box(lx - 0.06, lx + 0.06, 0.1, 0.12, 0.2, D - 0.3)); }
-    for (let i = 0; i < n; i++) {
-      const px = -L + SW * (i + 0.5);
-      posts.push(box(px - 0.2, px + 0.2, 0.1, 1.75, -0.35, -0.05), box(px - 0.32, px + 0.32, 0.1, 0.2, -0.45, 0.05));
-      caps.push(box(px - 0.21, px + 0.21, 1.75, 1.95, -0.36, -0.04)); scr.push(box(px - 0.13, px + 0.13, 1.25, 1.55, -0.04, -0.02));
-    }
-    const g = new T.Group(), add = (geo, m) => g.add(new T.Mesh(geo, m));
-    add(merge([box(-L - 1, L + 1, 0.05, 0.1, -0.6, D)]), M.pad); add(merge(lines), M.line); add(merge(posts), M.post);
-    add(merge(caps), s.kind === 'sc' ? M.sc : M.dc); add(merge(scr), M.screen); add(merge([box(L + 0.4, L + 0.6, 0.1, 4.4, -0.3, -0.1)]), M.pole);
-    const sign = new T.Sprite(this.pinTex(s).clone()); sign.material.sizeAttenuation = true; sign.material.depthTest = true; sign.scale.set(1.6, 1.6, 1); sign.position.set(L + 0.5, 5.2, -0.2); g.add(sign);
-    /* (Nov 27: 2 of the 9 Superchargers on the map are mapped on a road or parking lane, so their stalls covered it)
-       the site slides back from the road until none of it is on any road; no clear spot within 25 m: pin only */
-    const a = this.face(s.x, s.z), spot = this.clear(s.x, s.z, a, L, D);
-    if (!spot) { g.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); }); return null; }
-    g.position.set(spot[0], 0, spot[1]); g.rotation.y = a;
-    this.scene.add(g); return g;
-  };
-  Chargers.prototype.drop = function (map, id) {
-    const g = map.get(id); if (!g) return; if (g === 'none') { map.delete(id); return; } this.scene.remove(g);
-    g.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); }); map.delete(id);
-  };
-  /* every frame: cheap; the lists are rebuilt every 2 s */
-  Chargers.prototype.update = function (dt, cx, cz, following) {
-    if (!this.on || !this.list.length) return;
-    this.t -= dt; if (this.t > 0) return; this.t = 2;
-    /* (Nov 27, 18:18: "zoomed all the way out and couldn't find a Supercharger") pins are seen through the haze and from
-       far away when browsing the map (15 km), and the closest 3 are always shown, even outside that */
-    const pinR = following ? 2000 : 15000, near = [], all = [];
-    for (const s of this.list) all.push([Math.hypot(s.x - cx, s.z - cz), s]);
-    all.sort((a, b) => a[0] - b[0]);
-    for (const s of this.list) { const d = Math.hypot(s.x - cx, s.z - cz); if (d < pinR) near.push([d, s]); }
-    near.sort((a, b) => a[0] - b[0]);
-    /* pins (the closest 40, and always the closest 3 when browsing) */
-    const pinList = near.slice(0, 40); if (!following) for (const n of all.slice(0, 3)) if (!pinList.includes(n)) pinList.push(n);
-    const keepP = new Set(pinList.map(n => n[1].id));
-    for (const id of [...this.pins.keys()]) if (!keepP.has(id)) { this.scene.remove(this.pins.get(id)); this.pins.delete(id); }
-    for (const [d, s] of pinList) if (!this.pins.has(s.id)) {
-      const sp = new this.THREE.Sprite(this.pinTex(s)); sp.center.set(0.5, 0); sp.scale.set(0.055, 0.055, 1); sp.position.set(s.x, 14, s.z);
-      sp.renderOrder = 20; sp.userData.site = s; this.scene.add(sp); this.pins.set(s.id, sp);
-    }
-    /* 3D sites (within 700 m, at most 6) */
-    const keepS = new Set(near.filter(n => n[0] < 700).slice(0, 6).map(n => n[1].id));
-    for (const id of [...this.sites.keys()]) if (!keepS.has(id)) this.drop(this.sites, id);
-    for (const [d, s] of near) if (keepS.has(s.id) && !this.sites.has(s.id)) { const g = this.site(s); this.sites.set(s.id, g || 'none'); }
-  };
-  /* every frame: a pin farther than the camera can see is drawn closer along the same line of sight, so it stays on screen
-     at the right spot (pins keep the same size on screen at any distance) */
-  Chargers.prototype.place = function () {
-    if (!this.pins.size) return;
-    const c = this.camera.position, far = this.camera.far * 0.8;
-    for (const sp of this.pins.values()) {
-      const s = sp.userData.site, dx = s.x - c.x, dy = 14 - c.y, dz = s.z - c.z, d = Math.hypot(dx, dy, dz);
-      if (d < far) sp.position.set(s.x, 14, s.z); else { const k = far / d; sp.position.set(c.x + dx * k, c.y + dy * k, c.z + dz * k); }
-    }
-  };
-  /* tap a pin: its card */
-  Chargers.prototype.tap = function (e) {
-    if (!this.pins.size) return;
-    const r = this.canvas.getBoundingClientRect(), v = new this.THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-    this.ray.setFromCamera(v, this.camera);
-    const hit = this.ray.intersectObjects([...this.pins.values()], false)[0]; if (!hit) return;
-    const s = hit.object.userData.site, c = this.car && this.car(), d = c ? Math.hypot(s.x - c.x, s.z - c.z) / 1000 : null;
-    let el = document.getElementById('chgcard'); if (!el) { el = document.createElement('div'); el.id = 'chgcard'; document.body.appendChild(el); }
-    const info = [s.kind === 'sc' ? 'Tesla Supercharger' : (s.net || 'Fast charger')];
-    if (s.stalls) info.push(s.stalls + ' stalls'); if (s.kw) info.push('up to ' + s.kw + ' kW');
-    if (d != null) info.push(d < 10 ? d.toFixed(1) + ' km' : Math.round(d) + ' km');
-    el.innerHTML = '<div class="n">' + esc(s.name) + '</div><div class="s">' + info.map(esc).join(' · ') + '</div><button>Close</button>';
-    el.style.display = 'block'; el.querySelector('button').onclick = () => { el.style.display = 'none'; };
-  };
-  root.MKChargers = Chargers;
-})(typeof window !== 'undefined' ? window : globalThis);
+/* ------------------------------------------------------------------ tiles: only those near the car, unzipped by the browser */
+let IDX=null,HAS=new Set(),NETHAS=new Set();const loaded=new Map(),netDone=new Set(),retryAt=new Map();
+async function gunzip(url){
+  for(let a=0;a<3;a++){
+    try{const r=await fetch(url);if(r.status===404) return null;if(!r.ok) throw new Error(r.status);
+      return await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();}
+    catch(e){await new Promise(z=>setTimeout(z,800*(a+1)));}}
+  throw new Error('could not load '+url);}
+async function loadTile(tx,tz){const k=tx+'_'+tz;if(loaded.has(k)||(retryAt.get(k)||0)>performance.now()) return;loaded.set(k,null);
+  let buf;try{buf=await gunzip(base+'t/'+k+'.bin.gz');}catch(e){loaded.delete(k);retryAt.set(k,performance.now()+5000);return;}
+  if(!buf) return;
+  const dv=new DataView(buf);const hl=dv.getUint32(4,true);const hdr=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,8,hl)));
+  let o=8+hl;const pad=n=>n+((4-n%4)%4);const grp=new THREE.Group();
+  for(const L of hdr.layers){/* positions: 2 cm steps around the tile centre */
+    const q=hdr.q,ox=hdr.o[0],oz=hdr.o[1],S16=new Int16Array(buf,o,L.nv*3);o+=pad(L.nv*6);
+    const P=new Float32Array(L.nv*3);for(let i=0;i<L.nv*3;i+=3){P[i]=S16[i]*q+ox;P[i+1]=S16[i+1]*q;P[i+2]=S16[i+2]*q+oz;}
+    const C=new Uint8Array(buf,o,L.nv*3);o+=pad(L.nv*3);
+    let E;if(L.e){E=new Float32Array(buf,o,L.nv);o+=L.nv*4;}else E=new Float32Array(L.nv);
+    let I;if(L.i16){I=new Uint16Array(buf,o,L.ni);o+=pad(L.ni*2);}else{I=new Uint32Array(buf,o,L.ni);o+=L.ni*4;}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(P,3));g.setAttribute('color',new THREE.BufferAttribute(C,3,true));
+    if(L.name==='bld') g.setAttribute('ex',new THREE.BufferAttribute(E,1));g.setIndex(new THREE.BufferAttribute(I,1));g.computeVertexNormals();
+    const m=new THREE.Mesh(g,MAT[L.name]||MAT.road);m.renderOrder={ground:1,water:1,paved:2,road:3,walk:3,paint:4,shade:4.5}[L.name]||5;grp.add(m);}
+  props(hdr.props,grp);
+  if(loaded.has(k)){S.add(grp);loaded.set(k,grp);}}
+/* the road network for lane lock comes in tiles too; they are added as the car gets near (each road once) */
+async function loadNet(k){if(netDone.has(k)||!NETHAS.has(k)) return;netDone.add(k);
+  try{const b=await gunzip(base+'n/'+k+'.json.gz');if(b) NET.add(JSON.parse(new TextDecoder().decode(b)).roads);}
+  catch(e){netDone.delete(k);}}
+/* street furniture, shared shapes */
+const pole=new THREE.CylinderGeometry(0.12,0.15,8,6);pole.translate(0,4,0);const poleM=new THREE.MeshLambertMaterial({color:0x40444a});
+const lampG=new THREE.SphereGeometry(0.45,8,6);const lampM=new THREE.MeshBasicMaterial({color:0xffe2a0});
+const boxG=new THREE.BoxGeometry(0.45,1.1,0.4);boxG.translate(0,4.6,0);const boxM=new THREE.MeshLambertMaterial({color:0x202226});
+const stopG=new THREE.CylinderGeometry(0.42,0.42,0.06,8);stopG.rotateX(Math.PI/2);stopG.translate(0,2.3,0);const stopM=new THREE.MeshBasicMaterial({color:0xc8202a});
+const thin=new THREE.CylinderGeometry(0.05,0.05,2.3,5);thin.translate(0,1.15,0);
+/* trees: a trunk and a low-poly crown, each tree a little different (size, lean of colour); pines as cones */
+const trunkG=new THREE.CylinderGeometry(0.16,0.24,2.6,5);trunkG.translate(0,1.3,0);const trunkM=new THREE.MeshLambertMaterial({color:0x5a4434});
+const crownG=new THREE.IcosahedronGeometry(2.4,0);crownG.scale(1,1.15,1);crownG.translate(0,4.6,0);const crownM=new THREE.MeshLambertMaterial({flatShading:true});
+const pineG=new THREE.ConeGeometry(1.9,6.5,7);pineG.translate(0,4.9,0);
+/* a pool of warm light under each street lamp, only at night */
+const poolG=new THREE.PlaneGeometry(16,16);poolG.rotateX(-Math.PI/2);poolG.translate(0,0.2,0);
+const poolM=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:U,
+  vertexShader:`varying vec2 vU;void main(){vU=uv*2.0-1.0;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.0);}`,
+  fragmentShader:`uniform float night;varying vec2 vU;void main(){float d=length(vU);float a=smoothstep(1.0,0.0,d);gl_FragColor=vec4(vec3(1.0,0.78,0.45)*a*a*0.55*night,1.0);}`});
+function props(list,grp){const by={lamp:[],light:[],stop:[],tree:[],pine:[]};for(const p of list) by[p[0]]&&by[p[0]].push(p);
+  const trees=by.tree.concat(by.pine);
+  if(trees.length){const M=new THREE.Matrix4(),Sc=new THREE.Vector3(),Qn=new THREE.Quaternion(),Ps=new THREE.Vector3(),C=new THREE.Color();
+    const tr=new THREE.InstancedMesh(trunkG,trunkM,trees.length);trees.forEach((p,i)=>{const k=0.8+(p[3]%40)/100;Sc.set(k,k,k);Ps.set(p[1],0,p[2]);M.compose(Ps,Qn,Sc);tr.setMatrixAt(i,M);});grp.add(tr);
+    for(const [arr,geo] of [[by.tree,crownG],[by.pine,pineG]]){if(!arr.length) continue;const cr=new THREE.InstancedMesh(geo,crownM,arr.length);
+      arr.forEach((p,i)=>{const k=0.75+(p[3]%45)/100;Sc.set(k,k,k);Qn.setFromAxisAngle(new THREE.Vector3(0,1,0),p[3]*0.37);Ps.set(p[1],0,p[2]);M.compose(Ps,Qn,Sc);cr.setMatrixAt(i,M);
+        const v=p[3]/99;C.setRGB(arr===by.pine?0.16+0.05*v:0.26+0.18*v,arr===by.pine?0.34+0.08*v:0.36+0.1*v,arr===by.pine?0.18:0.16+0.06*v);cr.setColorAt(i,C);});
+      Qn.identity();grp.add(cr);}}
+  if(by.lamp.length){const m=new THREE.InstancedMesh(poolG,poolM,by.lamp.length);const M=new THREE.Matrix4();by.lamp.forEach((p,i)=>{M.makeTranslation(p[1],0,p[2]);m.setMatrixAt(i,M);});m.renderOrder=5;grp.add(m);}
+  const inst=(geo,mat,arr,dy)=>{if(!arr.length) return;const m=new THREE.InstancedMesh(geo,mat,arr.length);const M=new THREE.Matrix4();arr.forEach((p,i)=>{M.makeTranslation(p[1],dy||0,p[2]);m.setMatrixAt(i,M);});grp.add(m);};
+  inst(pole,poleM,by.lamp);inst(lampG,lampM,by.lamp,8);inst(pole,poleM,by.light);inst(boxG,boxM,by.light);inst(thin,poleM,by.stop);inst(stopG,stopM,by.stop);}
+function want(x,z){if(!IDX) return;const T=IDX.T,tx=Math.floor(x/T),tz=Math.floor(z/T),r=1400;
+  for(let a=tx-3;a<=tx+3;a++) for(let b=tz-3;b<=tz+3;b++){const k=a+'_'+b;if(!HAS.has(k)) continue;
+    if(Math.hypot((a+0.5)*T-x,(b+0.5)*T-z)<r) loadTile(a,b);}
+  for(let a=tx-1;a<=tx+1;a++) for(let b=tz-1;b<=tz+1;b++) loadNet(a+'_'+b);
+  for(const [k,g] of loaded){if(!g) continue;const [a,b]=k.split('_').map(Number);
+    if(Math.hypot((a+0.5)*T-x,(b+0.5)*T-z)>r+600){S.remove(g);g.traverse(o=>{if(o.geometry&&!o.isInstancedMesh&&![pole,lampG,boxG,stopG,thin,trunkG,crownG,pineG,poolG].includes(o.geometry)) o.geometry.dispose();});loaded.delete(k);}}}
+/* ------------------------------------------------------------------ recording: the same trip format, encryption and
+   upload as v2 (uses the upload setup already saved in this browser). Kept in this browser every 20 s until uploaded. */
+const rec=new TN.Rec();const RKEY='tn3_rec';
+TN.Rec.prototype.save=function(){if(!this.rec) return;this.rec.dur=this.t();
+  try{localStorage.setItem(RKEY,JSON.stringify(Object.assign({},this.rec,{shots:undefined})));}
+  catch(e){try{localStorage.setItem(RKEY,JSON.stringify(Object.assign({},this.rec,{shots:undefined,g:this.rec.g.slice(-20000),f:this.rec.f.slice(-6000)})));}catch(e2){}}};
+TN.Rec.prototype.saved=function(){try{const s=localStorage.getItem(RKEY);return s?JSON.parse(s):null;}catch(e){return null;}};
+const v2name=TN.up.name;TN.up.name=t=>v2name(t).replace(/-v2$/,'-v3');
+/* (Nov 27: one drive was uploaded twice, as trip-20261126-1706-v3 and …-v3-7hk) one file per drive: a second upload of
+   the same drive (a tap while it uploads, or the copy kept in this browser) never makes a new file; the fuller copy wins */
+let upBusy=false;
+TN.up.upload=async function(trip){
+  if(upBusy) throw new Error('Already uploading.');
+  const token=TN.up.get('token'),pass=TN.up.get('pass'),repo=TN.up.get('repo')||'Tessynav/tessynav-trips';
+  if(!token||!pass) throw new Error('Upload is not set up in this browser yet.');
+  upBusy=true;
+  try{const name=TN.up.name(trip),url='https://api.github.com/repos/'+repo+'/contents/trips/'+name+'.json';
+    const H={'Accept':'application/vnd.github+json','Content-Type':'application/json','Authorization':'Bearer '+token};
+    const body=btoa(await TN.up.encrypt(trip,pass));
+    const put=sha=>fetch(url,{method:'PUT',headers:H,body:JSON.stringify(Object.assign({message:'Trip '+name,content:body},sha?{sha:sha}:{}))});
+    let r=await put();
+    if(r.status===422){/* already there: the same drive. Replace it only if this copy is fuller */
+      const g=await fetch(url+'?t='+Date.now(),{headers:H});if(!g.ok) throw new Error('GitHub '+g.status);
+      const old=await g.json();
+      if(old.size>=body.length*0.75) return name+' (already uploaded)';
+      r=await put(old.sha);}
+    if(!r.ok) throw new Error('GitHub '+r.status);
+    return name;}
+  finally{upBusy=false;}};
+let msgT=0;function msg(t,ms){const m=document.getElementById('msg');m.textContent=t;m.hidden=!t;msgT=ms?performance.now()+ms:0;}
+async function uploadTrip(trip){msg('Uploading your drive…');
+  try{const n=await TN.up.upload(trip);try{localStorage.removeItem(RKEY);}catch(e){}msg('Drive uploaded ✓ '+n,20000);}
+  catch(e){msg('Not uploaded: '+e.message+' It is kept in this browser; tap Record → Upload later.',9000);}}
+document.getElementById('bRec').onclick=e=>{const b=e.target;
+  if(rec.rec){const trip=rec.stop();b.classList.remove('rec');b.textContent='● Record';if(trip&&trip.g.length>20) uploadTrip(trip);else msg('Drive too short, not uploaded.',4000);return;}
+  const old=rec.saved();if(old&&old.g&&old.g.length>50){uploadTrip(old);return;}   /* (a drive left from before: upload it first) */
+  rec.start();rec.rec.app='v3';rec.rec.info.view='v3';rec.rec.info.map=IDX.built;b.classList.add('rec');b.textContent='■ Stop';msg('Recording ●',2500);};
+let recLast=0,worst=0;
+function recFrame(p,pl){if(!rec.rec) return;const t=performance.now();if(t-recLast<200) return;recLast=t;
+  const lon=p.x/IDX.kx+IDX.lon0,lat=IDX.lat0-p.z/IDX.ky,r=v=>Math.round(v*10)/10;
+  const hd=((Math.PI-p.hd3)*180/Math.PI%360+360)%360,road=pl&&pl.road;
+  rec.rec.f.push([rec.t(),+lat.toFixed(7),+lon.toFixed(7),r(hd),pl?1:0,road?road.c+(road.s?'/'+road.s:''):'',pl?pl.lane||0:0,follow?1:0,0,(p.h||0)>0.5?1:0,r(p.h||0),'v3',road?road.w:0]);}
+/* ------------------------------------------------------------------ live GPS -> lane lock */
+const toL=(lon,lat)=>[(lon-IDX.lon0)*IDX.kx,-(lat-IDX.lat0)*IDX.ky];
+let CHG=null,car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,goodFix=null,acc=null,gpsT=0;
+const ctrl=new OrbitControls(cam,R.domElement);ctrl.enabled=false;ctrl.maxPolarAngle=1.45;ctrl.screenSpacePanning=false;ctrl.maxDistance=2500;ctrl.minDistance=15;
+ctrl.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};ctrl.mouseButtons={LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
+const now=()=>performance.now()/1000;
+function onFix(c){const q=toL(c.longitude,c.latitude);acc=c.accuracy;gpsT=now();
+  const f={t:now(),x:q[0],z:q[1],v:c.speed==null||isNaN(c.speed)?(lastFix?lastFix.v:0):c.speed,hd:c.heading==null||isNaN(c.heading)?null:c.heading};
+  want(f.x,f.z);
+  /* (page 7, Nov 26 13:35 drive on Nuns' Island: for a few seconds the car's GPS said 'accuracy 10 km' while its points
+     stayed smooth and right; ignoring them froze the car, which then raced to catch up) a point with no accuracy is still
+     used when it fits where the car was going */
+  let ok=acc<80;
+  if(!ok&&goodFix){const dt=f.t-goodFix.t,ex=Math.hypot(f.x-goodFix.x,f.z-goodFix.z);ok=dt<3&&ex<(goodFix.v||0)*dt+6;}
+  rec.gps(c);if(ok){TR.fix(f);goodFix=f;}lastFix=f;
+  try{localStorage.setItem('lastPos',JSON.stringify([+c.longitude.toFixed(5),+c.latitude.toFixed(5)]));}catch(e){}}
+function startGps(){
+  if(!navigator.geolocation){document.getElementById('gps').textContent='No GPS in this browser';return;}
+  navigator.geolocation.watchPosition(p=>onFix(p.coords),e=>{document.getElementById('gps').textContent='GPS: '+(e.code===1?'permission refused':'not available');},
+    {enableHighAccuracy:true,maximumAge:0,timeout:20000});}
+async function start(){
+  {const r=await fetch(base+'index.json',{cache:'no-cache'});IDX=await r.json();
+   /* (Nov 27: "the 10:37 build isn't showing in the car") two builds on the same day both said "map 2026-11-27": the
+      map's publish time is shown under Info too, so you can see which build the car has */
+   MAP_T=Date.parse(r.headers.get('last-modified')||'')||0;}
+  HAS=new Set(IDX.tiles.map(t=>t[0]+'_'+t[1]));NETHAS=new Set(IDX.net);
+  NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
+  /* (step 6, Nov 27) the first v2 feature in v3: Superchargers on the map (chargers.js) */
+  try{CHG=new MKChargers({THREE,scene:S,camera:cam,canvas:R.domElement,toL,net:NET,car:()=>car&&car.position});}catch(e){CHG=null;console.error('Superchargers off',e);}
+  /* until the first GPS fix: where the app last saw the car, or downtown */
+  let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
+  /* (Nov 27: "on my computer I can't look far away") ?at=lat,lon opens the map at that spot, in Move map mode, to look
+     around from a computer: e.g. app.mapkoon.com/v3/?at=45.4705,-73.5375 */
+  const AT=(Q.get('at')||'').split(',').map(Number);const atOk=AT.length===2&&AT.every(v=>isFinite(v))&&Math.abs(AT[0])<90;
+  if(atOk) p0=[AT[1],AT[0]];
+  const q=toL(p0[0],p0[1]);lastFix={t:now(),x:q[0],z:q[1],v:0,hd:null};want(q[0],q[1]);
+  try{const g=await new GLTFLoader().loadAsync('../model3.glb');car=g.scene;const b=new THREE.Box3().setFromObject(car),s=b.getSize(new THREE.Vector3());const k=4.7/Math.max(s.x,s.z);car.scale.setScalar(k);
+    const b2=new THREE.Box3().setFromObject(car);car.position.y=-b2.min.y;const w=new THREE.Group();w.add(car);car=w;}
+  catch(e){car=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.4,4.6),new THREE.MeshLambertMaterial({color:0xeeeeee}));car.geometry.translate(0,0.7,0);}
+  const beamG=new THREE.PlaneGeometry(9,30);beamG.rotateX(-Math.PI/2);beamG.translate(0,0.5,-17.5);
+  const beamM=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:U,
+    vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`uniform float night;varying vec2 vU;void main(){float along=vU.y;float w=0.18+0.32*along;float x=abs(vU.x-0.5);
+      float a=smoothstep(w,w*0.4,x)*smoothstep(0.0,0.12,along)*smoothstep(1.0,0.5,along);gl_FragColor=vec4(vec3(1.0,0.95,0.82)*a*0.42*night,1.0);}`});
+  /* (the road layers are nudged toward the camera so they don't flicker; the beam is nudged further, so it's never hidden) */
+  beamM.polygonOffset=true;beamM.polygonOffsetFactor=-10;beamM.polygonOffsetUnits=-20;
+  const beam=new THREE.Mesh(beamG,beamM);beam.renderOrder=7;car.add(beam);
+  const tailM=new THREE.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:0});
+  for(const sx of [-0.62,0.62]){const t=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.12,0.05),tailM);t.position.set(sx,0.95,2.36);car.add(t);}
+  car.userData.tail=tailM;
+  const blobG=new THREE.PlaneGeometry(3.2,6.0);blobG.rotateX(-Math.PI/2);blobG.translate(0,0.08,0);
+  const blob=new THREE.Mesh(blobG,new THREE.ShaderMaterial({transparent:true,depthWrite:false,
+    vertexShader:`varying vec2 vU;void main(){vU=uv*2.0-1.0;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`varying vec2 vU;void main(){float d=length(vU*vec2(1.0,0.9));gl_FragColor=vec4(0.0,0.0,0.0,0.45*smoothstep(1.0,0.35,d));}`}));
+  blob.renderOrder=6;car.add(blob);S.add(car);
+  document.getElementById('load').remove();
+  if(atOk){const b=document.getElementById('bFollow');follow=false;b.classList.remove('on');b.textContent='Move map';ctrl.enabled=true;
+    ctrl.target.set(q[0],0,q[1]);cam.position.set(q[0]-120,160,q[1]+220);ctrl.update();}
+  startGps();loop();
+  const old=rec.saved();if(old&&old.g&&old.g.length>50) msg('A recorded drive isn’t uploaded yet: tap Record to upload it.',9000);}
+let last=performance.now(),fpsT=0,frames=0,fps=0,camHd=0,rawHd=0,showStats=false,pitch=0,pitchT=0,lastPH=null;const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
+function rawPose(){/* plain GPS: the last fix, moved on at its speed for up to 1.5 s */
+  const f=lastFix,dt=Math.min(1.5,now()-f.t);if(f.hd!=null&&f.v>1) rawHd=Math.PI-f.hd*Math.PI/180;
+  const h=f.hd!=null?f.hd*Math.PI/180:0,m=f.hd!=null?f.v*dt:0;return {x:f.x+Math.sin(h)*m,z:f.z-Math.cos(h)*m,h:0,hd3:rawHd};}
+function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.min(0.1,(t-last)/1000);last=t;
+  const pl=lock&&TR.st?TR.pose(now(),dt):null;const p=pl||rawPose();
+  /* (page 9, Nov 26 17:06 drive: on the bridge's slopes the headlights vanished into the road) the car tilts with the road:
+     the slope comes from how its height changes as it moves, smoothed so small steps don't shake it */
+  if(lastPH){const d=Math.hypot(p.x-lastPH.x,p.z-lastPH.z);if(d>0.4){const sl=((p.h||0)-lastPH.h)/d;pitchT=Math.atan(Math.max(-0.15,Math.min(0.15,sl)));lastPH={x:p.x,z:p.z,h:p.h||0};}}else lastPH={x:p.x,z:p.z,h:p.h||0};
+  pitch+=(pitchT-pitch)*Math.min(1,dt*3);
+  if(car){car.position.set(p.x,(p.h||0)+0.06,p.z);car.rotation.order='YXZ';car.rotation.y=p.hd3+Math.PI;car.rotation.x=pitch;if(car.userData.tail) car.userData.tail.opacity=night?1:0;}
+  document.getElementById('spd').firstChild.nodeValue=Math.round((lastFix.v||0)*3.6);
+  let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
+  if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
+  else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
+  if(CHG) try{CHG.update(dt,follow?p.x:ctrl.target.x,follow?p.z:ctrl.target.z,follow);}catch(e){CHG=null;}
+  U.time.value=t/1000;skyDome.position.copy(cam.position);
+  /* (Nov 26 21:15 drive: past 10 km from the map's centre - DIX30 in Brossard - the ground was black: the ground plane
+     ended there) the ground follows the camera, in 1 km steps */
+  ground.position.set(Math.round(cam.position.x/1000)*1000,0,Math.round(cam.position.z/1000)*1000);
+  if(CHG) try{CHG.place();}catch(e){CHG=null;}
+  R.render(S,cam);recFrame(p,pl);if(rec.rec) rec.shoot(R.domElement,null);worst=Math.max(worst,dt*1000);if(msgT&&t>msgT){msg('');msgT=0;}
+  frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);rec.second(Math.round(fps),worst);worst=0;frames=0;fpsT=t;const i=R.info.render;
+    const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
+    document.getElementById('gps').textContent=!gpsT?'Waiting for GPS…':(now()-gpsT>10?'GPS lost':'GPS '+Math.round(acc)+' m')+(HAS.has(k)?'':' · outside the map')+(lock&&!pl&&gpsT?' · finding the road':'');
+    const st=document.getElementById('stats');st.style.display=showStats?'':'none';
+    if(showStats) st.innerHTML=Math.round(fps)+' fps<br>'+i.calls+' draw calls<br>'+(i.triangles/1000).toFixed(0)+'k triangles<br>'+[...loaded.values()].filter(Boolean).length+' tiles · '+NET.roads.length+' roads<br>'+(MAP_T?'map '+new Date(MAP_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'map '+IDX.built)+' · page '+PAGEV+' · page uploaded '+(PAGE_T?new Date(PAGE_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'?');}}
+document.getElementById('bLock').onclick=e=>{lock=!lock;e.target.classList.toggle('on',lock);e.target.textContent=lock?'Lane lock':'Raw GPS';};
+document.getElementById('bNight').onclick=()=>{night=!night;sky();};
+document.getElementById('bStats').onclick=e=>{showStats=!showStats;e.target.classList.toggle('on',showStats);};
+document.getElementById('bFollow').onclick=e=>{follow=!follow;e.target.classList.toggle('on',follow);e.target.textContent=follow?'Follow car':'Move map';ctrl.enabled=!follow;if(!follow) ctrl.target.copy(car.position);};
+window.V3={S,R,cam,onFix,look:(cx,cy,cz,tx,tz)=>{follow=false;ctrl.enabled=true;ctrl.target.set(tx,0,tz);cam.position.set(cx,cy,cz);},info:()=>R.info.render,net:()=>NET};
+start();
+</script></body></html>
