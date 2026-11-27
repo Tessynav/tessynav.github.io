@@ -165,8 +165,11 @@
     const info = [s.kind === 'sc' ? 'Tesla Supercharger' : (s.net || 'Fast charger')];
     if (s.stalls) info.push(s.stalls + ' stalls'); if (s.kw) info.push('up to ' + s.kw + ' kW');
     if (d != null) info.push(d < 10 ? d.toFixed(1) + ' km' : Math.round(d) + ' km');
-    el.innerHTML = '<div class="n">' + esc(s.name) + '</div><div class="s">' + info.map(esc).join(' · ') + '</div><button>Close</button>';
-    el.style.display = 'block'; el.querySelector('button').onclick = () => { el.style.display = 'none'; };
+    const nav = root.NAV;   /* (step 6: navigation) Go to this charger */
+    el.innerHTML = '<div class="n">' + esc(s.name) + '</div><div class="s">' + info.map(esc).join(' · ') + '</div>' +
+      '<div style="display:flex;gap:8px">' + (nav ? '<button class="go" style="background:#e8913a;color:#2b1a08">Go</button>' : '') + '<button class="x">Close</button></div>';
+    el.style.display = 'block'; el.querySelector('.x').onclick = () => { el.style.display = 'none'; };
+    if (nav) el.querySelector('.go').onclick = () => { el.style.display = 'none'; nav.pick({ name: s.name, sub: s.kind === 'sc' ? 'Tesla Supercharger' : (s.net || 'Fast charger'), lng: s.lon, lat: s.lat }); };
   };
   root.MKChargers = Chargers;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -8,7 +8,7 @@ canvas{display:block}
 .hud{position:absolute;background:var(--panel);border-radius:14px;padding:10px 14px;box-shadow:0 2px 10px rgba(0,0,0,.3)}
 #top{left:calc(16px + env(safe-area-inset-left,0px));top:calc(16px + env(safe-area-inset-top,0px));font-weight:700;font-size:17px}
 #top small{display:block;font-weight:500;font-size:13px;color:var(--sub);margin-top:2px}
-#stats{right:calc(16px + env(safe-area-inset-right,0px));top:calc(16px + env(safe-area-inset-top,0px));font:600 12px ui-monospace,monospace;color:var(--sub);text-align:right;line-height:1.5}
+#stats{right:calc(16px + env(safe-area-inset-right,0px));top:calc(84px + env(safe-area-inset-top,0px));font:600 12px ui-monospace,monospace;color:var(--sub);text-align:right;line-height:1.5}
 #ctl{left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:8px;padding:8px}
 #ctl button{border:0;border-radius:10px;padding:12px 16px;background:#3a3d44;color:var(--text);font:600 15px system-ui;cursor:pointer}
 #ctl button.on{background:var(--accent);color:#2b1a08}
@@ -58,7 +58,8 @@ globalThis.THREE=THREE;await fresh('lanes.js');await fresh('../v2/js/rec.js');
 /* (Nov 27 18:23: a wrong file uploaded as chargers.js stopped the whole page at "Loading the map…") extra features load
    safely: if one is missing or broken, the map and the car still work, only that feature is left out */
 try{await fresh('chargers.js');}catch(e){console.error('chargers.js',e);}
-try{await fresh('../v2/js/tesla.js');}catch(e){console.error('tesla.js',e);}   /* (step 6) the Tesla connection, the same as v2's */
+try{await fresh('../v2/js/tesla.js');}catch(e){console.error('tesla.js',e);}
+try{await fresh('nav.js');}catch(e){console.error('nav.js',e);}   /* (step 6) navigation, part 1 */   /* (step 6) the Tesla connection, the same as v2's */
 const PAGE_T=Date.parse(document.lastModified)||0;let MAP_T=0;let upStart=true;
 async function newerPage(){try{const r=await fetch(location.pathname,{method:'HEAD',cache:'reload'});
   const t=Date.parse(r.headers.get('last-modified')||'');return t&&PAGE_T&&t>PAGE_T+2000;}catch(e){return false;}}
@@ -67,7 +68,7 @@ async function checkUpdate(){if(!(await newerPage())){upStart=false;return;}
   if(upStart||(parked&&!recOn)){await fetch(location.href,{cache:'reload'}).catch(()=>{});location.reload();}
   upStart=false;}
 checkUpdate();setInterval(checkUpdate,120000);
-const PAGEV=15;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=16;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -256,7 +257,7 @@ function recFrame(p,pl){if(!rec.rec) return;const t=performance.now();if(t-recLa
   rec.rec.f.push([rec.t(),+lat.toFixed(7),+lon.toFixed(7),r(hd),pl?1:0,road?road.c+(road.s?'/'+road.s:''):'',pl?pl.lane||0:0,follow?1:0,0,(p.h||0)>0.5?1:0,r(p.h||0),'v3',road?road.w:0]);}
 /* ------------------------------------------------------------------ live GPS -> lane lock */
 const toL=(lon,lat)=>[(lon-IDX.lon0)*IDX.kx,-(lat-IDX.lat0)*IDX.ky];
-let CHG=null,car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,goodFix=null,acc=null,gpsT=0;
+let CHG=null,NAV=null,car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,goodFix=null,acc=null,gpsT=0;
 const ctrl=new OrbitControls(cam,R.domElement);ctrl.enabled=false;ctrl.maxPolarAngle=1.45;ctrl.screenSpacePanning=false;ctrl.maxDistance=2500;ctrl.minDistance=15;
 ctrl.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};ctrl.mouseButtons={LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
 const now=()=>performance.now()/1000;
@@ -283,6 +284,12 @@ async function start(){
   NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
   /* (step 6, Nov 27) the first v2 feature in v3: Superchargers on the map (chargers.js) */
   try{CHG=new MKChargers({THREE,scene:S,camera:cam,canvas:R.domElement,toL,net:NET,car:()=>car&&car.position,on:SET.chargers,dc:SET.fastdc});}catch(e){CHG=null;console.error('Superchargers off',e);}
+  /* (step 6) navigation, part 1: search, route line, Go */
+  try{NAV=new MKNav({THREE,scene:S,net:NET,toL,toLL:(x,z)=>[x/IDX.kx+IDX.lon0,IDX.lat0-z/IDX.ky],
+    here:()=>{const q=gpsT&&car?car.position:(follow&&car?car.position:ctrl.target);return [q.x/IDX.kx+IDX.lon0,IDX.lat0-q.z/IDX.ky];},
+    driving:()=>{follow=true;ctrl.enabled=false;const b=document.getElementById('bFollow');b.classList.add('on');b.textContent='Follow car';},
+    look:(x,z)=>{follow=false;ctrl.enabled=true;const b=document.getElementById('bFollow');b.classList.remove('on');b.textContent='Move map';ctrl.target.set(x,0,z);cam.position.set(x-260,420,z+380);},
+    msg});window.NAV=NAV;}catch(e){NAV=null;console.error('Navigation off',e);}
   /* until the first GPS fix: where the app last saw the car, or downtown */
   let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
   /* (Nov 27: "on my computer I can't look far away") ?at=lat,lon opens the map at that spot, in Move map mode, to look
@@ -331,6 +338,7 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
   let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
   if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
   else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
+  if(NAV) try{NAV.update(dt,p.x,p.z,cam.position.y,follow?p.x:ctrl.target.x,follow?p.z:ctrl.target.z);}catch(e){console.error(e);NAV=null;}
   if(CHG) try{CHG.update(dt,follow?p.x:ctrl.target.x,follow?p.z:ctrl.target.z,follow);}catch(e){CHG=null;}
   U.time.value=t/1000;skyDome.position.copy(cam.position);
   /* (Nov 26 21:15 drive: past 10 km from the map's centre - DIX30 in Brossard - the ground was black: the ground plane
