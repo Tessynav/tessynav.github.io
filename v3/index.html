@@ -184,6 +184,27 @@ TN.Rec.prototype.save=function(){if(!this.rec) return;this.rec.dur=this.t();
   catch(e){try{localStorage.setItem(RKEY,JSON.stringify(Object.assign({},this.rec,{shots:undefined,g:this.rec.g.slice(-20000),f:this.rec.f.slice(-6000)})));}catch(e2){}}};
 TN.Rec.prototype.saved=function(){try{const s=localStorage.getItem(RKEY);return s?JSON.parse(s):null;}catch(e){return null;}};
 const v2name=TN.up.name;TN.up.name=t=>v2name(t).replace(/-v2$/,'-v3');
+/* (Nov 27: one drive was uploaded twice, as trip-20261126-1706-v3 and …-v3-7hk) one file per drive: a second upload of
+   the same drive (a tap while it uploads, or the copy kept in this browser) never makes a new file; the fuller copy wins */
+let upBusy=false;
+TN.up.upload=async function(trip){
+  if(upBusy) throw new Error('Already uploading.');
+  const token=TN.up.get('token'),pass=TN.up.get('pass'),repo=TN.up.get('repo')||'Tessynav/tessynav-trips';
+  if(!token||!pass) throw new Error('Upload is not set up in this browser yet.');
+  upBusy=true;
+  try{const name=TN.up.name(trip),url='https://api.github.com/repos/'+repo+'/contents/trips/'+name+'.json';
+    const H={'Accept':'application/vnd.github+json','Content-Type':'application/json','Authorization':'Bearer '+token};
+    const body=btoa(await TN.up.encrypt(trip,pass));
+    const put=sha=>fetch(url,{method:'PUT',headers:H,body:JSON.stringify(Object.assign({message:'Trip '+name,content:body},sha?{sha:sha}:{}))});
+    let r=await put();
+    if(r.status===422){/* already there: the same drive. Replace it only if this copy is fuller */
+      const g=await fetch(url+'?t='+Date.now(),{headers:H});if(!g.ok) throw new Error('GitHub '+g.status);
+      const old=await g.json();
+      if(old.size>=body.length*0.75) return name+' (already uploaded)';
+      r=await put(old.sha);}
+    if(!r.ok) throw new Error('GitHub '+r.status);
+    return name;}
+  finally{upBusy=false;}};
 let msgT=0;function msg(t,ms){const m=document.getElementById('msg');m.textContent=t;m.hidden=!t;msgT=ms?performance.now()+ms:0;}
 async function uploadTrip(trip){msg('Uploading your drive…');
   try{const n=await TN.up.upload(trip);try{localStorage.removeItem(RKEY);}catch(e){}msg('Drive uploaded ✓ '+n,20000);}
