@@ -39,8 +39,15 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
    page checks every 2 minutes whether a newer one was uploaded: it reloads at once while starting, later only when the
    car is stopped and nothing is recording, so a drive is never cut */
 async function fresh(src){const r=await fetch(src,{cache:'no-cache'});if(!r.ok) throw new Error(src+' '+r.status);
-  const el=document.createElement('script');el.textContent=await r.text()+'\n//# sourceURL='+new URL(src,location.href).href;document.head.appendChild(el);}
-globalThis.THREE=THREE;await fresh('lanes.js');await fresh('../v2/js/rec.js');await fresh('chargers.js');
+  const txt=await r.text();if(/^\s*</.test(txt)) throw new Error(src+' is not a script (a page was uploaded under this name)');
+  /* (a script with an error only stops itself: the error is caught here instead of stopping the page) */
+  let err=null;const onErr=e=>{err=e.error||e.message;};window.addEventListener('error',onErr);
+  const el=document.createElement('script');el.textContent=txt+'\n//# sourceURL='+new URL(src,location.href).href;document.head.appendChild(el);
+  window.removeEventListener('error',onErr);if(err) throw new Error(src+': '+err);}
+globalThis.THREE=THREE;await fresh('lanes.js');await fresh('../v2/js/rec.js');
+/* (Nov 27 18:23: a wrong file uploaded as chargers.js stopped the whole page at "Loading the map…") extra features load
+   safely: if one is missing or broken, the map and the car still work, only that feature is left out */
+try{await fresh('chargers.js');}catch(e){console.error('chargers.js',e);}
 const PAGE_T=Date.parse(document.lastModified)||0;let MAP_T=0;let upStart=true;
 async function newerPage(){try{const r=await fetch(location.pathname,{method:'HEAD',cache:'reload'});
   const t=Date.parse(r.headers.get('last-modified')||'');return t&&PAGE_T&&t>PAGE_T+2000;}catch(e){return false;}}
@@ -259,7 +266,7 @@ async function start(){
   HAS=new Set(IDX.tiles.map(t=>t[0]+'_'+t[1]));NETHAS=new Set(IDX.net);
   NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
   /* (step 6, Nov 27) the first v2 feature in v3: Superchargers on the map (chargers.js) */
-  CHG=new MKChargers({THREE,scene:S,camera:cam,canvas:R.domElement,toL,net:NET,car:()=>car&&car.position});
+  try{CHG=new MKChargers({THREE,scene:S,camera:cam,canvas:R.domElement,toL,net:NET,car:()=>car&&car.position});}catch(e){CHG=null;console.error('Superchargers off',e);}
   /* until the first GPS fix: where the app last saw the car, or downtown */
   let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
   /* (Nov 27: "on my computer I can't look far away") ?at=lat,lon opens the map at that spot, in Move map mode, to look
@@ -306,11 +313,12 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
   let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
   if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
   else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
-  if(CHG) CHG.update(dt,follow?p.x:ctrl.target.x,follow?p.z:ctrl.target.z,follow);
+  if(CHG) try{CHG.update(dt,follow?p.x:ctrl.target.x,follow?p.z:ctrl.target.z,follow);}catch(e){CHG=null;}
   U.time.value=t/1000;skyDome.position.copy(cam.position);
   /* (Nov 26 21:15 drive: past 10 km from the map's centre - DIX30 in Brossard - the ground was black: the ground plane
      ended there) the ground follows the camera, in 1 km steps */
   ground.position.set(Math.round(cam.position.x/1000)*1000,0,Math.round(cam.position.z/1000)*1000);
+  if(CHG) try{CHG.place();}catch(e){CHG=null;}
   R.render(S,cam);recFrame(p,pl);if(rec.rec) rec.shoot(R.domElement,null);worst=Math.max(worst,dt*1000);if(msgT&&t>msgT){msg('');msgT=0;}
   frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);rec.second(Math.round(fps),worst);worst=0;frames=0;fpsT=t;const i=R.info.render;
     const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
