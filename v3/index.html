@@ -27,8 +27,6 @@ canvas{display:block}
 <div id="msg" class="hud" hidden></div>
 <div id="load" class="hud">Loading the map…</div>
 <div id="cr">© OpenStreetMap contributors · Overture Maps Foundation · Ville de Montréal (CC BY 4.0)</div>
-<script src="lanes.js?v=6"></script>   <!-- (raise the number each time lanes.js changes, so the car never keeps an old copy) -->
-<script src="../v2/js/rec.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
 <script type="module">
 /* MapKoon v3 test page: the ready-made map from ../mapkoon-map/ (built on GitHub from OpenStreetMap, Overture and the
@@ -36,6 +34,21 @@ canvas{display:block}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+/* (Nov 27: "one website that always gets updated rather than adding v=") always the newest version, no ?v= numbers:
+   the scripts are asked fresh from the server each time (a quick "not changed" answer when they are the same), and the
+   page checks every 2 minutes whether a newer one was uploaded: it reloads at once while starting, later only when the
+   car is stopped and nothing is recording, so a drive is never cut */
+async function fresh(src){const r=await fetch(src,{cache:'no-cache'});if(!r.ok) throw new Error(src+' '+r.status);
+  const el=document.createElement('script');el.textContent=await r.text()+'\n//# sourceURL='+new URL(src,location.href).href;document.head.appendChild(el);}
+await fresh('lanes.js');await fresh('../v2/js/rec.js');
+const PAGE_T=Date.parse(document.lastModified)||0;let upStart=true;
+async function newerPage(){try{const r=await fetch(location.pathname,{method:'HEAD',cache:'reload'});
+  const t=Date.parse(r.headers.get('last-modified')||'');return t&&PAGE_T&&t>PAGE_T+2000;}catch(e){return false;}}
+async function checkUpdate(){if(!(await newerPage())){upStart=false;return;}
+  let parked=true,recOn=false;try{parked=!lastFix||!(lastFix.v>1.5);recOn=!!rec.rec;}catch(e){}   /* (still starting) */
+  if(upStart||(parked&&!recOn)){await fetch(location.href,{cache:'reload'}).catch(()=>{});location.reload();}
+  upStart=false;}
+checkUpdate();setInterval(checkUpdate,120000);
 const PAGEV=12;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
@@ -290,7 +303,7 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
     const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
     document.getElementById('gps').textContent=!gpsT?'Waiting for GPS…':(now()-gpsT>10?'GPS lost':'GPS '+Math.round(acc)+' m')+(HAS.has(k)?'':' · outside the map')+(lock&&!pl&&gpsT?' · finding the road':'');
     const st=document.getElementById('stats');st.style.display=showStats?'':'none';
-    if(showStats) st.innerHTML=Math.round(fps)+' fps<br>'+i.calls+' draw calls<br>'+(i.triangles/1000).toFixed(0)+'k triangles<br>'+[...loaded.values()].filter(Boolean).length+' tiles · '+NET.roads.length+' roads<br>map '+IDX.built+' · page '+PAGEV;}}
+    if(showStats) st.innerHTML=Math.round(fps)+' fps<br>'+i.calls+' draw calls<br>'+(i.triangles/1000).toFixed(0)+'k triangles<br>'+[...loaded.values()].filter(Boolean).length+' tiles · '+NET.roads.length+' roads<br>map '+IDX.built+' · page '+PAGEV+' · uploaded '+(PAGE_T?new Date(PAGE_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'?');}}
 document.getElementById('bLock').onclick=e=>{lock=!lock;e.target.classList.toggle('on',lock);e.target.textContent=lock?'Lane lock':'Raw GPS';};
 document.getElementById('bNight').onclick=()=>{night=!night;sky();};
 document.getElementById('bStats').onclick=e=>{showStats=!showStats;e.target.classList.toggle('on',showStats);};
