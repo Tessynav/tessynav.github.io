@@ -141,6 +141,10 @@
         else cost += 2.5;
       }
       if (r.s === 'link') cost += 0.2;
+      /* (Nov 26 21:15 drive, Nuns' Island: in the roundabout the car turned into the Bell campus entrance for a second,
+         the GPS being 1.5 m to the inside; this afternoon, same roundabout, it didn't) a service road (an entrance, a
+         lane behind buildings) only wins over a street when you're clearly on it, not on a 1-2 m GPS wobble */
+      if (r.c === 'service' && v > 3 && !(st && !st.free && net.roads[st.k] && net.roads[st.k].c === 'service')) cost += 1.5;
       const cand = Object.assign({ cost, dir }, c); now.set(c.k, cand);
       if (!best || cost < best.cost) best = cand;
     }
