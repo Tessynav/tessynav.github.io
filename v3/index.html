@@ -40,7 +40,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
    car is stopped and nothing is recording, so a drive is never cut */
 async function fresh(src){const r=await fetch(src,{cache:'no-cache'});if(!r.ok) throw new Error(src+' '+r.status);
   const el=document.createElement('script');el.textContent=await r.text()+'\n//# sourceURL='+new URL(src,location.href).href;document.head.appendChild(el);}
-await fresh('lanes.js');await fresh('../v2/js/rec.js');
+globalThis.THREE=THREE;await fresh('lanes.js');await fresh('../v2/js/rec.js');await fresh('chargers.js');
 const PAGE_T=Date.parse(document.lastModified)||0;let MAP_T=0;let upStart=true;
 async function newerPage(){try{const r=await fetch(location.pathname,{method:'HEAD',cache:'reload'});
   const t=Date.parse(r.headers.get('last-modified')||'');return t&&PAGE_T&&t>PAGE_T+2000;}catch(e){return false;}}
@@ -49,7 +49,7 @@ async function checkUpdate(){if(!(await newerPage())){upStart=false;return;}
   if(upStart||(parked&&!recOn)){await fetch(location.href,{cache:'reload'}).catch(()=>{});location.reload();}
   upStart=false;}
 checkUpdate();setInterval(checkUpdate,120000);
-const PAGEV=12;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=13;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -233,7 +233,7 @@ function recFrame(p,pl){if(!rec.rec) return;const t=performance.now();if(t-recLa
   rec.rec.f.push([rec.t(),+lat.toFixed(7),+lon.toFixed(7),r(hd),pl?1:0,road?road.c+(road.s?'/'+road.s:''):'',pl?pl.lane||0:0,follow?1:0,0,(p.h||0)>0.5?1:0,r(p.h||0),'v3',road?road.w:0]);}
 /* ------------------------------------------------------------------ live GPS -> lane lock */
 const toL=(lon,lat)=>[(lon-IDX.lon0)*IDX.kx,-(lat-IDX.lat0)*IDX.ky];
-let car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,goodFix=null,acc=null,gpsT=0;
+let CHG=null,car=null,follow=true,lock=true,NET=null,TR=null,lastFix=null,goodFix=null,acc=null,gpsT=0;
 const ctrl=new OrbitControls(cam,R.domElement);ctrl.enabled=false;ctrl.maxPolarAngle=1.45;ctrl.screenSpacePanning=false;ctrl.maxDistance=2500;ctrl.minDistance=15;
 ctrl.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};ctrl.mouseButtons={LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
 const now=()=>performance.now()/1000;
@@ -258,6 +258,8 @@ async function start(){
    MAP_T=Date.parse(r.headers.get('last-modified')||'')||0;}
   HAS=new Set(IDX.tiles.map(t=>t[0]+'_'+t[1]));NETHAS=new Set(IDX.net);
   NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
+  /* (step 6, Nov 27) the first v2 feature in v3: Superchargers on the map (chargers.js) */
+  CHG=new MKChargers({THREE,scene:S,camera:cam,canvas:R.domElement,toL,net:NET,car:()=>car&&car.position});
   /* until the first GPS fix: where the app last saw the car, or downtown */
   let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
   /* (Nov 27: "on my computer I can't look far away") ?at=lat,lon opens the map at that spot, in Move map mode, to look
@@ -304,6 +306,7 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
   let d=p.hd3-camHd;d=Math.atan2(Math.sin(d),Math.cos(d));camHd+=d*Math.min(1,dt*2.5);
   if(follow){camPos.set(p.x-Math.sin(camHd)*30,(p.h||0)+21,p.z-Math.cos(camHd)*30);camLook.set(p.x+Math.sin(camHd)*22,(p.h||0),p.z+Math.cos(camHd)*22);cam.position.lerp(camPos,Math.min(1,dt*4));cam.lookAt(camLook);want(p.x,p.z);}
   else{ctrl.update();want(ctrl.target.x,ctrl.target.z);}
+  if(CHG) CHG.update(dt,follow?p.x:ctrl.target.x,follow?p.z:ctrl.target.z,follow);
   U.time.value=t/1000;skyDome.position.copy(cam.position);
   /* (Nov 26 21:15 drive: past 10 km from the map's centre - DIX30 in Brossard - the ground was black: the ground plane
      ended there) the ground follows the camera, in 1 km steps */
