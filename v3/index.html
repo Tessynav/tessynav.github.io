@@ -257,6 +257,10 @@ async function start(){
   NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
   /* until the first GPS fix: where the app last saw the car, or downtown */
   let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
+  /* (Nov 27: "on my computer I can't look far away") ?at=lat,lon opens the map at that spot, in Move map mode, to look
+     around from a computer: e.g. app.mapkoon.com/v3/?at=45.4705,-73.5375 */
+  const AT=(Q.get('at')||'').split(',').map(Number);const atOk=AT.length===2&&AT.every(v=>isFinite(v))&&Math.abs(AT[0])<90;
+  if(atOk) p0=[AT[1],AT[0]];
   const q=toL(p0[0],p0[1]);lastFix={t:now(),x:q[0],z:q[1],v:0,hd:null};want(q[0],q[1]);
   try{const g=await new GLTFLoader().loadAsync('../model3.glb');car=g.scene;const b=new THREE.Box3().setFromObject(car),s=b.getSize(new THREE.Vector3());const k=4.7/Math.max(s.x,s.z);car.scale.setScalar(k);
     const b2=new THREE.Box3().setFromObject(car);car.position.y=-b2.min.y;const w=new THREE.Group();w.add(car);car=w;}
@@ -277,7 +281,10 @@ async function start(){
     vertexShader:`varying vec2 vU;void main(){vU=uv*2.0-1.0;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`varying vec2 vU;void main(){float d=length(vU*vec2(1.0,0.9));gl_FragColor=vec4(0.0,0.0,0.0,0.45*smoothstep(1.0,0.35,d));}`}));
   blob.renderOrder=6;car.add(blob);S.add(car);
-  document.getElementById('load').remove();startGps();loop();
+  document.getElementById('load').remove();
+  if(atOk){const b=document.getElementById('bFollow');follow=false;b.classList.remove('on');b.textContent='Move map';ctrl.enabled=true;
+    ctrl.target.set(q[0],0,q[1]);cam.position.set(q[0]-120,160,q[1]+220);ctrl.update();}
+  startGps();loop();
   const old=rec.saved();if(old&&old.g&&old.g.length>50) msg('A recorded drive isn’t uploaded yet: tap Record to upload it.',9000);}
 let last=performance.now(),fpsT=0,frames=0,fps=0,camHd=0,rawHd=0,showStats=false,pitch=0,pitchT=0,lastPH=null;const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
 function rawPose(){/* plain GPS: the last fix, moved on at its speed for up to 1.5 s */
