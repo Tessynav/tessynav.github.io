@@ -18,12 +18,22 @@ canvas{display:block}
 #msg{left:50%;top:calc(16px + env(safe-area-inset-top,0px));transform:translateX(-50%);font-weight:600;font-size:14px;max-width:min(520px,calc(100% - 300px))}
 #cr{right:8px;bottom:6px;font-size:11px;color:#cfd3da;background:rgba(0,0,0,.45);padding:3px 8px;border-radius:6px;position:absolute}
 #load{left:50%;top:45%;transform:translate(-50%,-50%);font-weight:600}
+#set{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;z-index:40}
+#set .box{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,calc(100% - 32px));max-height:calc(100% - 40px);overflow:auto;background:rgba(28,30,34,.97);border-radius:18px;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+#set h2{margin:0 0 6px;font-size:20px}#set h3{margin:16px 0 6px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub)}
+#set .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08);font-size:16px}
+#set .row small{display:block;color:var(--sub);font-size:13px}
+#set .seg{display:flex;gap:6px}#set .seg button,#set .tg{border:0;border-radius:10px;padding:9px 14px;background:#3a3d44;color:var(--text);font:600 15px system-ui;cursor:pointer}
+#set .seg button.on,#set .tg.on{background:var(--accent);color:#2b1a08}
+#set .done{margin-top:16px;width:100%;border:0;border-radius:12px;padding:12px;background:#45474d;color:var(--text);font:600 16px system-ui}
+#set .ver{margin-top:12px;color:var(--sub);font-size:12px;text-align:center}
 @media (max-width:560px){#ctl{bottom:70px;flex-wrap:wrap;justify-content:center;width:calc(100% - 32px)}#stats{display:none}}
 </style></head><body>
 <div id="top" class="hud">MapKoon v3 <span style="color:var(--accent)">test</span><small id="gps">Waiting for GPS…</small></div>
 <div id="stats" class="hud">…</div>
 <div id="spd" class="hud">0<small>km/h</small></div>
-<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bRec">● Record</button><button id="bStats">Info</button></div>
+<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bRec">● Record</button><button id="bStats">Info</button><button id="bSet" title="Settings">⚙</button></div>
+<div id="set"><div class="box"><h2>Settings</h2><div id="setRows"></div><button class="done">Done</button><div class="ver" id="setVer"></div></div></div>
 <div id="msg" class="hud" hidden></div>
 <div id="load" class="hud">Loading the map…</div>
 <div id="cr">© OpenStreetMap contributors · Overture Maps Foundation · Ville de Montréal (CC BY 4.0)</div>
@@ -56,7 +66,7 @@ async function checkUpdate(){if(!(await newerPage())){upStart=false;return;}
   if(upStart||(parked&&!recOn)){await fetch(location.href,{cache:'reload'}).catch(()=>{});location.reload();}
   upStart=false;}
 checkUpdate();setInterval(checkUpdate,120000);
-const PAGEV=13;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=14;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -65,7 +75,12 @@ const S=new THREE.Scene();const cam=new THREE.PerspectiveCamera(40,innerWidth/in
 addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();});
 const hemi=new THREE.HemisphereLight(0xdfe8ff,0x4a5a3a,0.85);S.add(hemi);const sun=new THREE.DirectionalLight(0xfff2dd,1.25);sun.position.set(-300,500,200);S.add(sun);
 /* night: from the clock (dark before 7 am and after 4:30 pm in late autumn), or the button */
-const hr=new Date().getHours()+new Date().getMinutes()/60;let night=Q.get('night')?Q.get('night')==='1':(hr<7||hr>16.5);
+/* (step 6: Settings, Nov 27) the same saved choices as v2 (tn2_settings), so they carry over; only what v3 has so far */
+const SETDEF={time:'auto',chargers:true,fastdc:false,record:true};
+let SET=Object.assign({},SETDEF);try{SET=Object.assign(SET,JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{});}catch(e){}
+function saveSet(){try{const o=JSON.parse(localStorage.getItem('tn2_settings')||'{}')||{};localStorage.setItem('tn2_settings',JSON.stringify(Object.assign(o,{time:SET.time,chargers:SET.chargers,fastdc:SET.fastdc,record:SET.record})));}catch(e){}}
+const autoNight=()=>{const h=new Date().getHours()+new Date().getMinutes()/60;return h<7||h>16.5;};
+let night=Q.get('night')?Q.get('night')==='1':(SET.time==='night'?true:SET.time==='day'?false:autoNight());
 /* (step 2) the sky: deep blue overhead fading to a pale haze at the horizon; the distance fades into the same haze */
 const skyU={top:{value:new THREE.Color(0x4f8fd8)},hor:{value:new THREE.Color(0xcfe2f2)}};
 const skyM=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,uniforms:skyU,
@@ -266,7 +281,7 @@ async function start(){
   HAS=new Set(IDX.tiles.map(t=>t[0]+'_'+t[1]));NETHAS=new Set(IDX.net);
   NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
   /* (step 6, Nov 27) the first v2 feature in v3: Superchargers on the map (chargers.js) */
-  try{CHG=new MKChargers({THREE,scene:S,camera:cam,canvas:R.domElement,toL,net:NET,car:()=>car&&car.position});}catch(e){CHG=null;console.error('Superchargers off',e);}
+  try{CHG=new MKChargers({THREE,scene:S,camera:cam,canvas:R.domElement,toL,net:NET,car:()=>car&&car.position,on:SET.chargers,dc:SET.fastdc});}catch(e){CHG=null;console.error('Superchargers off',e);}
   /* until the first GPS fix: where the app last saw the car, or downtown */
   let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
   /* (Nov 27: "on my computer I can't look far away") ?at=lat,lon opens the map at that spot, in Move map mode, to look
@@ -326,7 +341,30 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
     const st=document.getElementById('stats');st.style.display=showStats?'':'none';
     if(showStats) st.innerHTML=Math.round(fps)+' fps<br>'+i.calls+' draw calls<br>'+(i.triangles/1000).toFixed(0)+'k triangles<br>'+[...loaded.values()].filter(Boolean).length+' tiles · '+NET.roads.length+' roads<br>'+(MAP_T?'map '+new Date(MAP_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'map '+IDX.built)+' · page '+PAGEV+' · page uploaded '+(PAGE_T?new Date(PAGE_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'?');}}
 document.getElementById('bLock').onclick=e=>{lock=!lock;e.target.classList.toggle('on',lock);e.target.textContent=lock?'Lane lock':'Raw GPS';};
-document.getElementById('bNight').onclick=()=>{night=!night;sky();};
+document.getElementById('bNight').onclick=()=>{night=!night;SET.time=night?'night':'day';saveSet();sky();};
+/* (step 6) Settings: the gear button. Choices apply right away and are remembered in this browser */
+function setPanel(){
+  const rows=document.getElementById('setRows'),seg=(k,opts)=>'<div class="seg">'+opts.map(([v,t])=>'<button data-k="'+k+'" data-v="'+v+'" class="'+(SET[k]===v?'on':'')+'">'+t+'</button>').join('')+'</div>',
+    tg=k=>'<button class="tg'+(SET[k]?' on':'')+'" data-k="'+k+'" data-t="1">'+(SET[k]?'On':'Off')+'</button>';
+  rows.innerHTML='<h3>Map</h3>'+
+    '<div class="row"><div>Time of day<small>Auto: night from 4:30 pm to 7 am</small></div>'+seg('time',[['auto','Auto'],['day','Day'],['night','Night']])+'</div>'+
+    '<h3>Charging</h3>'+
+    '<div class="row"><div>Superchargers on the map</div>'+tg('chargers')+'</div>'+
+    '<div class="row"><div>Other fast chargers<small>Blue pins, from other networks</small></div>'+tg('fastdc')+'</div>'+
+    '<h3>Drives</h3>'+
+    '<div class="row"><div>Record button<small>Record your drives to send them for checking</small></div>'+tg('record')+'</div>';
+  rows.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;SET[k]=b.dataset.t?!SET[k]:b.dataset.v;saveSet();applySet(k);setPanel();});
+  document.getElementById('setVer').textContent='MapKoon v3 · page '+PAGEV+(MAP_T?' · map '+new Date(MAP_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'');}
+function applySet(k){
+  if(k==='time'){const n=SET.time==='night'?true:SET.time==='day'?false:autoNight();if(n!==night){night=n;sky();}}
+  if((k==='chargers'||k==='fastdc')&&CHG) CHG.set(SET.chargers,SET.fastdc);
+  if(k==='record') document.getElementById('bRec').style.display=SET.record||rec.rec?'':'none';}
+document.getElementById('bSet').onclick=()=>{setPanel();document.getElementById('set').style.display='block';};
+document.querySelector('#set .done').onclick=()=>{document.getElementById('set').style.display='none';};
+document.getElementById('set').onclick=e=>{if(e.target.id==='set') e.target.style.display='none';};
+applySet('record');
+/* Auto: night comes on by itself at 4:30 pm and goes off at 7 am, even while the app stays open */
+setInterval(()=>{if(SET.time==='auto'&&!Q.get('night')){const n=autoNight();if(n!==night){night=n;sky();}}},60000);
 document.getElementById('bStats').onclick=e=>{showStats=!showStats;e.target.classList.toggle('on',showStats);};
 document.getElementById('bFollow').onclick=e=>{follow=!follow;e.target.classList.toggle('on',follow);e.target.textContent=follow?'Follow car':'Move map';ctrl.enabled=!follow;if(!follow) ctrl.target.copy(car.position);};
 window.V3={S,R,cam,onFix,look:(cx,cy,cz,tx,tz)=>{follow=false;ctrl.enabled=true;ctrl.target.set(tx,0,tz);cam.position.set(cx,cy,cz);},info:()=>R.info.render,net:()=>NET};
