@@ -41,7 +41,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 async function fresh(src){const r=await fetch(src,{cache:'no-cache'});if(!r.ok) throw new Error(src+' '+r.status);
   const el=document.createElement('script');el.textContent=await r.text()+'\n//# sourceURL='+new URL(src,location.href).href;document.head.appendChild(el);}
 await fresh('lanes.js');await fresh('../v2/js/rec.js');
-const PAGE_T=Date.parse(document.lastModified)||0;let upStart=true;
+const PAGE_T=Date.parse(document.lastModified)||0;let MAP_T=0;let upStart=true;
 async function newerPage(){try{const r=await fetch(location.pathname,{method:'HEAD',cache:'reload'});
   const t=Date.parse(r.headers.get('last-modified')||'');return t&&PAGE_T&&t>PAGE_T+2000;}catch(e){return false;}}
 async function checkUpdate(){if(!(await newerPage())){upStart=false;return;}
@@ -252,7 +252,10 @@ function startGps(){
   navigator.geolocation.watchPosition(p=>onFix(p.coords),e=>{document.getElementById('gps').textContent='GPS: '+(e.code===1?'permission refused':'not available');},
     {enableHighAccuracy:true,maximumAge:0,timeout:20000});}
 async function start(){
-  IDX=await (await fetch(base+'index.json',{cache:'no-cache'})).json();
+  {const r=await fetch(base+'index.json',{cache:'no-cache'});IDX=await r.json();
+   /* (Nov 27: "the 10:37 build isn't showing in the car") two builds on the same day both said "map 2026-11-27": the
+      map's publish time is shown under Info too, so you can see which build the car has */
+   MAP_T=Date.parse(r.headers.get('last-modified')||'')||0;}
   HAS=new Set(IDX.tiles.map(t=>t[0]+'_'+t[1]));NETHAS=new Set(IDX.net);
   NET=new MKLanes.Net({roads:[]});TR=new MKLanes.Track(NET);
   /* until the first GPS fix: where the app last saw the car, or downtown */
@@ -310,7 +313,7 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
     const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
     document.getElementById('gps').textContent=!gpsT?'Waiting for GPS…':(now()-gpsT>10?'GPS lost':'GPS '+Math.round(acc)+' m')+(HAS.has(k)?'':' · outside the map')+(lock&&!pl&&gpsT?' · finding the road':'');
     const st=document.getElementById('stats');st.style.display=showStats?'':'none';
-    if(showStats) st.innerHTML=Math.round(fps)+' fps<br>'+i.calls+' draw calls<br>'+(i.triangles/1000).toFixed(0)+'k triangles<br>'+[...loaded.values()].filter(Boolean).length+' tiles · '+NET.roads.length+' roads<br>map '+IDX.built+' · page '+PAGEV+' · uploaded '+(PAGE_T?new Date(PAGE_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'?');}}
+    if(showStats) st.innerHTML=Math.round(fps)+' fps<br>'+i.calls+' draw calls<br>'+(i.triangles/1000).toFixed(0)+'k triangles<br>'+[...loaded.values()].filter(Boolean).length+' tiles · '+NET.roads.length+' roads<br>'+(MAP_T?'map '+new Date(MAP_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'map '+IDX.built)+' · page '+PAGEV+' · page uploaded '+(PAGE_T?new Date(PAGE_T).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'?');}}
 document.getElementById('bLock').onclick=e=>{lock=!lock;e.target.classList.toggle('on',lock);e.target.textContent=lock?'Lane lock':'Raw GPS';};
 document.getElementById('bNight').onclick=()=>{night=!night;sky();};
 document.getElementById('bStats').onclick=e=>{showStats=!showStats;e.target.classList.toggle('on',showStats);};
