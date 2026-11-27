@@ -36,7 +36,7 @@ canvas{display:block}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-const PAGEV=11;   /* (shown under Info, so you can see which version the car has) */
+const PAGEV=12;   /* (shown under Info, so you can see which version the car has) */
 const Q=new URLSearchParams(location.search);
 const base=Q.get('data')||'../mapkoon-map/';
 const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -61,6 +61,12 @@ const MAT={ground:lam(),paved:lam(),road:lam(),drive:lam(),walk:lam(),paint:new 
 /* flat layers sit a few cm apart; far away that's too little for the depth buffer, so each layer is also nudged
    toward the camera in order (grass < parking < roads < sidewalks < paint): no more flickering stripes in the distance */
 [['ground',-2],['paved',-3],['road',-4],['walk',-5],['paint',-6]].forEach(([k,f])=>{MAT[k].polygonOffset=true;MAT[k].polygonOffsetFactor=f;MAT[k].polygonOffsetUnits=f*2;});
+/* (step 2, Nov 26) far-away lane lines fade out: thinner than a pixel past ~150 m, they only shimmer and crawl. They
+   fade smoothly between 110 m and 240 m from the camera (close ones stay crisp) */
+MAT.paint.transparent=true;MAT.paint.depthWrite=false;
+MAT.paint.onBeforeCompile=sh=>{
+  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying float vPd;').replace('#include <project_vertex>','#include <project_vertex>\nvPd=-mvPosition.z;');
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vPd;').replace('#include <dithering_fragment>','#include <dithering_fragment>\ngl_FragColor.a*=1.0-smoothstep(110.0,240.0,vPd);');};
 /* buildings: lit walls with windows (lit at night), plain roofs */
 /* landmarks (the Champlain Bridge's pylon and cables): plain lit shapes */
 MAT.lm=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
