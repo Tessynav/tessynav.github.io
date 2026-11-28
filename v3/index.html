@@ -207,7 +207,25 @@ function props(list,grp){const by={lamp:[],light:[],stop:[],tree:[],pine:[]};for
       Qn.identity();grp.add(cr);}}
   if(by.lamp.length){const m=new THREE.InstancedMesh(poolG,poolM,by.lamp.length);const M=new THREE.Matrix4();by.lamp.forEach((p,i)=>{M.makeTranslation(p[1],0,p[2]);m.setMatrixAt(i,M);});m.renderOrder=5;grp.add(m);}
   const inst=(geo,mat,arr,dy)=>{if(!arr.length) return;const m=new THREE.InstancedMesh(geo,mat,arr.length);const M=new THREE.Matrix4();arr.forEach((p,i)=>{M.makeTranslation(p[1],dy||0,p[2]);m.setMatrixAt(i,M);});grp.add(m);};
-  inst(pole,poleM,by.lamp);inst(lampG,lampM,by.lamp,8);inst(pole,poleM,by.light);inst(boxG,boxM,by.light);inst(thin,poleM,by.stop);inst(stopG,stopM,by.stop);}
+  inst(pole,poleM,by.lamp);inst(lampG,lampM,by.lamp,8);inst(thin,poleM,by.stop);inst(stopG,stopM,by.stop);
+  if(by.light.length) lights(by.light,grp);}
+/* traffic lights (Nov 28): a pole at the corner, an arm over the road, heads with red/yellow/green facing the drivers.
+   New tiles give the driving direction [light,x,z,tx,tz,arm]; old tiles only a point (pole and one head). */
+const tPoleG=new THREE.CylinderGeometry(0.13,0.16,6.3,8);tPoleG.translate(0,3.15,0);const tPoleM=new THREE.MeshLambertMaterial({color:0x6b7079});
+const tArmG=new THREE.BoxGeometry(1,0.14,0.14);tArmG.translate(0.5,0,0);
+const tHeadG=new THREE.BoxGeometry(0.62,1.7,0.45);const tHeadM=new THREE.MeshLambertMaterial({color:0x1d2024});
+const tLampG=new THREE.CircleGeometry(0.21,14);tLampG.rotateY(Math.PI);
+const tLampM=[0xd8312e,0xe0a823,0x2fb35a].map(c=>new THREE.MeshBasicMaterial({color:c}));
+function lights(arr,grp){const M=new THREE.Matrix4(),B=new THREE.Matrix4(),O=new THREE.Matrix4(),Q=new THREE.Quaternion(),Y=new THREE.Vector3(0,1,0),Pp=new THREE.Vector3(),S=new THREE.Vector3(1,1,1);
+  const heads=[],arms=[],poles=[];
+  for(const p of arr){const dir=p.length>=6,th=dir?Math.atan2(p[3],p[4]):0;Q.setFromAxisAngle(Y,th);Pp.set(p[1],0,p[2]);B.compose(Pp,Q,S);
+    poles.push(B.clone());heads.push(B.clone().multiply(O.makeTranslation(0.4,3.4,0)));
+    if(dir){const a=p[5]||4;arms.push(B.clone().multiply(O.makeTranslation(0,6.0,0)).multiply(new THREE.Matrix4().makeScale(a,1,1)));
+      heads.push(B.clone().multiply(O.makeTranslation(a-0.3,5.0,0)));if(a>=6) heads.push(B.clone().multiply(O.makeTranslation(a*0.5,5.0,0)));}}
+  const add=(geo,mat,list,off)=>{if(!list.length) return;const m=new THREE.InstancedMesh(geo,mat,list.length);
+    list.forEach((b,i)=>{M.copy(b);if(off) M.multiply(off);m.setMatrixAt(i,M);});grp.add(m);};
+  add(tPoleG,tPoleM,poles);add(tArmG,tPoleM,arms);add(tHeadG,tHeadM,heads);
+  [0.53,0,-0.53].forEach((dy,k)=>add(tLampG,tLampM[k],heads,new THREE.Matrix4().makeTranslation(0,dy,-0.235)));}
 function want(x,z){if(!IDX) return;const T=IDX.T,tx=Math.floor(x/T),tz=Math.floor(z/T),r=1400;
   for(let a=tx-3;a<=tx+3;a++) for(let b=tz-3;b<=tz+3;b++){const k=a+'_'+b;if(!HAS.has(k)) continue;
     if(Math.hypot((a+0.5)*T-x,(b+0.5)*T-z)<r) loadTile(a,b);}
