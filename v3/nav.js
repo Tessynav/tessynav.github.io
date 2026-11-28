@@ -249,6 +249,7 @@
   };
   /* the route in local metres, a point every 8 m (so the line follows the road's height on bridges and ramps) */
   Nav.prototype.setRoute = function (rt) {
+    this.noGlue = false; this.ps = null; this.hdGap = true; this.dl = null; this.dlPrev = null; this.corr = null;   /* (a new route: the car is placed on it afresh) */
     const P = rt.geometry.coordinates.map(c => this.toL(c[0], c[1])), pts = [];
     for (let i = 0; i < P.length - 1; i++) {
       const a = P[i], b = P[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / 8));
@@ -373,10 +374,64 @@
     }
     return Q;
   };
+  /* (Nov 28, drive 10:31: at ramps and merges the car and the blue line, placed by two different systems, disagreed:
+     zigzag, car beside the line) v2's way, like Google Maps, Waze and Codriver: while navigating, the car rides ON the
+     blue line itself. It glides along it at your speed between GPS readings and is gently pulled to where the tracked
+     car is along the route; its nose follows the line, so turns are smooth curves. Clearly off the route (over 15 m,
+     or going another way for a moment), and in the last 25 m, the normal lane lock shows the car. */
+  Nav.prototype.place = function (base, L, dt) {
+    const r = this.route, D = this.dl;
+    this.trk = base ? { x: base.x, z: base.z } : null; this.vNow = L && L.v ? L.v : 0;
+    if (!this.active || !r || !D || !base || base.x == null || this.noGlue) { this.ps = null; return null; }
+    const P = D.P, F = D.from, n = P.length, C = r.cum; if (n < 2) return null;
+    if (r.L - (this.ps != null ? this.ps : 0) < 25 && this.ps != null) { this.noGlue = true; this.ps = null; this.note('released', { why: 'arriving' }); return null; }
+    /* where the tracked car is along the drawn line (near where it was; a far part of the route never wins: loops) */
+    const sOf = i => C[Math.min(C.length - 1, F + i)];
+    let j0 = 0; if (this.ps != null) { while (j0 < n - 2 && sOf(j0 + 1) < this.ps) j0++; }
+    let best = null;
+    for (let i = Math.max(0, j0 - 12); i < Math.min(n - 1, j0 + 60); i++) {
+      const A = P[i], B = P[i + 1], dx = B[0] - A[0], dz = B[1] - A[1], l2 = dx * dx + dz * dz || 1;
+      const u = Math.max(0, Math.min(1, ((base.x - A[0]) * dx + (base.z - A[1]) * dz) / l2)), qx = A[0] + dx * u, qz = A[1] + dz * u;
+      let c = (base.x - qx) ** 2 + (base.z - qz) ** 2;
+      const s = sOf(i) + (sOf(i + 1) - sOf(i)) * u;
+      if (this.ps != null) { const ex = Math.abs(s - this.ps) - 40; if (ex > 0) c += ex * ex * 0.3; }
+      if (!best || c < best.c) best = { c, s, d: Math.hypot(base.x - qx, base.z - qz), hd: Math.atan2(dx, dz) };
+    }
+    if (!best) return null;
+    let off = base.hd3 != null ? Math.abs(Math.atan2(Math.sin(base.hd3 - best.hd), Math.cos(base.hd3 - best.hd))) : 0;
+    const v = L && L.v > 0.5 ? L.v : 0;
+    this.relT = (best.d > 8 && off > 0.95 && v > 2) ? (this.relT || 0) + dt : 0;
+    if (best.d > 15 || this.relT > 0.35) { if (this.ps != null) this.note('released', { d: Math.round(best.d), dir: Math.round(off * 57) }); this.ps = null; this.hdGap = true; return null; }
+    /* glide at your speed, and close part of the gap each second (never backwards while moving) */
+    if (this.ps == null) { this.ps = best.s; this.cap = 0; }   /* (caught: it slides onto the line over a second, no jump) */
+    let ns = this.ps + v * dt + (best.s - this.ps) * Math.min(1, dt * 1.5);
+    if (v > 0.5 && ns < this.ps) ns = this.ps;
+    this.ps = Math.max(sOf(0), Math.min(sOf(n - 1), ns));
+    const atD = (DD, sd) => { const PP = DD.P, FF = DD.from, nn = PP.length, so = i => C[Math.min(C.length - 1, FF + i)];
+      let k = 0; while (k < nn - 2 && so(k + 1) < sd) k++; const g = so(k + 1) - so(k) || 1, t = Math.max(0, Math.min(1, (sd - so(k)) / g));
+      return [PP[k][0] + (PP[k + 1][0] - PP[k][0]) * t, PP[k][1] + (PP[k + 1][1] - PP[k][1]) * t]; };
+    const at = sd => atD(D, sd);
+    /* (the line's points are 8 m apart: its corners are rounded for the car by averaging along ±4 m, so it turns, it
+       doesn't snap at each point) */
+    const q = [0, 0]; for (const dd of [-4, -2, 0, 2, 4]) { const o = at(this.ps + dd); q[0] += o[0] / 5; q[1] += o[1] / 5; }
+    const a = at(this.ps - 4), b = at(this.ps + 4), hd = Math.atan2(b[0] - a[0], b[1] - a[1]);
+    /* (the line is redrawn every 2 s, a little differently as your lane is updated: the car must not hop with it. The
+       difference at the car fades out over about half a second, so the car slides, never steps) */
+    if (this.dlPrev && this.dlPrev !== D && this.dlPrev.P.length > 1) { const o = [0, 0]; for (const dd of [-4, -2, 0, 2, 4]) { const w = atD(this.dlPrev, this.ps + dd); o[0] += w[0] / 5; o[1] += w[1] / 5; } this.corr = [(this.corr ? this.corr[0] : 0) + o[0] - q[0], (this.corr ? this.corr[1] : 0) + o[1] - q[1]]; }
+    this.dlPrev = D;
+    if (this.corr) { const k = Math.exp(-dt / 0.35); this.corr = [this.corr[0] * k, this.corr[1] * k]; if (Math.hypot(this.corr[0], this.corr[1]) > 6) this.corr = null; }
+    if (this.corr) { q[0] += this.corr[0]; q[1] += this.corr[1]; }
+    /* its nose eases toward the line's direction (~0.4 s): the line's small corner steps don't shake it */
+    if (this.hdS == null || this.hdGap) this.hdS = base.hd3 != null ? base.hd3 : hd;
+    const dh = Math.atan2(Math.sin(hd - this.hdS), Math.cos(hd - this.hdS)); this.hdS += dh * Math.min(1, dt * 2.5); this.hdGap = false;
+    this.cap = (this.cap || 0) + dt; const w = Math.min(1, this.cap / 1.0);
+    return Object.assign({}, base, { x: base.x + (q[0] - base.x) * w, z: base.z + (q[1] - base.z) * w, hd3: this.hdS, onRoute: true });
+  };
   Nav.prototype.draw = function (force) {
     const T = this.THREE, r = this.route; if (!r) return;
     const from = Math.max(0, this.idx - 1), n = r.pts.length - from; if (n < 2) return;
     const P = this.lineFrom(from, this.lane && this.active ? this.lane : null);
+    this.dl = { from, P };   /* (the car rides on exactly this line: place() below) */
     const pos = new Float32Array(n * 2 * 3), idx = [], W = this.wide ? 6 : 1.6;
     for (let i = 0; i < n; i++) {
       const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, y = r.h[from + i] + 0.3;
@@ -453,8 +508,27 @@
       this.lane = null;
       if (r.rk[bi]) {
         const a = r.pts[Math.max(0, bi - 1)], b = r.pts[Math.min(r.pts.length - 1, bi + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, rx = -(b[1] - a[1]) / l, rz = (b[0] - a[0]) / l;
-        const o = (cx - r.pts[bi][0] - r.sx[bi]) * rx + (cz - r.pts[bi][1] - r.sz[bi]) * rz, rd = this.net.roads[r.rk[bi] - 1];
-        if (rd && Math.abs(o) < rd.w / 2 + 0.5) this.lane = { k: r.rk[bi] - 1, o: Math.max(-rd.w / 2 + 1, Math.min(rd.w / 2 - 1, o)) };
+        const bx = this.trk ? this.trk.x : cx, bz = this.trk ? this.trk.z : cz;   /* (the tracked car, not the one placed on the line) */
+        const o = (bx - r.pts[bi][0] - r.sx[bi]) * rx + (bz - r.pts[bi][1] - r.sz[bi]) * rz, rd = this.net.roads[r.rk[bi] - 1];
+        /* (Nov 28, drive 10:58: the car took another lane, the line followed, then back: GPS wobble moved both) v2's lane
+           hold, like Google and Tesla: on normal streets the car and line keep the street's standard lane, whatever the
+           GPS wobble. Only on wide one-way roads (3 lanes or more: highways, big boulevards) is your lane worked out, and
+           it changes only after the GPS has clearly been in another lane for 1.5 s; then car and line glide over together */
+        const wide = rd && rd.ow && rd.w >= 9.5;
+        if (wide && Math.abs(o) < rd.w / 2 + 1) {
+          const v = this.vNow || 0, nL = Math.max(2, Math.round(rd.w / 3.6)), lw = rd.w / nL, ctr = k => -rd.w / 2 + lw * (k + 0.5);
+          this.latF = this.latF == null ? o : this.latF + (o - this.latF) * Math.min(1, dt * 1.0);
+          const cand = Math.max(0, Math.min(nL - 1, Math.round((this.latF + rd.w / 2) / lw - 0.5)));
+          if (this.laneI == null || this.laneI >= nL) { this.laneI = cand; this.laneT = 0; }
+          else if (cand !== this.laneI && v > 3 && Math.abs(this.latF - ctr(cand)) < lw * 0.4) { this.laneT = (this.laneT || 0) + dt; if (this.laneT > 1.5) { this.laneI = cand; this.laneT = 0; } }
+          else this.laneT = 0;
+          const tgt = ctr(this.laneI); if (this.latS == null) this.latS = tgt; else { const d = tgt - this.latS, st = 1.2 * dt; this.latS += Math.abs(d) < st ? d : Math.sign(d) * st; }
+          this.lane = { k: r.rk[bi] - 1, o: this.latS };
+        } else if (this.latS != null) {
+          /* (leaving a wide road: the line glides back to the standard place, no jump) */
+          const st = 1.2 * dt; this.latS += Math.abs(this.latS) < st ? -this.latS : -Math.sign(this.latS) * st;
+          if (Math.abs(this.latS) < 0.05) { this.latS = null; this.laneI = null; this.latF = null; } else this.lane = { k: r.rk[bi] - 1, o: this.latS };
+        }
       }
       if (r.L - r.cum[this.idx] < 30 && bd < 40) { this.msg('You have arrived: ' + this.dest.name, 8000); try { TN.voice && TN.voice.say('You have arrived', true); } catch (e) {} this.end(); return; }
       /* off the route for 10 s (more than 40 m away): a new route from here */

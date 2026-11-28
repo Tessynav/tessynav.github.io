@@ -329,7 +329,9 @@ function rawPose(){/* plain GPS: the last fix, moved on at its speed for up to 1
   const f=lastFix,dt=Math.min(1.5,now()-f.t);if(f.hd!=null&&f.v>1) rawHd=Math.PI-f.hd*Math.PI/180;
   const h=f.hd!=null?f.hd*Math.PI/180:0,m=f.hd!=null?f.v*dt:0;return {x:f.x+Math.sin(h)*m,z:f.z-Math.cos(h)*m,h:0,hd3:rawHd};}
 function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.min(0.1,(t-last)/1000);last=t;
-  const pl=lock&&TR.st?TR.pose(now(),dt):null;const p=pl||rawPose();
+  const pl=lock&&TR.st?TR.pose(now(),dt):null;let p=pl||rawPose();
+  /* (Nov 28) navigating: the car rides on the blue line (nav.js place()); off the route, the lane lock as always */
+  if(NAV&&NAV.place&&lock) try{const q=NAV.place(p,lastFix,dt);if(q) p=q;}catch(e){console.error(e);}
   /* (page 9, Nov 26 17:06 drive: on the bridge's slopes the headlights vanished into the road) the car tilts with the road:
      the slope comes from how its height changes as it moves, smoothed so small steps don't shake it */
   if(lastPH){const d=Math.hypot(p.x-lastPH.x,p.z-lastPH.z);if(d>0.4){const sl=((p.h||0)-lastPH.h)/d;pitchT=Math.atan(Math.max(-0.15,Math.min(0.15,sl)));lastPH={x:p.x,z:p.z,h:p.h||0};}}else lastPH={x:p.x,z:p.z,h:p.h||0};
