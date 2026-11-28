@@ -432,11 +432,26 @@
     const from = Math.max(0, this.idx - 1), n = r.pts.length - from; if (n < 2) return;
     const P = this.lineFrom(from, this.lane && this.active ? this.lane : null);
     this.dl = { from, P };   /* (the car rides on exactly this line: place() below) */
-    const pos = new Float32Array(n * 2 * 3), idx = [], W = this.wide ? 6 : 1.6;
+    /* (Nov 28, drive 13:21: "on curves the line is 90 degrees") a route's turn is one sharp corner in the middle of the
+       intersection: each corner is drawn as a curve (up to 5 m each way of it, about how the car rounds it) */
+    const M = [];
     for (let i = 0; i < n; i++) {
-      const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, y = r.h[from + i] + 0.3;
-      pos.set([P[i][0] + nx * W, y, P[i][1] + nz * W, P[i][0] - nx * W, y, P[i][1] - nz * W], i * 6);
-      if (i < n - 1) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+      const y = r.h[from + i] + 0.3, b = P[i];
+      if (i > 0 && i < n - 1) {
+        const a = P[i - 1], c = P[i + 1], ux = b[0] - a[0], uz = b[1] - a[1], vx = c[0] - b[0], vz = c[1] - b[1], lu = Math.hypot(ux, uz), lv = Math.hypot(vx, vz);
+        if (lu > 0.1 && lv > 0.1 && (ux * vx + uz * vz) / (lu * lv) < 0.94) {   /* (a turn of more than ~20°) */
+          const d = Math.min(5, lu * 0.45, lv * 0.45), A = [b[0] - ux / lu * d, b[1] - uz / lu * d], C = [b[0] + vx / lv * d, b[1] + vz / lv * d];
+          for (let k = 0; k <= 6; k++) { const t = k / 6, w0 = (1 - t) * (1 - t), w1 = 2 * t * (1 - t), w2 = t * t; M.push([A[0] * w0 + b[0] * w1 + C[0] * w2, A[1] * w0 + b[1] * w1 + C[1] * w2, y]); }
+          continue;
+        }
+      }
+      M.push([b[0], b[1], y]);
+    }
+    const m = M.length, pos = new Float32Array(m * 2 * 3), idx = [], W = this.wide ? 6 : 1.6;
+    for (let i = 0; i < m; i++) {
+      const a = M[Math.max(0, i - 1)], b = M[Math.min(m - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, y = M[i][2];
+      pos.set([M[i][0] + nx * W, y, M[i][1] + nz * W, M[i][0] - nx * W, y, M[i][1] - nz * W], i * 6);
+      if (i < m - 1) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
     }
     const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setIndex(idx);
     if (!this.mat) this.mat = new T.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.88, depthWrite: false, fog: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
