@@ -83,7 +83,7 @@
       const u = 'https://api.mapbox.com/search/searchbox/v1/suggest?q=' + encodeURIComponent(q) + '&language=en&country=ca,us&limit=8&proximity=' + h[0].toFixed(5) + ',' + h[1].toFixed(5) +
         '&origin=' + h[0].toFixed(5) + ',' + h[1].toFixed(5) + '&session_token=' + this.sess + '&access_token=' + MBX;
       const r = await fetch(u); if (!r.ok) throw 0; const j = await r.json(); if (my !== this.qn) return;
-      const items = (j.suggestions || []).filter(s => s.feature_type !== 'category' && s.mapbox_id).map(s => ({ name: s.name, sub: s.full_address || s.place_formatted || '', mbid: s.mapbox_id, dist: s.distance }));
+      const items = (j.suggestions || []).filter(s => s.feature_type !== 'category' && s.feature_type !== 'brand' && s.mapbox_id)   /* (a brand, like "Costco", has no one place: the real stores come next, nearest first) */.map(s => ({ name: s.name, sub: s.full_address || s.place_formatted || '', mbid: s.mapbox_id, dist: s.distance }));
       if (items.length) { this.list(items); return; }
     } catch (e) {}
     try {
