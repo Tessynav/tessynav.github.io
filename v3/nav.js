@@ -323,7 +323,7 @@
       /* (Nov 27) the line laid on OUR road: the middle of a one-way road, the right half of a two-way one (where you
          drive). Kept as a shift from Mapbox's point, smoothed in draw() so it never zigzags */
       if (best && best.dist < 9) {   /* (farther: likely a parallel street, not ours) */
-        const rd = this.net.roads[best.k], off = rd && !rd.ow ? rd.w / 4 : 0;
+        const off = 0;   /* (Nov 28: the road's centre; lineFrom picks the lane, the same lanes the map paints) */
         const sx = best.px - uz * off - x, sz = best.pz + ux * off - z;
         if (r.rk[i] !== best.k + 1 || Math.abs(sx - r.sx[i]) + Math.abs(sz - r.sz[i]) > 0.2) { r.sx[i] = sx; r.sz[i] = sz; r.rk[i] = best.k + 1; changed = true; }
       } else if (r.rk[i]) { r.rk[i] = 0; changed = true; }
@@ -336,6 +336,40 @@
   Nav.prototype.lineFrom = function (from, lane) {
     const r = this.route, n = r.pts.length - from, dx = new Float32Array(n), dz = new Float32Array(n), ok = new Uint8Array(n);
     for (let i = 0; i < n; i++) if (r.rk[from + i]) { dx[i] = r.sx[from + i]; dz[i] = r.sz[from + i]; ok[i] = 1; }
+    /* (Nov 28, 14:27 drive: "the car drove over the shoulder, the blue line covered the whole road") the lane plan, like
+       Google's lane guidance: the line sits in ONE of the lanes the map paints (same count, same lines) and is as wide as
+       that lane allows, never over a line. Highways: the middle lane (the left one when there are only 2) until 400 m
+       before your exit, then it glides to the exit side. Streets: your right lane; the left one 120 m before a left turn. */
+    const OFF = new Float32Array(n), HW = new Float32Array(n).fill(1.6), M = this.man || []; let mi = 0;
+    for (let i = 0; i < n; i++) {
+      const j = from + i, rd = r.rk[j] ? this.net.roads[r.rk[j] - 1] : null; if (!rd) continue;
+      const s = r.cum[j]; while (mi < M.length && M[mi].s <= s + 1) mi++;
+      const nx = M[mi], dist = nx ? nx.s - s : 1e9, mod = nx ? (nx.mod || '') : '', side = /right/.test(mod) ? 1 : /left/.test(mod) ? -1 : 0;
+      const hwy = rd.ow && (rd.c === 'motorway' || rd.c === 'trunk'), w = rd.w;
+      let nL = rd.ln || (rd.ow ? Math.max(1, Math.round(w / 3.6)) : 1), lw, ctr, k;
+      if (rd.ow) { lw = w / nL; ctr = q => -w / 2 + lw * (q + 0.5); k = nL >= 3 ? Math.floor((nL - 1) / 2) : 0; }
+      else { lw = w / 2 / nL; ctr = q => lw * (q + 0.5); k = nL - 1; }
+      if (side && dist < (hwy ? 400 : 120)) k = side > 0 ? nL - 1 : 0;
+      OFF[i] = ctr(k); HW[i] = Math.max(0.6, Math.min(1.6, (lw - 0.6) / 2));
+    }
+    /* (a lane change takes ~100 m and the width changes gently: never a sideways step) */
+    const seg = i => Math.hypot(r.pts[from + i][0] - r.pts[from + i - 1][0], r.pts[from + i][1] - r.pts[from + i - 1][1]);
+    for (const A of [OFF, HW]) {
+      const rate = A === OFF ? 0.035 : 0.02;
+      for (let i = 1; i < n; i++) { const m = seg(i) * rate; if (A[i] > A[i - 1] + m) A[i] = A[i - 1] + m; else if (A[i] < A[i - 1] - m) A[i] = A[i - 1] - m; }
+      for (let i = n - 2; i >= 0; i--) { const m = seg(i + 1) * rate; if (A[i] > A[i + 1] + m) A[i] = A[i + 1] + m; else if (A[i] < A[i + 1] - m) A[i] = A[i + 1] - m; }
+    }
+    /* (the easing never takes the line off its own road: after an exit the ramp's lane wins at once, 14:27 drive) */
+    for (let i = 0; i < n; i++) {
+      const j = from + i, rd = r.rk[j] ? this.net.roads[r.rk[j] - 1] : null; if (!rd) continue;
+      const lo = rd.ow ? -rd.w / 2 + HW[i] + 0.3 : HW[i] + 0.2, hi = rd.w / 2 - HW[i] - 0.3;
+      if (hi > lo) OFF[i] = Math.max(lo, Math.min(hi, OFF[i])); else OFF[i] = rd.ow ? 0 : rd.w / 4;
+    }
+    for (let i = 0; i < n; i++) if (ok[i]) {
+      const j = from + i, a = r.pts[Math.max(0, j - 2)], b = r.pts[Math.min(r.pts.length - 1, j + 2)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      dx[i] += -(b[1] - a[1]) / l * OFF[i]; dz[i] += (b[0] - a[0]) / l * OFF[i];
+    }
+    lane = null;   /* (the lane plan replaces the GPS lane guess: the GPS can't tell lanes apart reliably) */
     /* your lane: on the road you're on, the line moves to where the car is; it eases back over the last 40 m of that road */
     if (lane) {
       /* (roads are cut in short pieces at every crossing: the lane carries on along the route until it turns) */
@@ -370,7 +404,7 @@
     for (let i = 0; i < n; i++) {
       let sx = 0, sz = 0, sw = 0;
       for (let k = -3; k <= 3; k++) { const j = i + k; if (j < 0 || j >= n) continue; sx += dx[j] * W[k + 3]; sz += dz[j] * W[k + 3]; sw += W[k + 3]; }
-      Q[i] = [r.pts[from + i][0] + sx / sw, r.pts[from + i][1] + sz / sw];
+      Q[i] = [r.pts[from + i][0] + sx / sw, r.pts[from + i][1] + sz / sw, HW[i]];
     }
     return Q;
   };
@@ -441,15 +475,15 @@
         const a = P[i - 1], c = P[i + 1], ux = b[0] - a[0], uz = b[1] - a[1], vx = c[0] - b[0], vz = c[1] - b[1], lu = Math.hypot(ux, uz), lv = Math.hypot(vx, vz);
         if (lu > 0.1 && lv > 0.1 && (ux * vx + uz * vz) / (lu * lv) < 0.94) {   /* (a turn of more than ~20°) */
           const d = Math.min(5, lu * 0.45, lv * 0.45), A = [b[0] - ux / lu * d, b[1] - uz / lu * d], C = [b[0] + vx / lv * d, b[1] + vz / lv * d];
-          for (let k = 0; k <= 6; k++) { const t = k / 6, w0 = (1 - t) * (1 - t), w1 = 2 * t * (1 - t), w2 = t * t; M.push([A[0] * w0 + b[0] * w1 + C[0] * w2, A[1] * w0 + b[1] * w1 + C[1] * w2, y]); }
+          for (let k = 0; k <= 6; k++) { const t = k / 6, w0 = (1 - t) * (1 - t), w1 = 2 * t * (1 - t), w2 = t * t; M.push([A[0] * w0 + b[0] * w1 + C[0] * w2, A[1] * w0 + b[1] * w1 + C[1] * w2, y, b[2]]); }
           continue;
         }
       }
-      M.push([b[0], b[1], y]);
+      M.push([b[0], b[1], y, b[2]]);
     }
-    const m = M.length, pos = new Float32Array(m * 2 * 3), idx = [], W = this.wide ? 6 : 1.6;
+    const m = M.length, pos = new Float32Array(m * 2 * 3), idx = [], W0 = this.wide ? 6 : 0;
     for (let i = 0; i < m; i++) {
-      const a = M[Math.max(0, i - 1)], b = M[Math.min(m - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, y = M[i][2];
+      const a = M[Math.max(0, i - 1)], b = M[Math.min(m - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, y = M[i][2]; const W = W0 || M[i][3] || 1.6;
       pos.set([M[i][0] + nx * W, y, M[i][1] + nz * W, M[i][0] - nx * W, y, M[i][1] - nz * W], i * 6);
       if (i < m - 1) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
     }
