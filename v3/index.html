@@ -290,7 +290,7 @@ async function start(){
     here:()=>{const q=gpsT&&car?car.position:(follow&&car?car.position:ctrl.target);return [q.x/IDX.kx+IDX.lon0,IDX.lat0-q.z/IDX.ky];},
     driving:()=>{follow=true;ctrl.enabled=false;const b=document.getElementById('bFollow');b.classList.add('on');b.textContent='Follow car';},
     look:(x,z)=>{follow=false;ctrl.enabled=true;const b=document.getElementById('bFollow');b.classList.remove('on');b.textContent='Move map';ctrl.target.set(x,0,z);cam.position.set(x-260,420,z+380);},
-    msg});window.NAV=NAV;}catch(e){NAV=null;console.error('Navigation off',e);}
+    msg,rec:(k,d)=>{try{rec.note(k,d);}catch(e){}},gps:()=>lastFix,chargers:()=>CHG?CHG.all:[]});window.NAV=NAV;}catch(e){NAV=null;console.error('Navigation off',e);}
   /* until the first GPS fix: where the app last saw the car, or downtown */
   let p0=[-73.5673,45.5017];try{const s=JSON.parse(localStorage.getItem('lastPos'));if(s&&s.length===2) p0=s;}catch(e){}
   /* (Nov 27: "on my computer I can't look far away") ?at=lat,lon opens the map at that spot, in Move map mode, to look

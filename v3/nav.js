@@ -109,32 +109,141 @@
           it.lng = f.geometry.coordinates[0]; it.lat = f.geometry.coordinates[1];
           const rp = f.properties && f.properties.coordinates && f.properties.coordinates.routable_points;
           if (rp && rp.length) { const d = rp.find(p => p.name === 'default') || rp[0]; if (d && d.latitude != null) { it.rlng = d.longitude; it.rlat = d.latitude; } }
+          it.cat = (f.properties && (f.properties.poi_category || [])).join ? f.properties.poi_category.join(',') : '';
         }
       } catch (e) {}
       this.sess = null;
     }
     if (it.lng == null) { this.msg('Could not open that place', 5000); return; }
-    const keep = { name: it.name, sub: it.sub, lng: it.lng, lat: it.lat, rlng: it.rlng, rlat: it.rlat };
+    const old = this.recent.find(r => r.name === it.name && Math.abs(r.lat - it.lat) < 1e-4);
+    if (old && old.ub && it.ub == null) it.ub = true;   /* (your choice for this place, remembered: v2's "use the building") */
+    const keep = { name: it.name, sub: it.sub, lng: it.lng, lat: it.lat, rlng: it.rlng, rlat: it.rlat, ub: it.ub, sc: it.sc, cat: it.cat };
     this.recent = [keep].concat(this.recent.filter(r => r.name !== it.name || Math.abs(r.lat - it.lat) > 1e-4)).slice(0, 6);
     try { localStorage.setItem('tn2_recent', JSON.stringify(this.recent)); } catch (e) {}
-    this.dest = keep; this.plan();
+    this.dest = Object.assign({}, keep); this.plan();
   };
-  Nav.prototype.fetchRoute = async function (from, to) {
+  /* (Nov 27) the trip recording gets the navigation too: what you picked, where the route really goes, every check */
+  Nav.prototype.note = function (k, d) { try { this.rec && this.rec(k, d); } catch (e) {} };
+  /* a download that gives up after ms (OpenStreetMap's server can be slow: never hold the route for it) */
+  const fetchT = async (url, ms) => {
+    const c = typeof AbortController !== 'undefined' ? new AbortController() : null, tm = c ? setTimeout(() => c.abort(), ms) : null;
+    try { const r = await fetch(url, c ? { signal: c.signal } : {}); if (tm) clearTimeout(tm); return r.ok ? r : null; } catch (e) { if (tm) clearTimeout(tm); return null; }
+  };
+  const overpass = async (q, ms) => {
+    for (const s of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+      const r = await fetchT(s + '?data=' + encodeURIComponent(q), ms); if (r) { try { return await r.json(); } catch (e) {} }
+    }
+    return null;
+  };
+  /* one route from Mapbox (live traffic, leaving the way the car points), else OSRM */
+  Nav.prototype.fetchRouteOnce = async function (from, to) {
     try {
+      const G = this.gps ? this.gps() : null, brg = G && G.v > 2 && G.hd != null ? '&bearings=' + Math.round(G.hd) + ',60;' : '';
       const u = 'https://api.mapbox.com/directions/v5/mapbox/driving-traffic/' + from[0].toFixed(6) + ',' + from[1].toFixed(6) + ';' + to[0].toFixed(6) + ',' + to[1].toFixed(6) +
-        '?geometries=geojson&overview=full&steps=true&language=en&voice_instructions=true&voice_units=metric&banner_instructions=true&access_token=' + MBX;
+        '?geometries=geojson&overview=full&steps=true&language=en&voice_instructions=true&voice_units=metric&banner_instructions=true' + brg + '&access_token=' + MBX;
       const r = await fetch(u); if (r.ok) { const j = await r.json(); if (j.routes && j.routes[0]) return j.routes[0]; }
     } catch (e) {}
-    const u = 'https://router.project-osrm.org/route/v1/driving/' + from[0].toFixed(6) + ',' + from[1].toFixed(6) + ';' + to[0].toFixed(6) + ',' + to[1].toFixed(6) + '?overview=full&geometries=geojson&steps=true';
-    const r = await fetch(u); if (!r.ok) throw new Error('route'); const j = await r.json(); if (!j.routes || !j.routes[0]) throw new Error('no route'); return j.routes[0];
+    try {
+      const u = 'https://router.project-osrm.org/route/v1/driving/' + from[0].toFixed(6) + ',' + from[1].toFixed(6) + ';' + to[0].toFixed(6) + ',' + to[1].toFixed(6) + '?overview=full&geometries=geojson&steps=true';
+      const r = await fetch(u); if (!r.ok) return null; const j = await r.json(); return j.routes && j.routes[0] || null;
+    } catch (e) { return null; }
+  };
+  /* does this route end badly? (v2) arriving on a highway, or passing close to the destination, going away and back */
+  const badEnding = (rt, to) => {
+    const C = rt && rt.geometry && rt.geometry.coordinates; if (!C || C.length < 2) return null;
+    const lg = rt.legs && rt.legs[rt.legs.length - 1], st = lg && lg.steps || [];
+    let hwy = false; for (let i = Math.max(0, st.length - 3); i < st.length; i++) { const its = st[i].intersections || []; if (its.slice(-2).some(x => (x.classes || []).indexOf('motorway') >= 0)) hwy = true; }
+    let first = -1; for (let i = 0; i < C.length; i++) if (distLL(C[i], to) < 120) { first = i; break; }
+    let after = 0; if (first >= 0) for (let i = first; i < C.length - 1; i++) after += distLL(C[i], C[i + 1]);
+    const loop = first >= 0 && after > 600;
+    return hwy || loop ? { hwy, loop, after: Math.round(after) } : null;
+  };
+  /* the nearest point on a local street (not a highway or its ramp) around a place, from v3's road data */
+  Nav.prototype.localStreet = function (to) {
+    const q = this.toL(to[0], to[1]); let best = null;
+    try { for (const c of this.net.near(q[0], q[1], 250)) { const r = this.net.roads[c.k]; if (!r || /^(motorway|trunk)$/.test(r.c) || r.s === 'link' || r.s === 'driveway') continue; if (!best || c.dist < best.dist) best = c; } } catch (e) {}
+    return best && best.px != null ? this.toLL(best.px, best.pz) : null;
+  };
+  /* where the route should end (worked out once per destination, then kept for reroutes):
+     - a Supercharger: the chargers themselves (our charger list), or the garage entrance next to them when OpenStreetMap
+       has one (DIX30, Nov 27: the chargers are underground, Mapbox's "car access" was 70 m away on the wrong side)
+     - otherwise v2's checks: the car access vs the place itself, the place's parking lot, a bad ending */
+  Nav.prototype.fetchRoute = async function (from, to) {
+    const d = this.dest || {};
+    if (/supercharger/i.test((d.name || '') + ' ' + (d.cat || '')) || d.sc) {
+      let best = null, bd = 1e9;
+      try { for (const s of (this.chargers && this.chargers()) || []) { if (s.kind !== 'sc') continue; const dd = distLL([d.lng, d.lat], [s.lon, s.lat]); if (dd < bd) { bd = dd; best = s; } } } catch (e) {}
+      if (best && bd < 300) {
+        let goal = [best.lon, best.lat], ent = null;
+        const j = await overpass('[out:json][timeout:6];node(around:120,' + best.lat.toFixed(6) + ',' + best.lon.toFixed(6) + ')["amenity"="parking_entrance"];out;', 3500);
+        if (j) { let ed = 1e9; for (const e of j.elements || []) { const dd = distLL([e.lon, e.lat], goal) - (/underground|multi-storey/.test((e.tags || {}).parking || '') ? 30 : 0); if (dd < ed) { ed = dd; ent = e; } } }
+        if (ent) goal = [ent.lon, ent.lat];
+        this.note('charger destination', { name: d.name, fromPlace: Math.round(bd), entrance: ent ? ent.id : null, osm: j ? 1 : 0 });
+        const rt = await this.fetchRouteOnce(from, goal); if (rt) { rt.goal = goal; return rt; }
+      }
+    }
+    let rt = await this.fetchRouteOnce(from, to); if (!rt) throw new Error('no route'); rt.goal = to;
+    /* (v2) the car access point can be on a back street: the route to the place itself, when clearly quicker and
+       still ending close to it, or ending right at it for at most 1.5 min more */
+    try {
+      if (!d.ub && d.rlng != null && distLL([d.lng, d.lat], [d.rlng, d.rlat]) > 40) {
+        const rt2 = await this.fetchRouteOnce(from, [d.lng, d.lat]);
+        if (rt2) {
+          const C = rt2.geometry.coordinates, near = distLL(C[C.length - 1], [d.lng, d.lat]);
+          const quicker = rt2.duration < rt.duration - 60 || rt2.duration < rt.duration * 0.85, close = near < 40 && rt2.duration <= rt.duration + 90;
+          this.note('entrance check', { name: d.name, accessMin: Math.round(rt.duration / 60), placeMin: Math.round(rt2.duration / 60), endFromPlace: Math.round(near), used: !!((quicker && near < 150) || close) });
+          if ((quicker && near < 150) || close) { rt = rt2; rt.goal = [d.lng, d.lat]; }
+        }
+      }
+    } catch (e) {}
+    /* (v2) a place with its own parking lot within 150 m: the route goes into the lot when that's not much longer */
+    try {
+      if (!d.ub && distLL(from, [d.lng, d.lat]) > 400) {
+        const j = await overpass('[out:json][timeout:6];(nwr(around:150,' + d.lat.toFixed(6) + ',' + d.lng.toFixed(6) + ')["amenity"="parking"]["access"!~"private|no"];);out center tags 20;', 4000);
+        let best = null, bd = 1e9;
+        for (const e of (j && j.elements) || []) { const c = e.center || (e.lat != null ? { lat: e.lat, lon: e.lon } : null); if (!c) continue; const dd = distLL([d.lng, d.lat], [c.lon, c.lat]); if (dd < bd) { bd = dd; best = c; } }
+        if (best && bd < 150) {
+          const rt3 = await this.fetchRouteOnce(from, [best.lon, best.lat]);
+          if (rt3) {
+            const C = rt3.geometry.coordinates, e = C[C.length - 1], inLot = distLL(e, [best.lon, best.lat]), toPlace = distLL(e, [d.lng, d.lat]);
+            const ok = inLot < 70 && toPlace < 180 && rt3.duration <= rt.duration + 90;
+            this.note('parking lot check', { name: d.name, lotFromPlace: Math.round(bd), endInLot: Math.round(inLot), lotMin: Math.round(rt3.duration / 60), bestMin: Math.round(rt.duration / 60), used: ok });
+            if (ok) { rt = rt3; rt.goal = [best.lon, best.lat]; }
+          }
+        }
+      }
+    } catch (e) {}
+    /* (v2) a bad ending (passing the place, going away and coming back; or ending on a highway): the nearest local street */
+    try {
+      const bad = badEnding(rt, rt.goal);
+      if (bad) {
+        const alt = this.localStreet(rt.goal);
+        if (alt && distLL(alt, rt.goal) > 3) {
+          const rt2 = await this.fetchRouteOnce(from, alt), bad2 = rt2 && badEnding(rt2, alt), better = rt2 && (!bad2 || rt2.duration < rt.duration * 0.9);
+          this.note('route ending check', { hwy: bad.hwy, loop: bad.loop, after: bad.after, used: !!better, min: Math.round(rt.duration / 60), min2: rt2 ? Math.round(rt2.duration / 60) : null });
+          if (better) { rt = rt2; rt.goal = alt; }
+        }
+      }
+    } catch (e) {}
+    return rt;
   };
   Nav.prototype.plan = async function (reroute) {
     if (!reroute) { this.ov.style.display = 'block'; this.ov.innerHTML = '<div>Finding the route…</div>'; }
     try {
-      const rt = await this.fetchRoute(this.here(), routeTo(this.dest));
+      const from = this.here();
+      /* a reroute keeps the ending already worked out (the same garage entrance, the same lot) */
+      const rt = reroute && this.dest.goal ? await this.fetchRouteOnce(from, this.dest.goal) : await this.fetchRoute(from, routeTo(this.dest));
+      if (!rt) throw new Error('no route');
+      if (rt.goal) this.dest.goal = rt.goal;
       this.setRoute(rt);
+      try {
+        const C = rt.geometry.coordinates, e = C[C.length - 1], line = [];
+        for (let i = 0, last = null; i < C.length; i++) if (!last || distLL(last, C[i]) > 15 || i === C.length - 1) { last = C[i]; line.push([+C[i][0].toFixed(5), +C[i][1].toFixed(5)]); }
+        this.note('route to', { name: this.dest.name, place: [+this.dest.lng.toFixed(5), +this.dest.lat.toFixed(5)], to: (this.dest.goal || []).map(v => +v.toFixed(5)), end: [+e[0].toFixed(5), +e[1].toFixed(5)], km: +(rt.distance / 1000).toFixed(2), min: Math.round(rt.duration / 60), reroute: !!reroute, line });
+      } catch (e) {}
       if (!reroute) this.overview();
     } catch (e) {
+      this.note('route failed', { reroute: !!reroute, err: String(e && e.message || e) });
       if (!reroute) { this.ov.innerHTML = '<div>Could not find a route</div><div class="row"><button>Close</button></div>'; this.ov.querySelector('button').onclick = () => this.end(); }
     }
   };
@@ -147,7 +256,8 @@
     }
     pts.push(P[P.length - 1]);
     const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    this.route = { rt, pts, cum, h: new Float32Array(pts.length), hk: new Uint8Array(pts.length), L: cum[cum.length - 1] };
+    this.route = { rt, pts, cum, h: new Float32Array(pts.length), hk: new Uint8Array(pts.length), L: cum[cum.length - 1],
+      sx: new Float32Array(pts.length), sz: new Float32Array(pts.length), rk: new Int32Array(pts.length) };   /* (on our own roads, below) */
     this.idx = 0; this.t = 0; this.man = this.maneuvers(rt); this.said = new Set(); this.draw(true);
   };
   /* (part 2) the turns along the route: where each one is (metres along the line), its arrow, its words, and what to
@@ -199,13 +309,19 @@
       /* the road the route runs along (same direction), not one crossing over or under it */
       const a = r.pts[Math.max(0, i - 1)], b = r.pts[Math.min(r.pts.length - 1, i + 1)], dl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / dl, uz = (b[1] - a[1]) / dl;
       let best = null, bestAny = null;
-      for (const c of this.net.near(x, z, 9)) {
+      for (const c of this.net.near(x, z, 14)) {
         if (!bestAny || c.dist < bestAny.dist) bestAny = c;
         if (Math.abs(c.tx * ux + c.tz * uz) > 0.7 && (!best || c.dist < best.dist)) best = c;
       }
-      best = best || bestAny;
-      const h = best ? this.net.at(best.k, best.s).h || 0 : 0;
+      const h = (best || bestAny) ? this.net.at((best || bestAny).k, (best || bestAny).s).h || 0 : 0;
       if (!r.hk[i] || Math.abs(h - r.h[i]) > 0.05) { r.h[i] = h; r.hk[i] = 1; changed = true; }
+      /* (Nov 27, drive 19:17: Mapbox's line is its own drawing of the road, a lane or more beside ours on highways) the
+         line laid on OUR road, the one going the same way: on its middle when it's one-way, in the right half when
+         it's two-way (where you drive) */
+      if (best && best.dist < 14) {
+        const rd = this.net.roads[best.k], off = rd && !rd.ow ? rd.w / 4 : 0, sx = best.px - uz * off, sz = best.pz + ux * off;
+        if (r.rk[i] !== best.k + 1 || Math.abs(sx - r.sx[i]) + Math.abs(sz - r.sz[i]) > 0.2) { r.sx[i] = sx; r.sz[i] = sz; r.rk[i] = best.k + 1; changed = true; }
+      } else if (r.rk[i]) { r.rk[i] = 0; changed = true; }
     }
     return changed;
   };
@@ -213,6 +329,17 @@
     const T = this.THREE, r = this.route; if (!r) return;
     const from = Math.max(0, this.idx - 1), P = r.pts.slice(from), n = P.length; if (n < 2) return;
     const pos = new Float32Array(n * 2 * 3), idx = [], W = this.wide ? 6 : 1.6;
+    /* each point on our road when known; a short blend where a known stretch meets an unknown one (no step) */
+    const Q = new Array(n); let lane = this.lane && this.active ? this.lane : null, run = !!lane;
+    for (let i = 0; i < n; i++) {
+      const j = from + i; let q = r.rk[j] ? [r.sx[j], r.sz[j]] : P[i];
+      /* the stretch you're on now, on the same road: in your lane (where the car really is), until the road changes */
+      if (run && r.rk[j] === lane.k + 1) { const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; q = [q[0] - (b[1] - a[1]) / l * lane.o, q[1] + (b[0] - a[0]) / l * lane.o]; }
+      else if (run && i > 2) run = false;
+      Q[i] = q;
+    }
+    for (let i = 1; i < n - 1; i++) if (!!r.rk[from + i - 1] !== !!r.rk[from + i + 1]) Q[i] = [(Q[i - 1][0] + Q[i + 1][0]) / 2, (Q[i - 1][1] + Q[i + 1][1]) / 2];
+    for (let i = 0; i < n; i++) P[i] = Q[i];
     for (let i = 0; i < n; i++) {
       const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, y = r.h[from + i] + 0.3;
       pos.set([P[i][0] + nx * W, y, P[i][1] + nz * W, P[i][0] - nx * W, y, P[i][1] - nz * W], i * 6);
@@ -284,6 +411,13 @@
       let bi = this.idx, bd = Infinity;
       for (let i = Math.max(0, this.idx - 5); i < Math.min(r.pts.length, this.idx + 50); i++) { const d = Math.hypot(r.pts[i][0] - cx, r.pts[i][1] - cz); if (d < bd) { bd = d; bi = i; } }
       const moved = bi !== this.idx; this.idx = bi;
+      /* where the car is across its road, from the line's point on that road (the lane lock keeps it in its lane) */
+      this.lane = null;
+      if (r.rk[bi]) {
+        const a = r.pts[Math.max(0, bi - 1)], b = r.pts[Math.min(r.pts.length - 1, bi + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, rx = -(b[1] - a[1]) / l, rz = (b[0] - a[0]) / l;
+        const o = (cx - r.sx[bi]) * rx + (cz - r.sz[bi]) * rz, rd = this.net.roads[r.rk[bi] - 1];
+        if (rd && Math.abs(o) < rd.w / 2 + 0.5) this.lane = { k: r.rk[bi] - 1, o: Math.max(-rd.w / 2 + 1, Math.min(rd.w / 2 - 1, o)) };
+      }
       if (r.L - r.cum[this.idx] < 30 && bd < 40) { this.msg('You have arrived: ' + this.dest.name, 8000); try { TN.voice && TN.voice.say('You have arrived', true); } catch (e) {} this.end(); return; }
       /* off the route for 10 s (more than 40 m away): a new route from here */
       if (bd > 40) { this.off = (this.off || 0) + 0.5; if (this.off > 10 && Date.now() - (this.lastRe || 0) > 15000) { this.off = 0; this.lastRe = Date.now(); this.msg('New route…', 3000); this.plan(true); return; } } else this.off = 0;

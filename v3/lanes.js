@@ -317,7 +317,24 @@
         if (mv > 0) { lp2.x += ux * mv; lp2.z += uz * mv; this.ox += ux * mv; this.oz += uz * mv; this.edgeFix = (this.edgeFix || 0) + 1; }
       }
     }
-    return Object.assign(q, this.lp);
+    const out = Object.assign(q, this.lp);
+    /* (Nov 27, 19:17 drive: "the car is just shifting, not turning like a normal car") the car's nose points where the car
+       is really going: its own drawn path over the last ~0.3 s (the road's direction alone left it sliding sideways
+       through turns and slides). Slow or stopped: the road's direction. It turns at most ~57° a second, like a car */
+    const vv = (this.st && this.st.v) || 0, H = this.drawn || (this.drawn = []);
+    this.clk = (this.clk || 0) + dt; H.push([this.clk, out.x, out.z]); while (H.length > 2 && this.clk - H[1][0] > 0.3) H.shift();
+    let want = out.hd3;
+    const a0 = H[0], mvd = Math.hypot(out.x - a0[1], out.z - a0[2]);
+    if (vv > 1.5 && mvd > 0.6 && Math.hypot(out.x - a0[1], out.z - a0[2]) < 30) {
+      let dm = Math.atan2(out.x - a0[1], out.z - a0[2]) - out.hd3; dm = Math.atan2(Math.sin(dm), Math.cos(dm));
+      if (Math.abs(dm) < 1.4) want = out.hd3 + dm * Math.min(1, (vv - 1.5) / 2.5);   /* (backwards or sideways jumps: ignored) */
+    }
+    if (this.yaw == null || Math.abs(this.clk - (this.yawT || 0)) > 1) this.yaw = want;
+    let dy = want - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    const stepY = dy * (1 - Math.exp(-dt / 0.2)), maxY = 1.0 * dt;
+    this.yaw += Math.max(-maxY, Math.min(maxY, stepY)); this.yawT = this.clk;
+    out.hd3 = this.yaw;
+    return out;
   };
   const api = { Net, Track };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.MKLanes = api;
