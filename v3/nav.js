@@ -306,40 +306,78 @@
     const r = this.route; let changed = false;
     for (let i = this.idx; i < r.pts.length; i++) {
       const [x, z] = r.pts[i]; if (Math.abs(x - cx) > R || Math.abs(z - cz) > R) continue;
-      /* the road the route runs along (same direction), not one crossing over or under it */
-      const a = r.pts[Math.max(0, i - 1)], b = r.pts[Math.min(r.pts.length - 1, i + 1)], dl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / dl, uz = (b[1] - a[1]) / dl;
+      /* the road the route runs along, going the same way (a one-way road only in its own direction: never the other
+         half of a divided road), not one crossing over or under it */
+      const a = r.pts[Math.max(0, i - 2)], b = r.pts[Math.min(r.pts.length - 1, i + 2)], dl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / dl, uz = (b[1] - a[1]) / dl;
       let best = null, bestAny = null;
       for (const c of this.net.near(x, z, 14)) {
         if (!bestAny || c.dist < bestAny.dist) bestAny = c;
-        if (Math.abs(c.tx * ux + c.tz * uz) > 0.7 && (!best || c.dist < best.dist)) best = c;
+        const rd = this.net.roads[c.k], dot = c.tx * ux + c.tz * uz;
+        if (!(rd.ow ? dot > 0.8 : Math.abs(dot) > 0.8)) continue;
+        const sc = c.dist + (/driveway|parking_aisle/.test(rd.s || '') ? 6 : 0);   /* (a driveway beside a street: the street) */
+        if (!best || sc < best.sc) best = Object.assign({ sc }, c);
       }
       const h = (best || bestAny) ? this.net.at((best || bestAny).k, (best || bestAny).s).h || 0 : 0;
       if (!r.hk[i] || Math.abs(h - r.h[i]) > 0.05) { r.h[i] = h; r.hk[i] = 1; changed = true; }
-      /* (Nov 27, drive 19:17: Mapbox's line is its own drawing of the road, a lane or more beside ours on highways) the
-         line laid on OUR road, the one going the same way: on its middle when it's one-way, in the right half when
-         it's two-way (where you drive) */
-      if (best && best.dist < 14) {
-        const rd = this.net.roads[best.k], off = rd && !rd.ow ? rd.w / 4 : 0, sx = best.px - uz * off, sz = best.pz + ux * off;
+      /* (Nov 27) the line laid on OUR road: the middle of a one-way road, the right half of a two-way one (where you
+         drive). Kept as a shift from Mapbox's point, smoothed in draw() so it never zigzags */
+      if (best && best.dist < 9) {   /* (farther: likely a parallel street, not ours) */
+        const rd = this.net.roads[best.k], off = rd && !rd.ow ? rd.w / 4 : 0;
+        const sx = best.px - uz * off - x, sz = best.pz + ux * off - z;
         if (r.rk[i] !== best.k + 1 || Math.abs(sx - r.sx[i]) + Math.abs(sz - r.sz[i]) > 0.2) { r.sx[i] = sx; r.sz[i] = sz; r.rk[i] = best.k + 1; changed = true; }
       } else if (r.rk[i]) { r.rk[i] = 0; changed = true; }
     }
     return changed;
   };
+  /* the line to draw from point 'from': Mapbox's points shifted onto our roads. The shifts are filled across short gaps,
+     faded out at long ones, and smoothed over ~50 m, so the line glides from one road to the next instead of jumping
+     (Nov 27, 22:32 drive: before a left turn and before home the line zigzagged across the street) */
+  Nav.prototype.lineFrom = function (from, lane) {
+    const r = this.route, n = r.pts.length - from, dx = new Float32Array(n), dz = new Float32Array(n), ok = new Uint8Array(n);
+    for (let i = 0; i < n; i++) if (r.rk[from + i]) { dx[i] = r.sx[from + i]; dz[i] = r.sz[from + i]; ok[i] = 1; }
+    /* your lane: on the road you're on, the line moves to where the car is; it eases back over the last 40 m of that road */
+    if (lane) {
+      /* (roads are cut in short pieces at every crossing: the lane carries on along the route until it turns) */
+      const dir = j => { const a = r.pts[Math.max(0, j - 2)], b = r.pts[Math.min(r.pts.length - 1, j + 2)]; return Math.atan2(b[0] - a[0], b[1] - a[1]); };
+      const d0 = dir(Math.min(from + 1, r.pts.length - 1)); let end = 0, miss = 0;
+      while (end < n) { let d = dir(from + end) - d0; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.45) break; miss = r.rk[from + end] ? 0 : miss + 1; if (miss > 3) break; end++; }
+      for (let i = 0; i < end; i++) {
+        const j = from + i, a = r.pts[Math.max(0, j - 2)], b = r.pts[Math.min(r.pts.length - 1, j + 2)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        const f = Math.min(1, (end - 1 - i) / 5); dx[i] += -(b[1] - a[1]) / l * lane.o * f; dz[i] += (b[0] - a[0]) / l * lane.o * f;
+      }
+    }
+    /* gaps: up to 8 points (~64 m) between two known shifts are filled in a straight blend; at longer gaps the shift
+       fades to nothing over 4 points */
+    let last = -1;
+    for (let i = 0; i <= n; i++) {
+      if (i < n && !ok[i]) continue;
+      const g0 = last + 1, g1 = i - 1;
+      if (g1 >= g0) {
+        if (last >= 0 && i < n && g1 - g0 < 8) { for (let k = g0; k <= g1; k++) { const t = (k - last) / (i - last); dx[k] = dx[last] + (dx[i] - dx[last]) * t; dz[k] = dz[last] + (dz[i] - dz[last]) * t; } }
+        else {
+          /* (fading at most ~0.8 m per point: never a sideways step) */
+          const La = last >= 0 ? Math.max(4, Math.ceil(Math.hypot(dx[last], dz[last]) / 0.8)) : 1, Lb = i < n ? Math.max(4, Math.ceil(Math.hypot(dx[i], dz[i]) / 0.8)) : 1;
+          for (let k = g0; k <= g1; k++) {
+            const fa = last >= 0 ? Math.max(0, 1 - (k - last) / La) : 0, fb = i < n ? Math.max(0, 1 - (i - k) / Lb) : 0;
+            dx[k] = (last >= 0 ? dx[last] * fa : 0) + (i < n ? dx[i] * fb : 0); dz[k] = (last >= 0 ? dz[last] * fa : 0) + (i < n ? dz[i] * fb : 0);
+          }
+        }
+      }
+      last = i;
+    }
+    const Q = new Array(n), W = [1, 2, 3, 4, 3, 2, 1];
+    for (let i = 0; i < n; i++) {
+      let sx = 0, sz = 0, sw = 0;
+      for (let k = -3; k <= 3; k++) { const j = i + k; if (j < 0 || j >= n) continue; sx += dx[j] * W[k + 3]; sz += dz[j] * W[k + 3]; sw += W[k + 3]; }
+      Q[i] = [r.pts[from + i][0] + sx / sw, r.pts[from + i][1] + sz / sw];
+    }
+    return Q;
+  };
   Nav.prototype.draw = function (force) {
     const T = this.THREE, r = this.route; if (!r) return;
-    const from = Math.max(0, this.idx - 1), P = r.pts.slice(from), n = P.length; if (n < 2) return;
+    const from = Math.max(0, this.idx - 1), n = r.pts.length - from; if (n < 2) return;
+    const P = this.lineFrom(from, this.lane && this.active ? this.lane : null);
     const pos = new Float32Array(n * 2 * 3), idx = [], W = this.wide ? 6 : 1.6;
-    /* each point on our road when known; a short blend where a known stretch meets an unknown one (no step) */
-    const Q = new Array(n); let lane = this.lane && this.active ? this.lane : null, run = !!lane;
-    for (let i = 0; i < n; i++) {
-      const j = from + i; let q = r.rk[j] ? [r.sx[j], r.sz[j]] : P[i];
-      /* the stretch you're on now, on the same road: in your lane (where the car really is), until the road changes */
-      if (run && r.rk[j] === lane.k + 1) { const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; q = [q[0] - (b[1] - a[1]) / l * lane.o, q[1] + (b[0] - a[0]) / l * lane.o]; }
-      else if (run && i > 2) run = false;
-      Q[i] = q;
-    }
-    for (let i = 1; i < n - 1; i++) if (!!r.rk[from + i - 1] !== !!r.rk[from + i + 1]) Q[i] = [(Q[i - 1][0] + Q[i + 1][0]) / 2, (Q[i - 1][1] + Q[i + 1][1]) / 2];
-    for (let i = 0; i < n; i++) P[i] = Q[i];
     for (let i = 0; i < n; i++) {
       const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, y = r.h[from + i] + 0.3;
       pos.set([P[i][0] + nx * W, y, P[i][1] + nz * W, P[i][0] - nx * W, y, P[i][1] - nz * W], i * 6);
@@ -415,7 +453,7 @@
       this.lane = null;
       if (r.rk[bi]) {
         const a = r.pts[Math.max(0, bi - 1)], b = r.pts[Math.min(r.pts.length - 1, bi + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, rx = -(b[1] - a[1]) / l, rz = (b[0] - a[0]) / l;
-        const o = (cx - r.sx[bi]) * rx + (cz - r.sz[bi]) * rz, rd = this.net.roads[r.rk[bi] - 1];
+        const o = (cx - r.pts[bi][0] - r.sx[bi]) * rx + (cz - r.pts[bi][1] - r.sz[bi]) * rz, rd = this.net.roads[r.rk[bi] - 1];
         if (rd && Math.abs(o) < rd.w / 2 + 0.5) this.lane = { k: r.rk[bi] - 1, o: Math.max(-rd.w / 2 + 1, Math.min(rd.w / 2 - 1, o)) };
       }
       if (r.L - r.cum[this.idx] < 30 && bd < 40) { this.msg('You have arrived: ' + this.dest.name, 8000); try { TN.voice && TN.voice.say('You have arrived', true); } catch (e) {} this.end(); return; }
