@@ -491,6 +491,12 @@
     if (!this.mat) this.mat = new T.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.88, depthWrite: false, fog: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
     if (this.mesh) { this.mesh.geometry.dispose(); this.mesh.geometry = g; }
     else { this.mesh = new T.Mesh(g, this.mat); this.mesh.renderOrder = 5; this.mesh.frustumCulled = false; this.scene.add(this.mesh); }
+    /* (Nov 28) the line shows faintly through a bridge deck or overpass that hides it, never vanishing "under" it */
+    if (!this.ghost) {
+      const gm = new T.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.4, depthWrite: false, depthFunc: T.GreaterDepth, fog: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
+      gm.stencilWrite = true; gm.stencilRef = 1; gm.stencilFunc = T.NotEqualStencilFunc; gm.stencilFail = T.KeepStencilOp; gm.stencilZFail = T.KeepStencilOp; gm.stencilZPass = T.KeepStencilOp;
+      this.ghost = new T.Mesh(g, gm); this.ghost.renderOrder = 19; this.ghost.frustumCulled = false; this.scene.add(this.ghost);
+    } else this.ghost.geometry = g;
   };
   Nav.prototype.overview = function () {
     const rt = this.route.rt, d = this.dest;
@@ -510,6 +516,7 @@
   Nav.prototype.end = function () {
     this.active = false; this.route = null; this.ov.style.display = 'none'; this.bar.style.display = 'none'; document.body.classList.remove('nav-on');
     if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh = null; }
+    if (this.ghost) { this.scene.remove(this.ghost); this.ghost = null; }
     this.input.value = ''; this.x.style.display = 'none';
   };
   /* the top bar while driving: arrival time, minutes and km left, End */

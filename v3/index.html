@@ -32,7 +32,7 @@ canvas{display:block}
 <div id="top" class="hud">MapKoon v3 <span style="color:var(--accent)">test</span><small id="gps">Waiting for GPS…</small></div>
 <div id="stats" class="hud">…</div>
 <div id="spd" class="hud">0<small>km/h</small></div>
-<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bRec">● Record</button><button id="bStats">Info</button><button id="bSet" title="Settings">⚙</button></div>
+<div id="ctl" class="hud"><button id="bFollow" class="on">Follow car</button><button id="bLock" class="on">Lane lock</button><button id="bNight">Night</button><button id="bRec">● Record</button><button id="bFlag" style="display:none" title="Mark this moment for Claude">⚑ Flag</button><button id="bStats">Info</button><button id="bSet" title="Settings">⚙</button></div>
 <div id="set"><div class="box"><h2>Settings</h2><div id="setRows"></div><button class="done">Done</button><div class="ver" id="setVer"></div></div></div>
 <div id="msg" class="hud" hidden></div>
 <div id="load" class="hud">Loading the map…</div>
@@ -43,6 +43,7 @@ canvas{display:block}
    City of Montréal), the live GPS of the car, and lane lock. Only the tiles near the car are downloaded. */
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {ConvexGeometry} from 'three/addons/geometries/ConvexGeometry.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 /* (Nov 27: "one website that always gets updated rather than adding v=") always the newest version, no ?v= numbers:
    the scripts are asked fresh from the server each time (a quick "not changed" answer when they are the same), and the
@@ -265,10 +266,17 @@ let msgT=0;function msg(t,ms){const m=document.getElementById('msg');m.textConte
 async function uploadTrip(trip){msg('Uploading your drive…');
   try{const n=await TN.up.upload(trip);try{localStorage.removeItem(RKEY);}catch(e){}msg('Drive uploaded ✓ '+n,20000);}
   catch(e){msg('Not uploaded: '+e.message+' It is kept in this browser; tap Record → Upload later.',9000);}}
+/* (Nov 28) Flag: one tap while recording marks the moment (a note + 3 big pictures), so a problem is found later without
+   remembering where it happened */
+let flagShots=0,flagT=0;
+document.getElementById('bFlag').onclick=()=>{if(!rec.rec) return;rec.note('flag',{});flagShots=3;flagT=0;msg('⚑ Flagged',2000);};
+function flagShoot(cv){if(!flagShots||!rec.rec) return;const t=performance.now();if(t-flagT<1500) return;flagT=t;flagShots--;
+  try{const c=document.createElement('canvas'),w=960,h=Math.round(960*cv.height/cv.width);c.width=w;c.height=h;c.getContext('2d').drawImage(cv,0,0,w,h);
+    rec.rec.shots=rec.rec.shots||[];rec.rec.shots.push([rec.t(),c.toDataURL('image/jpeg',0.75),'flag']);}catch(e){}}
 document.getElementById('bRec').onclick=e=>{const b=e.target;
-  if(rec.rec){const trip=rec.stop();b.classList.remove('rec');b.textContent='● Record';if(trip&&trip.g.length>20) uploadTrip(trip);else msg('Drive too short, not uploaded.',4000);return;}
+  if(rec.rec){document.getElementById('bFlag').style.display='none';const trip=rec.stop();b.classList.remove('rec');b.textContent='● Record';if(trip&&trip.g.length>20) uploadTrip(trip);else msg('Drive too short, not uploaded.',4000);return;}
   const old=rec.saved();if(old&&old.g&&old.g.length>50){uploadTrip(old);return;}   /* (a drive left from before: upload it first) */
-  rec.start();rec.rec.app='v3';rec.rec.info.view='v3';rec.rec.info.map=IDX.built;b.classList.add('rec');b.textContent='■ Stop';msg('Recording ●',2500);};
+  rec.start();rec.rec.app='v3';rec.rec.info.view='v3';rec.rec.info.map=IDX.built;b.classList.add('rec');b.textContent='■ Stop';msg('Recording ●',2500);document.getElementById('bFlag').style.display='';};
 let recLast=0,worst=0;
 function recFrame(p,pl){if(!rec.rec) return;const t=performance.now();if(t-recLast<200) return;recLast=t;
   const lon=p.x/IDX.kx+IDX.lon0,lat=IDX.lat0-p.z/IDX.ky,r=v=>Math.round(v*10)/10;
@@ -319,7 +327,18 @@ async function start(){
   try{const g=await new GLTFLoader().loadAsync('../model3.glb');car=g.scene;const b=new THREE.Box3().setFromObject(car),s=b.getSize(new THREE.Vector3());const k=4.7/Math.max(s.x,s.z);car.scale.setScalar(k);
     /* (step 6) the connected Tesla's real colour on the 3D car (read from the car once a week, as in v2) */
     car.traverse(o=>{if(o.material&&o.material.name==='paint') globalThis.TN.paintMat=o.material;});try{TN.applyCar&&TN.applyCar();if(TN.tesla&&TN.tesla.connected()) TN.tesla.config();}catch(e){}
-    const b2=new THREE.Box3().setFromObject(car);car.position.y=-b2.min.y;const w=new THREE.Group();w.add(car);car=w;}
+    const b2=new THREE.Box3().setFromObject(car);car.position.y=-b2.min.y;const w=new THREE.Group();w.add(car);
+    /* (Nov 28: "the car and the blue line drove under the bridge") under an overpass the car shows through the deck as a
+       faint ghost, only where something hides it (like Tesla's own screen) */
+    /* (the car marks its pixels, so the faint line never tints it) */
+    car.traverse(o=>{if(o.isMesh){const ms=Array.isArray(o.material)?o.material:[o.material];ms.forEach(m=>{m.stencilWrite=true;m.stencilRef=1;m.stencilFunc=THREE.AlwaysStencilFunc;m.stencilZPass=THREE.ReplaceStencilOp;});}});
+    const gm=new THREE.MeshBasicMaterial({color:0xdfe6f0,transparent:true,opacity:0.45,depthWrite:false,depthFunc:THREE.GreaterDepth});
+    /* (a car-shaped hull around the model, front faces only: it never hides behind the car itself, only behind a deck) */
+    try{const V=[],v=new THREE.Vector3();car.updateMatrixWorld(true);w.updateMatrixWorld(true);
+      car.traverse(o=>{if(!o.isMesh) return;const pa=o.geometry.attributes.position,st=Math.max(1,Math.floor(pa.count/3000));
+        for(let i=0;i<pa.count;i+=st){v.fromBufferAttribute(pa,i).applyMatrix4(o.matrixWorld);V.push(v.clone().multiplyScalar(1.03));}});
+      const hull=new THREE.Mesh(new ConvexGeometry(V),gm);gm.side=THREE.FrontSide;hull.renderOrder=20;w.add(hull);}catch(e){console.error(e);}
+    car=w;}
   catch(e){car=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.4,4.6),new THREE.MeshLambertMaterial({color:0xeeeeee}));car.geometry.translate(0,0.7,0);}
   const beamG=new THREE.PlaneGeometry(9,30);beamG.rotateX(-Math.PI/2);beamG.translate(0,0.5,-17.5);
   const beamM=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:U,
@@ -366,7 +385,7 @@ function loop(){requestAnimationFrame(loop);const t=performance.now(),dt=Math.mi
      ended there) the ground follows the camera, in 1 km steps */
   ground.position.set(Math.round(cam.position.x/1000)*1000,0,Math.round(cam.position.z/1000)*1000);
   if(CHG) try{CHG.place();}catch(e){CHG=null;}
-  R.render(S,cam);recFrame(p,pl);if(rec.rec) rec.shoot(R.domElement,null);worst=Math.max(worst,dt*1000);if(msgT&&t>msgT){msg('');msgT=0;}
+  R.render(S,cam);recFrame(p,pl);if(rec.rec){rec.shoot(R.domElement,null);flagShoot(R.domElement);}worst=Math.max(worst,dt*1000);if(msgT&&t>msgT){msg('');msgT=0;}
   frames++;if(t-fpsT>1000){fps=frames*1000/(t-fpsT);rec.second(Math.round(fps),worst);worst=0;frames=0;fpsT=t;const i=R.info.render;
     const k=Math.floor(p.x/IDX.T)+'_'+Math.floor(p.z/IDX.T);
     document.getElementById('gps').textContent=!gpsT?'Waiting for GPS…':(now()-gpsT>10?'GPS lost':'GPS '+Math.round(acc)+' m')+(HAS.has(k)?'':' · outside the map')+(lock&&!pl&&gpsT?' · finding the road':'');
